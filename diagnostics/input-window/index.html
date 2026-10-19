@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fishing Input Window Probe</title>
+<style>
+  body { margin:0; padding:36px; color:#ecf3e1; background:#142e32; font:22px system-ui; }
+  #surface { margin-top:24px; padding:28px; border:2px solid #87b7ae; min-height:230px; touch-action:none; }
+  pre { line-height:1.6; } small { color:#acc7c2; }
+</style>
+<h1>独立输入窗口验证</h1>
+<small>不运行游戏，不读取存档。仅统计输入次数，不记录键盘内容。</small>
+<div id="surface" tabindex="0" role="region" aria-label="输入测试区域">
+  左键 / 右键 / 中键 / 滚轮 / 键盘
+  <pre id="state"></pre>
+</div>
+<script type="module">
+  import { InputSession } from './input-session.mjs';
+  const session = new InputSession(), surface=document.querySelector('#surface');
+  const captured = new Set();
+  function releaseCaptured() {
+    for(const id of captured)if(surface.hasPointerCapture(id))surface.releasePointerCapture(id);
+    captured.clear();
+  }
+  function report(kind, extra={}) {
+    const data={kind,...session.snapshot(),...extra};
+    document.querySelector('#state').textContent=`交互: ${data.enabled}\n按住: ${data.held}\n按下/松开: ${data.presses}/${data.releases}\n键盘: ${data.keys} · 滚轮: ${data.wheels}\n取消: ${data.cancellations} (${data.lastReason})`;
+    window.chrome?.webview?.postMessage(data);
+  }
+  function cancel(reason) { session.cancel(reason); releaseCaptured(); report('cancel'); }
+  window.hostInputMode = data => {
+    if(session.setMode(data.enabled,data.revision,data.reason)) {
+      releaseCaptured();
+      if(session.enabled) surface.focus();
+      report('mode');
+    }
+  };
+  surface.addEventListener('contextmenu', e => { if(session.enabled)e.preventDefault(); });
+  surface.addEventListener('pointerdown', e => {
+    if(session.down(e.pointerId,e.button)) { e.preventDefault(); surface.setPointerCapture(e.pointerId); captured.add(e.pointerId); report('down',{button:e.button,trusted:e.isTrusted}); }
+  });
+  surface.addEventListener('pointerup', e => {
+    if(session.up(e.pointerId,e.button)) {
+      report('up',{button:e.button,trusted:e.isTrusted});
+      if(!session.held.size && surface.hasPointerCapture(e.pointerId))surface.releasePointerCapture(e.pointerId);
+    }
+  });
+  surface.addEventListener('pointercancel',()=>cancel('pointercancel'));
+  surface.addEventListener('lostpointercapture',e=>{captured.delete(e.pointerId);if(session.held.size)cancel('lostcapture');});
+  surface.addEventListener('wheel',e=>{if(session.enabled){e.preventDefault();session.wheel();report('wheel',{trusted:e.isTrusted});}},{passive:false});
+  surface.addEventListener('keydown',e=>{
+    if(!session.enabled)return;
+    if(e.key==='Escape'){e.preventDefault();cancel('escape');return;}
+    session.key();report('key',{trusted:e.isTrusted});
+  });
+  window.addEventListener('blur',()=>cancel('blur'));
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)cancel('hidden');});
+  report('ready');
+</script>
+</html>

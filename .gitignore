@@ -39,3 +39,7 @@ Desktop.ini
 /artifacts/
 /playwright-report/
 /test-results/
+
+# Original game data and private analysis output stay outside the published project
+/research/
+/private-research/

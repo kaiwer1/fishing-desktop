@@ -1,9 +1,9 @@
 {
   "AppVersion": "2.2.1.0",
-  "Title": "湖畔 · 松风湖环境预览",
+  "Title": "湖畔 · 单竿钓鱼试玩 0.2",
   "Thumbnail": null,
   "Preview": null,
-  "Desc": "钓鱼桌面的早期环境技术样机，包含动态湖面与画质设置；完整钓鱼玩法开发中。",
+  "Desc": "早期单竿钓鱼试玩：抛竿、提竿、控线、卖鱼，三处钓点与营地商店。场景为占位美术，桌面宿主兼容性待验证。",
   "Author": "kaiwer1",
   "License": null,
   "Contact": "https://github.com/kaiwer1/fishing-desktop",

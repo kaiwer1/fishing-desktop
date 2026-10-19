@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { QUALITY, normalizeSettings, renderSize, frameRate } from './display.js';
+import { mountGameUI } from './game-ui.js';
+import { SPECIES } from './content.js';
 import './style.css';
 
 const canvas = document.querySelector('#lake');
@@ -54,12 +56,12 @@ function initialize() {
   scene.add(sky);
 
   const waterMaterial = new THREE.ShaderMaterial({
-    uniforms: { time: { value: 0 }, detail: { value: 0.75 }, sunDirection: { value: sunDirection }, ripple: { value: new THREE.Vector3(1.4, 0, -6) }, rippleStart: { value: -100 } },
+    uniforms: { time: { value: 0 }, detail: { value: 0.75 }, waterTint: { value: new THREE.Color(0x244f43) }, sunDirection: { value: sunDirection }, ripple: { value: new THREE.Vector3(1.4, 0, -6) }, rippleStart: { value: -100 } },
     vertexShader: `uniform float time; varying vec3 vWorld;
       void main(){ vec3 p=position; p.z+=sin(p.x*.42+time*.6)*.025+sin(p.y*.33+time*.43)*.022;
         vWorld=(modelMatrix*vec4(p,1.0)).xyz;
         gl_Position=projectionMatrix*viewMatrix*vec4(vWorld,1.0); }`,
-    fragmentShader: `uniform float time; uniform float detail; uniform vec3 sunDirection;
+    fragmentShader: `uniform float time; uniform float detail; uniform vec3 sunDirection; uniform vec3 waterTint;
       uniform vec3 ripple; uniform float rippleStart; varying vec3 vWorld;
       float waves(vec2 p){ return sin(p.x*1.3+sin(p.y*.7)+time*.9)*.22
         +sin(p.y*2.7-p.x*.8+time*1.1)*.12+sin(p.x*6.2+p.y*3.7-time*1.4)*.04*detail; }
@@ -71,7 +73,7 @@ function initialize() {
         vec3 V=normalize(cameraPosition-vWorld); vec3 R=reflect(-V,N);
         float fresnel=.04+.96*pow(1.-max(dot(V,N),0.),4.);
         vec3 reflected=mix(vec3(.73,.79,.74),vec3(.3,.49,.59),pow(max(R.y,0.),.45));
-        vec3 body=mix(vec3(.025,.12,.105),vec3(.11,.25,.21),clamp(V.y,0.,1.));
+        vec3 body=mix(waterTint*.32,waterTint,clamp(V.y,0.,1.));
         vec3 color=mix(body,reflected,fresnel*.85+.16);
         float sparkle=pow(max(dot(reflect(-sunDirection,N),V),0.),180.);
         color+=vec3(1.,.77,.4)*sparkle*.8;
@@ -117,6 +119,20 @@ function initialize() {
   trees.instanceMatrix.needsUpdate=true;
   scene.add(trees);
 
+  const riverBanks = new THREE.Group();
+  for (const x of [-48, 48]) {
+    const shore = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 16), new THREE.MeshStandardMaterial({ color: 0x64755b, roughness: 1 }));
+    shore.position.set(x, -1.2, -48); shore.scale.set(24, 4.3, 75); riverBanks.add(shore);
+  }
+  scene.add(riverBanks);
+  const reeds = new THREE.InstancedMesh(new THREE.ConeGeometry(.065, 2.7, 5), new THREE.MeshStandardMaterial({ color: 0x7f8450, roughness: 1 }), 220);
+  for(let i=0;i<220;i++) {
+    treeTransform.position.set((i%2?1:-1)*(10+random(i+11)*13),1,-5-random(i+31)*34);
+    treeTransform.scale.set(1,.6+random(i+92)*.7,1); treeTransform.rotation.set(0,0,(random(i+34)-.5)*.2);
+    treeTransform.updateMatrix(); reeds.setMatrixAt(i,treeTransform.matrix);
+  }
+  reeds.instanceMatrix.needsUpdate=true; scene.add(reeds);
+
   const wood=woodTexture();
   const plankMaterial=new THREE.MeshStandardMaterial({map:wood,color:0x9b8d72,roughness:.94});
   for(let i=0;i<13;i++) {
@@ -129,24 +145,58 @@ function initialize() {
   }
 
   const rodPoints=[new THREE.Vector3(2.2,1,11),new THREE.Vector3(2,2.1,7.5),new THREE.Vector3(1.65,3.3,4),new THREE.Vector3(1.2,3.9,1)];
-  const rod=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rodPoints),28,.025,8,false),new THREE.MeshStandardMaterial({color:0x25312d,metalness:.35,roughness:.5}));
+  const rodMaterial=new THREE.MeshStandardMaterial({color:0x25312d,metalness:.35,roughness:.5});
+  const rod=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rodPoints),28,.025,8,false),rodMaterial);
   scene.add(rod);
+  const sleeveMaterial=new THREE.MeshStandardMaterial({color:0xb9aa8b,roughness:.9});
+  const sleeve=new THREE.Mesh(new THREE.CylinderGeometry(.16,.22,.8,12),sleeveMaterial);
+  sleeve.rotation.x=.7;sleeve.position.set(2,1.5,8.5);scene.add(sleeve);
   const float=new THREE.Group();
   const floatBody=new THREE.Mesh(new THREE.SphereGeometry(.065,12,10),new THREE.MeshStandardMaterial({color:0xd8c7a1,roughness:.4}));
   floatBody.scale.y=2.8;floatBody.position.y=.06;float.add(floatBody);
   const tip=new THREE.Mesh(new THREE.CylinderGeometry(.018,.025,.28,8),new THREE.MeshStandardMaterial({color:0xd35237}));
   tip.position.y=.32;float.add(tip);float.position.set(1.4,.03,-6);scene.add(float);
-  const line=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xb3c5b7,transparent:true,opacity:.5}));
+  const lineGeometry=new THREE.BufferGeometry();
+  lineGeometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(31*3),3));
+  const line=new THREE.Line(lineGeometry,new THREE.LineBasicMaterial({color:0xb3c5b7,transparent:true,opacity:.5}));
   scene.add(line);
+  const lineCurve=new THREE.QuadraticBezierCurve3(rodPoints[3].clone(),new THREE.Vector3(),new THREE.Vector3());
+  const linePoint=new THREE.Vector3();
   function updateLine() {
-    const curve=new THREE.QuadraticBezierCurve3(rodPoints[3],new THREE.Vector3((float.position.x+1.2)/2,1.3,(float.position.z+1)/2),float.position.clone());
-    line.geometry.dispose();line.geometry=new THREE.BufferGeometry().setFromPoints(curve.getPoints(30));
+    lineCurve.v1.set((float.position.x+1.2)/2,1.3,(float.position.z+1)/2);lineCurve.v2.copy(float.position);
+    for(let i=0;i<=30;i++){lineCurve.getPoint(i/30,linePoint);lineGeometry.attributes.position.setXYZ(i,linePoint.x,linePoint.y,linePoint.z);}
+    lineGeometry.attributes.position.needsUpdate=true;lineGeometry.computeBoundingSphere();
   }
   updateLine();
+
+  const fishBodyMaterial=new THREE.MeshStandardMaterial({color:0xb9ac83,roughness:.6,metalness:.15});
+  const hookedFish=new THREE.Group();
+  const fishBody=new THREE.Mesh(new THREE.SphereGeometry(1,18,12),fishBodyMaterial);fishBody.scale.set(.38,.15,.1);hookedFish.add(fishBody);
+  const fishTail=new THREE.Mesh(new THREE.ConeGeometry(.16,.3,3),fishBodyMaterial);fishTail.rotation.z=Math.PI/2;fishTail.position.x=.4;hookedFish.add(fishTail);
+  scene.add(hookedFish);
+  const castTarget=new THREE.Vector3(1.4,0,-9);
+  const gameUI=mountGameUI({
+    onCast(point){castTarget.set(point.x,0,point.z);waterMaterial.uniforms.ripple.value.copy(castTarget);waterMaterial.uniforms.rippleStart.value=time+1;},
+    onMapChange(place,id){
+      waterMaterial.uniforms.waterTint.value.setHex(place.water);bank.material.color.setHex(place.ground);treeMaterial.color.setHex(place.forest);
+      bank.position.z=id==='pine'?-125:id==='reed'?-108:-135;
+      bank.scale.set(id==='river'?1.2:1,1,id==='reed'?.75:1);
+      trees.position.z=id==='reed'?12:0;trees.count=id==='reed'?160:300;
+      riverBanks.visible=id==='river';reeds.visible=id==='reed';
+      camera.position.y=id==='reed'?2.9:3.35;camera.lookAt(0,1.2,-42);
+    },
+    onEquipment(equipment,clothes){rodMaterial.color.set(equipment.color);sleeveMaterial.color.set(clothes.color);},
+  });
 
   const state={observe:false,paused:false,hidden:document.hidden,fps:settings.fps};
   const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
   let time=0,last=performance.now(),timer=0,animation=0;
+  let lastGameTime=performance.now();
+  // Fishing timing must continue at its own rate when an occluded browser delays GPU frames.
+  setInterval(()=>{
+    const now=performance.now(),elapsed=Math.min(1,Math.max(0,(now-lastGameTime)/1000));lastGameTime=now;
+    if(!state.hidden&&!state.paused&&!state.observe)gameUI.tick(elapsed);
+  },50);
   function resize() {
     const size=renderSize(innerWidth,innerHeight,devicePixelRatio,settings);
     renderer.setSize(size.width,size.height,false);
@@ -156,14 +206,33 @@ function initialize() {
   }
   function draw(now) {
     const fps=frameRate(state);if(!fps)return;
-    time+=Math.min(.1,Math.max(0,(now-last)/1000));last=now;
+    const dt=Math.min(.1,Math.max(0,(now-last)/1000));time+=dt;last=now;
     const environmentTime=reducedMotion.matches?4:time;
     waterMaterial.uniforms.time.value=environmentTime;
-    float.position.y=.03+Math.sin(environmentTime*1.9)*.018;
+    const phase=gameUI.game.phase,session=gameUI.game.session;
+    float.visible=line.visible=gameUI.game.busy;
+    rod.rotation.x=0;
+    if(session&&gameUI.game.busy){
+      if(phase==='casting'){
+        const flight=Math.min(1,session.elapsed);float.position.lerpVectors(rodPoints[3],castTarget,flight);float.position.y+=Math.sin(flight*Math.PI)*2;
+        rod.rotation.x=-.08*Math.sin(flight*Math.PI);
+      }else{
+        float.position.copy(castTarget);float.position.y=.03+Math.sin(environmentTime*1.9)*.018;
+        if(phase==='bite')float.position.y=-.2+Math.sin(environmentTime*12)*.08;
+        if(phase==='fighting'){
+          float.position.x+=Math.sin(session.elapsed*2)*(1-session.progress)*2;
+          float.position.z=THREE.MathUtils.lerp(castTarget.z,2,session.progress);
+          rod.rotation.x=-session.tension*.0006;
+        }
+      }
+      updateLine();
+    }
+    hookedFish.visible=phase==='fighting'&&session.progress>.7;
+    if(hookedFish.visible){hookedFish.position.copy(float.position);hookedFish.position.y=.08;hookedFish.rotation.y=Math.sin(session.elapsed*4)*.5;fishBodyMaterial.color.set(SPECIES[session.species].color);}
     renderer.render(scene,camera);
     timer=setTimeout(()=>{animation=requestAnimationFrame(draw);},Math.max(0,1000/fps-(performance.now()-now)-4));
   }
-  function wake() { clearTimeout(timer);cancelAnimationFrame(animation);last=performance.now();if(frameRate(state))animation=requestAnimationFrame(draw); }
+  function wake() { clearTimeout(timer);cancelAnimationFrame(animation);last=performance.now();lastGameTime=last;if(frameRate(state))animation=requestAnimationFrame(draw); }
   function changeSettings() {
     settings=normalizeSettings({quality:qualityInput.value,scale:scaleInput.value,fps:fpsInput.value});state.fps=settings.fps;
     try { localStorage.setItem('fishing-desktop.settings.v1',JSON.stringify(settings)); } catch { /* Private hosts may disable storage; keep settings in memory. */ }
@@ -172,6 +241,7 @@ function initialize() {
   for(const input of [qualityInput,scaleInput,fpsInput]) input.addEventListener('change',changeSettings);
   document.querySelector('#settings-open').addEventListener('click',()=>settingsDialog.showModal());
   document.querySelector('#observe').addEventListener('click',()=>{
+    if(gameUI.game.busy)return;
     state.observe=true;document.querySelector('#interface').hidden=true;document.querySelector('#restore').hidden=false;wake();
   });
   function restore(){state.observe=false;document.querySelector('#interface').hidden=false;document.querySelector('#restore').hidden=true;wake();}
@@ -189,7 +259,7 @@ function initialize() {
     pointer.set((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);
     raycaster.setFromCamera(pointer,camera);
     if(raycaster.ray.intersectPlane(lakePlane,hit)&&hit.z<-2&&hit.z>-55&&Math.abs(hit.x)<55){
-      float.position.set(hit.x,.03,hit.z);waterMaterial.uniforms.ripple.value.copy(hit);waterMaterial.uniforms.rippleStart.value=time;updateLine();
+      gameUI.castAt(hit);
     }
   });
   // Official Lively property callbacks; embedding and occlusion behavior still need host testing.

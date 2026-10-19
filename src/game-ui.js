@@ -52,6 +52,7 @@ export function mountGameUI(callbacks = {}) {
   }
 
   function act() {
+    if (document.body.classList.contains('needs-landscape')) return;
     if (charge) { cancelMouse(); render(); return; }
     if (game.phase === 'bite') game.strike();
     else if (game.phase === 'fighting') game.setReeling(!game.session.reeling);
@@ -148,6 +149,7 @@ export function mountGameUI(callbacks = {}) {
 
   const tabNames = { maps: '钓点地图', tackle: '渔具商店', food: '食品商店', clothes: '服装商店', creel: '鱼护与鱼市', bag: '我的背包', book: '鱼类图鉴', journal: '垂钓记录' };
   function openHub(next) {
+    if (document.body.classList.contains('needs-landscape')) return;
     cancelMouse();
     if (game.busy) { game.reject('先收竿，再打开地图或营地。'); render(); return; }
     tab = next; renderHub(); hub.showModal();
@@ -200,6 +202,7 @@ export function mountGameUI(callbacks = {}) {
   });
   result.addEventListener('close', () => { if (game.phase === 'caught') { game.finish(); render(); } });
   document.addEventListener('keydown', event => {
+    if (document.body.classList.contains('needs-landscape')) return;
     if (event.key === 'Escape' && charge) { cancelMouse(); render(); return; }
     if (!event.repeat && !hub.open && !result.open && !$('#settings').open && !$('#interface').hidden && !/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) {
       const shortcut = { KeyM: 'maps', KeyI: 'bag', KeyC: 'creel', KeyB: 'tackle', KeyT: 'food' }[event.code];

@@ -214,19 +214,28 @@ function initialize() {
     },
   });
 
-  const state={observe:false,paused:false,hidden:document.hidden,fps:settings.fps};
+  const state={observe:false,paused:false,portrait:false,hidden:document.hidden,fps:settings.fps};
   const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
   let time=0,last=performance.now(),timer=0,animation=0;
   let lastGameTime=performance.now();
   // Fishing timing must continue at its own rate when an occluded browser delays GPU frames.
   setInterval(()=>{
     const now=performance.now(),elapsed=Math.min(1,Math.max(0,(now-lastGameTime)/1000));lastGameTime=now;
-    if(!state.hidden&&!state.paused&&!state.observe)gameUI.tick(elapsed);
+    if(!state.hidden&&!state.paused&&!state.portrait&&!state.observe)gameUI.tick(elapsed);
   },50);
   function resize() {
+    const portrait=innerHeight>innerWidth;
+    if(portrait&&!state.portrait){
+      cancelMouse();
+      for(const dialog of document.querySelectorAll('dialog[open]'))dialog.close();
+    }
+    state.portrait=portrait;
+    document.body.classList.toggle('needs-landscape',portrait);
+    document.querySelector('#interface').inert=portrait;
+    document.querySelector('#restore').inert=portrait;
     const size=renderSize(innerWidth,innerHeight,devicePixelRatio,settings);
     renderer.setSize(size.width,size.height,false);
-    camera.aspect=size.aspect;camera.fov=size.aspect<1?65:49;camera.updateProjectionMatrix();
+    camera.aspect=size.aspect;camera.fov=49;camera.updateProjectionMatrix();
     waterMaterial.uniforms.detail.value=QUALITY[settings.quality].waveDetail;
     document.querySelector('#render-info').textContent=`画面 ${size.width} × ${size.height} · 界面 ${innerWidth} × ${innerHeight}`;
   }
@@ -296,7 +305,7 @@ function initialize() {
   }
   canvas.addEventListener('contextmenu',event=>{if(!state.observe&&!state.paused)event.preventDefault();});
   canvas.addEventListener('pointerdown',event=>{
-    if(state.observe||state.paused||settingsDialog.open||!event.isPrimary)return;
+    if(state.observe||state.paused||state.portrait||settingsDialog.open||!event.isPrimary)return;
     if(event.button===2){event.preventDefault();gameUI.alternateMouse();return;}
     if(event.button!==0)return;
     if(gameUI.beginMouse(waterPoint(event))){event.preventDefault();activePointer=event.pointerId;canvas.setPointerCapture(event.pointerId);}

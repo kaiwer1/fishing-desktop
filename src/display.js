@@ -30,7 +30,7 @@ export function renderSize(width, height, devicePixelRatio = 1, settings = {}) {
   };
 }
 
-export function frameRate({ hidden = false, paused = false, observe = false, fps = 30 } = {}) {
-  if (hidden || paused) return 0;
+export function frameRate({ hidden = false, paused = false, portrait = false, observe = false, fps = 30 } = {}) {
+  if (hidden || paused || portrait) return 0;
   return observe ? 18 : (fps === 60 ? 60 : 30);
 }

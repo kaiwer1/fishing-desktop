@@ -7,6 +7,10 @@
     <title>湖畔 · 钓鱼桌面</title>
   </head>
   <body>
+    <section class="orientation-prompt" role="status" aria-label="请横屏游玩">
+      <svg viewBox="0 0 100 70" width="100" height="70" aria-hidden="true"><rect x="12" y="14" width="76" height="44" rx="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M26 6Q50-6 73 7M66 1l8 6-9 3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 30v12M80 30v12" stroke="currentColor" stroke-width="2"/></svg>
+      <h1>请横屏游玩</h1><p>手机请横过来，电脑请将窗口拉宽。</p><small>游戏已暂停，转为横屏后继续。</small>
+    </section>
     <canvas id="lake" aria-label="松风湖动态三维场景"></canvas>
     <div id="fallback" role="alert" hidden>当前环境无法创建三维画面。请使用开启硬件加速的新版 Edge 或 Chrome。</div>
     <main id="interface">
@@ -15,7 +19,7 @@
         <div class="player-stats"><span>等级 <b id="player-level">1</b></span><span><b id="coins">120</b> 银币</span><span>体力 <b id="energy-value">100</b></span><span>鱼护 <b id="creel-count">0/50</b></span></div>
       </header>
       <section class="location" aria-label="当前钓点">
-        <p class="eyebrow">寻找鱼群 · 试玩 0.3</p>
+        <p class="eyebrow">寻找鱼群 · 试玩 0.3.1</p>
         <h2 id="map-title">松风湖</h2>
         <p id="map-copy" class="location-copy">松林环抱的平静湖面</p>
         <p id="map-weather" class="conditions">清晨 · 微风 · 湖泊</p>

@@ -42,7 +42,6 @@ output { display:block; color:#c4cbb9; font-size:11px; margin:18px 0; }
 .done { width:100%; }
 #fallback { position:absolute; inset:30% 10% auto; padding:24px; background:#122f32; z-index:3; line-height:1.8; border:1px solid #dcc69a77; }
 @media (hover:hover) and (pointer:fine) { button:hover { background:#2b5150; } .primary:hover { background:#efdeb9; } .restore:hover { opacity:1; } }
-@media (max-width:640px) { .dock { align-items:flex-start; flex-direction:column; gap:16px; } .location { max-width:90%; bottom:190px; } .actions { width:100%; } .actions button { flex:1; padding:12px; } .preview-tag { font-size:9px; padding:7px 9px; } }
 @media (max-height:530px) { .masthead { top:14px; } .location { bottom:110px; } .location h2 { font-size:32px; margin:8px 0; } .location-copy, .conditions { display:none; } .dock { bottom:14px; } }
 @media (prefers-reduced-motion:reduce) { button { transition:none; } button:active { transform:none; } }
 
@@ -134,37 +133,49 @@ output { display:block; color:#c4cbb9; font-size:11px; margin:18px 0; }
 .controls-guide { margin:20px 0; font-size:12px; color:#c5d1bc; line-height:1.8; }
 .controls-guide summary { cursor:pointer; color:#e0d3b0; }
 #lake { touch-action:none; user-select:none; }
-@media (max-width:800px) {
-  .is-fishing .location, .is-charging .location { display:none; }
-  .player-stats { gap:12px; padding:10px 12px; flex-wrap:wrap; max-width:250px; font-size:10px; }
+.orientation-prompt { display:none; }
+@media (orientation:portrait) {
+  .orientation-prompt { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px; text-align:center; background:radial-gradient(ellipse at top,#254846,#102a2c 70%); color:#d9c697; }
+  .orientation-prompt h1 { margin:28px 0 14px; font-size:27px; letter-spacing:.08em; }
+  .orientation-prompt p { color:#c5d0c2; font-size:13px; line-height:1.8; }
+  .orientation-prompt small { color:#95aa9b; font-size:11px; margin-top:14px; }
+  #lake, #interface, #restore, dialog { visibility:hidden !important; pointer-events:none !important; }
+}
+@media (orientation:landscape) and (max-height:620px), (orientation:landscape) and (max-width:1000px) {
+  .masthead { top:14px; left:16px; right:16px; }
+  .identity { gap:10px; }
+  .mark { font-size:38px; }
+  .identity h1 { font-size:24px; }
+  .identity .eyebrow { font-size:8px; margin-bottom:5px; }
+  .player-stats { gap:12px; padding:8px 12px; font-size:10px; }
   .player-stats b { font-size:12px; }
-  .masthead { top:20px; left:20px; right:20px; }
-  .game-panel { right:20px; bottom:155px; width:min(360px,calc(100vw - 40px)); padding:18px; }
-  .location { left:20px; bottom:auto; top:115px; max-width:80%; }
-  .location h2 { font-size:30px; margin:8px 0; }
+  .game-panel { right:16px; bottom:70px; width:min(330px,44vw); max-height:calc(100dvh - 140px); overflow:auto; padding:12px; }
+  .phase-row h2 { font-size:17px; }
+  .game-message { min-height:0; margin:6px 0; font-size:10px; line-height:1.6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .water-reading { font-size:10px; line-height:1.5; margin:4px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bait-label { margin:6px 0; }
+  .bait-label select { min-width:140px; padding:6px 8px; font-size:11px; }
+  .fishing-buttons button { min-height:36px; padding:8px; font-size:12px; }
+  .control-help { display:none; }
+  .is-fishing .game-message, .is-fishing .water-reading, .is-fishing .bait-label, .is-charging .game-message, .is-charging .water-reading { display:none; }
+  .meter-label { margin:8px 0 6px; }
+  .fight-advice { margin:8px 0 12px; }
+  .location { left:16px; bottom:88px; max-width:38%; }
+  .location h2 { font-size:28px; margin:8px 0; }
   .location-copy, .conditions { display:none; }
-  .dock { left:20px; right:20px; bottom:16px; }
-  .game-navigation { width:100%; gap:6px; }
-  .game-navigation button { padding:9px 10px; flex:0 0 auto; }
-  .hub-header { padding:18px; }
-  .hub-header h2 { font-size:21px; }
+  .spot-label { margin-top:8px; }
+  .dock { left:16px; right:16px; bottom:10px; gap:6px; }
+  .game-navigation { gap:5px; }
+  .game-navigation button { padding:7px 8px; font-size:10px; }
+  #hub { max-height:calc(100dvh - 20px); }
+  .hub-header { padding:12px 16px; }
+  .hub-header h2 { font-size:20px; }
+  .hub-header .eyebrow { font-size:8px; margin-bottom:5px; }
   .hub-account { gap:8px; }
   #hub-wallet { font-size:10px; }
-  #hub-content { padding:18px; }
+  #hub-nav { padding:8px 12px; }
+  #hub-nav button { padding:8px 10px; font-size:11px; }
+  #hub-content { padding:14px 16px; min-height:0; }
+  #hub-message { padding:10px 16px; font-size:11px; }
   .item-grid { grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
-  .creel-heading { align-items:flex-start; flex-direction:column; gap:10px; }
-}
-@media (max-height:620px) and (min-width:801px) {
-  .game-panel { bottom:90px; padding:15px; }
-  .game-message { min-height:0; margin:8px 0; }
-  .bait-label { margin:8px 0; }
-  .location { bottom:105px; }
-  .control-help { display:none; }
-  .dock { bottom:15px; }
-  .player-stats { padding:8px 12px; }
-}
-@media (max-width:800px) and (max-height:740px) {
-  .location { display:none; }
-  .is-fishing .masthead, .is-charging .masthead { display:none; }
-  .game-panel { bottom:145px; max-height:calc(100dvh - 170px); overflow:auto; }
 }

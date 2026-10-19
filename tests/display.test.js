@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { QUALITY, normalizeSettings, renderSize, frameRate } from '../src/display.js';
 
 test('representative display and scaling combinations respect the selected pixel budget', () => {
-  const displays = [[1280,720],[1920,1080],[2560,1440],[3840,2160],[2560,1600],[3440,1440],[5120,1440],[1080,1920]];
+  const displays = [[1280,720],[1920,1080],[2560,1440],[3840,2160],[2560,1600],[3440,1440],[5120,1440],[844,390]];
   for (const quality of Object.keys(QUALITY)) {
     for (const [w,h] of displays) {
       for (const dpr of [1,1.25,1.5,2]) {
@@ -33,6 +33,8 @@ test('bad persisted values fall back to valid settings and nonzero dimensions', 
 test('hidden pages and host pause take precedence over foreground frame settings', () => {
   assert.equal(frameRate({hidden:true,fps:60}),0);
   assert.equal(frameRate({paused:true,observe:true}),0);
+  assert.equal(frameRate({portrait:true,fps:60}),0);
+  assert.equal(frameRate({portrait:false,fps:60}),60);
   assert.equal(frameRate({observe:true,fps:60}),18);
   assert.equal(frameRate({fps:60}),60);
 });

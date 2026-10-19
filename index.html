@@ -15,14 +15,17 @@
         <div class="player-stats"><span>等级 <b id="player-level">1</b></span><span><b id="coins">120</b> 银币</span><span>体力 <b id="energy-value">100</b></span><span>鱼护 <b id="creel-count">0/50</b></span></div>
       </header>
       <section class="location" aria-label="当前钓点">
-        <p class="eyebrow">单竿钓鱼 · 试玩 0.2</p>
+        <p class="eyebrow">寻找鱼群 · 试玩 0.3</p>
         <h2 id="map-title">松风湖</h2>
         <p id="map-copy" class="location-copy">松林环抱的平静湖面</p>
         <p id="map-weather" class="conditions">清晨 · 微风 · 湖泊</p>
+        <label class="spot-label" for="spot-select">当前钓位<select id="spot-select"></select></label>
       </section>
       <section id="game-panel" class="game-panel" aria-label="钓鱼操作">
         <div class="phase-row"><h2 id="phase-title">准备抛竿</h2><span id="equipped-rod">湖畔入门竿</span></div>
         <p id="game-message" class="game-message" role="status"></p>
+        <p id="water-reading" class="water-reading"></p>
+        <div id="cast-charge" class="cast-charge" hidden><div class="meter-label"><span>抛竿蓄力 · 松开左键抛出</span><strong id="cast-number">0%</strong></div><div class="meter"><span id="cast-fill"></span></div><small>右键或 Esc 取消</small></div>
         <label class="bait-label" for="bait-select">当前鱼饵<select id="bait-select" aria-label="当前鱼饵"></select></label>
         <div id="bite-window" class="bite-window" hidden>浮漂正在下沉 · <b id="bite-countdown">7</b> 秒内提竿</div>
         <div id="fight-meters" hidden>
@@ -33,10 +36,10 @@
           <p id="fight-advice" class="fight-advice"></p>
         </div>
         <div class="fishing-buttons"><button id="fishing-action" class="primary" type="button">抛竿</button><button id="cancel-cast" type="button" hidden>收竿结束</button></div>
-        <p class="control-help">点击按钮操作 · 也可在水面选点抛竿</p>
+        <p class="control-help">左键蓄力抛竿 / 按住收线 · 右键提竿</p>
       </section>
       <footer class="dock">
-        <div class="actions game-navigation"><button type="button" data-open-hub="maps">钓点地图</button><button type="button" data-open-hub="bag">背包</button><button type="button" data-open-hub="creel">鱼护 / 卖鱼</button><button type="button" data-open-hub="tackle">营地商店</button><button type="button" data-open-hub="book">鱼类图鉴</button><button id="settings-open" type="button">画面设置</button><button id="observe" type="button">静静观赏</button></div>
+        <div class="actions game-navigation"><button type="button" data-open-hub="maps">钓点地图</button><button type="button" data-open-hub="bag">背包</button><button type="button" data-open-hub="creel">鱼护 / 卖鱼</button><button type="button" data-open-hub="tackle">商店菜单</button><button type="button" data-open-hub="book">鱼类图鉴</button><button type="button" data-open-hub="journal">垂钓记录</button><button id="settings-open" type="button">画面设置</button><button id="observe" type="button">静静观赏</button></div>
         <span id="save-status" class="save-status">进度自动保存</span>
       </footer>
     </main>
@@ -48,14 +51,15 @@
         <label for="resolution">渲染比例<select id="resolution"><option value="0.65">65%</option><option value="0.85">85%</option><option value="1" selected>100%</option></select></label>
         <label for="frame-limit">交互帧率<select id="frame-limit"><option value="30" selected>30 帧 / 秒</option><option value="60">60 帧 / 秒</option></select></label>
         <label for="bite-sound">咬钩提示音<input id="bite-sound" type="checkbox" checked /></label>
+        <details class="controls-guide"><summary>鼠标与快捷键</summary><p>朝水面按住左键蓄力，松开抛竿；越靠近远处水面瞄准，落点可越远。右键或 Esc 取消蓄力，不消耗鱼饵。</p><p>浮漂下沉时右键提竿。中鱼后按住左键收线，松开降张力，避免长时间完全松线。按钮仍可切换收线状态。</p><p>M 地图 · I 背包 · C 鱼护 · B 渔具店 · T 食品店。切换钓位前先收竿，交易补给在菜单完成。</p></details>
         <p class="setting-hint">降低画质或渲染比例可以减轻显卡负担。界面文字保持清晰；切到其他标签页时暂停画面。</p>
         <output id="render-info" aria-live="polite"></output>
         <button class="primary done" value="close">完成</button>
       </form>
     </dialog>
     <dialog id="hub" aria-labelledby="hub-title">
-      <header class="hub-header"><div><p class="eyebrow">湖畔营地</p><h2 id="hub-title">钓点地图</h2></div><div class="hub-account"><span id="hub-wallet"></span><button id="hub-close" class="icon-button" type="button" aria-label="回到钓点">×</button></div></header>
-      <nav id="hub-nav" aria-label="营地分类"><button type="button" data-tab="maps">地图</button><button type="button" data-tab="tackle">渔具商店</button><button type="button" data-tab="food">食品商店</button><button type="button" data-tab="clothes">服装商店</button><button type="button" data-tab="creel">鱼护与鱼市</button><button type="button" data-tab="bag">背包</button><button type="button" data-tab="book">图鉴</button></nav>
+      <header class="hub-header"><div><p class="eyebrow">随身服务 · 在任何钓点买卖补给</p><h2 id="hub-title">钓点地图</h2></div><div class="hub-account"><span id="hub-wallet"></span><button id="hub-close" class="icon-button" type="button" aria-label="回到钓点">×</button></div></header>
+      <nav id="hub-nav" aria-label="服务分类"><button type="button" data-tab="maps">地图</button><button type="button" data-tab="tackle">渔具商店</button><button type="button" data-tab="food">食品商店</button><button type="button" data-tab="clothes">服装商店</button><button type="button" data-tab="creel">鱼护与鱼市</button><button type="button" data-tab="bag">背包</button><button type="button" data-tab="book">图鉴</button><button type="button" data-tab="journal">垂钓记录</button></nav>
       <div id="hub-content"></div><p id="hub-message" role="status"></p>
     </dialog>
     <dialog id="catch-dialog" aria-labelledby="catch-title"><div id="catch-content"></div></dialog>

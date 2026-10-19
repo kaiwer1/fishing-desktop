@@ -1,9 +1,9 @@
 {
   "AppVersion": "2.2.1.0",
-  "Title": "湖畔 · 单竿钓鱼试玩 0.2",
+  "Title": "湖畔 · 寻找鱼群试玩 0.3",
   "Thumbnail": null,
   "Preview": null,
-  "Desc": "早期单竿钓鱼试玩：抛竿、提竿、控线、卖鱼，三处钓点与营地商店。场景为占位美术，桌面宿主兼容性待验证。",
+  "Desc": "鼠标蓄力抛竿、提竿与控线；三处水域、九个钓位、局部移动鱼群与菜单买卖。场景为占位美术，桌面宿主兼容性待验证。",
   "Author": "kaiwer1",
   "License": null,
   "Contact": "https://github.com/kaiwer1/fishing-desktop",

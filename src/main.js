@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { QUALITY, normalizeSettings, renderSize, frameRate } from './display.js';
 import { mountGameUI } from './game-ui.js';
 import { SPECIES } from './content.js';
+import { isWater } from './ecosystem.js';
 import './style.css';
 
 const canvas = document.querySelector('#lake');
@@ -32,7 +33,8 @@ function initialize() {
   const camera = new THREE.PerspectiveCamera(49, 1, 0.1, 550);
   camera.position.set(0, 3.35, 12);
   camera.lookAt(0, 1.2, -42);
-  scene.add(new THREE.HemisphereLight(0xd3e4e7, 0x3b4839, 2.15));
+  const ambient = new THREE.HemisphereLight(0xd3e4e7, 0x3b4839, 2.15);
+  scene.add(ambient);
   const sun = new THREE.DirectionalLight(0xffe2ae, 2.5);
   sun.position.set(-70, 50, -100);
   scene.add(sun);
@@ -40,15 +42,15 @@ function initialize() {
 
   const sky = new THREE.Mesh(new THREE.SphereGeometry(450, 32, 20), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false,
-    uniforms: { sunDirection: { value: sunDirection } },
+    uniforms: { sunDirection: { value: sunDirection }, daylight: { value: 1 } },
     vertexShader: 'varying vec3 vDirection; void main(){ vDirection=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-    fragmentShader: `varying vec3 vDirection; uniform vec3 sunDirection;
+    fragmentShader: `varying vec3 vDirection; uniform vec3 sunDirection; uniform float daylight;
       void main(){ vec3 d=normalize(vDirection); float h=max(d.y,0.0);
         vec3 color=mix(vec3(.75,.81,.79),vec3(.29,.48,.61),pow(h,.38));
         float glow=pow(max(dot(d,sunDirection),0.0),9.0);
         color+=vec3(.3,.22,.12)*glow;
         color+=vec3(1.5,1.2,.7)*smoothstep(.9994,.99975,dot(d,sunDirection));
-        gl_FragColor=vec4(color,1.0);
+        gl_FragColor=vec4(color*(.2+.8*daylight),1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
@@ -56,12 +58,12 @@ function initialize() {
   scene.add(sky);
 
   const waterMaterial = new THREE.ShaderMaterial({
-    uniforms: { time: { value: 0 }, detail: { value: 0.75 }, waterTint: { value: new THREE.Color(0x244f43) }, sunDirection: { value: sunDirection }, ripple: { value: new THREE.Vector3(1.4, 0, -6) }, rippleStart: { value: -100 } },
+    uniforms: { time: { value: 0 }, detail: { value: 0.75 }, daylight: { value: 1 }, waterTint: { value: new THREE.Color(0x244f43) }, sunDirection: { value: sunDirection }, ripple: { value: new THREE.Vector3(1.4, 0, -6) }, rippleStart: { value: -100 } },
     vertexShader: `uniform float time; varying vec3 vWorld;
       void main(){ vec3 p=position; p.z+=sin(p.x*.42+time*.6)*.025+sin(p.y*.33+time*.43)*.022;
         vWorld=(modelMatrix*vec4(p,1.0)).xyz;
         gl_Position=projectionMatrix*viewMatrix*vec4(vWorld,1.0); }`,
-    fragmentShader: `uniform float time; uniform float detail; uniform vec3 sunDirection; uniform vec3 waterTint;
+    fragmentShader: `uniform float time; uniform float detail; uniform float daylight; uniform vec3 sunDirection; uniform vec3 waterTint;
       uniform vec3 ripple; uniform float rippleStart; varying vec3 vWorld;
       float waves(vec2 p){ return sin(p.x*1.3+sin(p.y*.7)+time*.9)*.22
         +sin(p.y*2.7-p.x*.8+time*1.1)*.12+sin(p.x*6.2+p.y*3.7-time*1.4)*.04*detail; }
@@ -79,7 +81,7 @@ function initialize() {
         color+=vec3(1.,.77,.4)*sparkle*.8;
         float mist=1.-exp(-length(cameraPosition-vWorld)*.004);
         color=mix(color,vec3(.67,.76,.71),mist*.63);
-        gl_FragColor=vec4(color,1.);
+        gl_FragColor=vec4(color*(.22+.78*daylight),1.);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
@@ -134,23 +136,24 @@ function initialize() {
   reeds.instanceMatrix.needsUpdate=true; scene.add(reeds);
 
   const wood=woodTexture();
+  const playerRig = new THREE.Group(); scene.add(playerRig);
   const plankMaterial=new THREE.MeshStandardMaterial({map:wood,color:0x9b8d72,roughness:.94});
   for(let i=0;i<13;i++) {
     const plank=new THREE.Mesh(new THREE.BoxGeometry(5.6,.16,.48),plankMaterial);
-    plank.position.set(0,.28,7+i*.5); scene.add(plank);
+    plank.position.set(0,.28,7+i*.5); playerRig.add(plank);
   }
   for(const x of [-2.55,2.55]) {
     const post=new THREE.Mesh(new THREE.CylinderGeometry(.13,.18,2.5,10),plankMaterial);
-    post.position.set(x,-.15,7.1); scene.add(post);
+    post.position.set(x,-.15,7.1); playerRig.add(post);
   }
 
   const rodPoints=[new THREE.Vector3(2.2,1,11),new THREE.Vector3(2,2.1,7.5),new THREE.Vector3(1.65,3.3,4),new THREE.Vector3(1.2,3.9,1)];
   const rodMaterial=new THREE.MeshStandardMaterial({color:0x25312d,metalness:.35,roughness:.5});
   const rod=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rodPoints),28,.025,8,false),rodMaterial);
-  scene.add(rod);
+  playerRig.add(rod);
   const sleeveMaterial=new THREE.MeshStandardMaterial({color:0xb9aa8b,roughness:.9});
   const sleeve=new THREE.Mesh(new THREE.CylinderGeometry(.16,.22,.8,12),sleeveMaterial);
-  sleeve.rotation.x=.7;sleeve.position.set(2,1.5,8.5);scene.add(sleeve);
+  sleeve.rotation.x=.7;sleeve.position.set(2,1.5,8.5);playerRig.add(sleeve);
   const float=new THREE.Group();
   const floatBody=new THREE.Mesh(new THREE.SphereGeometry(.065,12,10),new THREE.MeshStandardMaterial({color:0xd8c7a1,roughness:.4}));
   floatBody.scale.y=2.8;floatBody.position.y=.06;float.add(floatBody);
@@ -163,6 +166,7 @@ function initialize() {
   const lineCurve=new THREE.QuadraticBezierCurve3(rodPoints[3].clone(),new THREE.Vector3(),new THREE.Vector3());
   const linePoint=new THREE.Vector3();
   function updateLine() {
+    lineCurve.v0.copy(rodPoints[3]); lineCurve.v0.x += playerRig.position.x;
     lineCurve.v1.set((float.position.x+1.2)/2,1.3,(float.position.z+1)/2);lineCurve.v2.copy(float.position);
     for(let i=0;i<=30;i++){lineCurve.getPoint(i/30,linePoint);lineGeometry.attributes.position.setXYZ(i,linePoint.x,linePoint.y,linePoint.z);}
     lineGeometry.attributes.position.needsUpdate=true;lineGeometry.computeBoundingSphere();
@@ -174,6 +178,12 @@ function initialize() {
   const fishBody=new THREE.Mesh(new THREE.SphereGeometry(1,18,12),fishBodyMaterial);fishBody.scale.set(.38,.15,.1);hookedFish.add(fishBody);
   const fishTail=new THREE.Mesh(new THREE.ConeGeometry(.16,.3,3),fishBodyMaterial);fishTail.rotation.z=Math.PI/2;fishTail.position.x=.4;hookedFish.add(fishTail);
   scene.add(hookedFish);
+  const waterClues = Array.from({length:4}, () => {
+    const clue = new THREE.Mesh(new THREE.RingGeometry(.8,.84,36), new THREE.MeshBasicMaterial({color:0xd2e0cf,transparent:true,opacity:.16,depthWrite:false,side:THREE.DoubleSide}));
+    clue.rotation.x = -Math.PI / 2; clue.position.y = .08; scene.add(clue); return clue;
+  });
+  const landingMarker = new THREE.Mesh(new THREE.RingGeometry(.18,.23,32), new THREE.MeshBasicMaterial({color:0xf1d599,transparent:true,opacity:.85,depthWrite:false,side:THREE.DoubleSide}));
+  landingMarker.rotation.x=-Math.PI/2;landingMarker.visible=false;scene.add(landingMarker);
   const castTarget=new THREE.Vector3(1.4,0,-9);
   const gameUI=mountGameUI({
     onCast(point){castTarget.set(point.x,0,point.z);waterMaterial.uniforms.ripple.value.copy(castTarget);waterMaterial.uniforms.rippleStart.value=time+1;},
@@ -186,6 +196,22 @@ function initialize() {
       camera.position.y=id==='reed'?2.9:3.35;camera.lookAt(0,1.2,-42);
     },
     onEquipment(equipment,clothes){rodMaterial.color.set(equipment.color);sleeveMaterial.color.set(clothes.color);},
+    onAim(point){landingMarker.visible=Boolean(point);if(point)landingMarker.position.set(point.x,.12,point.z);},
+    onSpotChange(place){
+      playerRig.position.x=place.x; camera.position.x=place.x; camera.lookAt(place.target.x,1.2,-42);
+    },
+    onEnvironment(environment, schools){
+      const angle=(environment.hour-6)/12*Math.PI;
+      sun.position.set(Math.cos(angle)*80,Math.max(7,Math.sin(angle)*65),-100);
+      sunDirection.copy(sun.position).normalize();sun.intensity=.2+environment.daylight*2.3*(1-environment.cloud*.3);
+      ambient.intensity=.45+environment.daylight*1.7;sky.material.uniforms.daylight.value=environment.daylight;
+      waterMaterial.uniforms.daylight.value=environment.daylight;
+      scene.fog.color.setHex(0xbacbc7).multiplyScalar(.3+.7*environment.daylight);
+      for(let i=0;i<waterClues.length;i++){
+        waterClues[i].visible=Boolean(schools[i]);
+        if(schools[i])waterClues[i].position.set(schools[i].x,.08,schools[i].z);
+      }
+    },
   });
 
   const state={observe:false,paused:false,hidden:document.hidden,fps:settings.fps};
@@ -214,7 +240,7 @@ function initialize() {
     rod.rotation.x=0;
     if(session&&gameUI.game.busy){
       if(phase==='casting'){
-        const flight=Math.min(1,session.elapsed);float.position.lerpVectors(rodPoints[3],castTarget,flight);float.position.y+=Math.sin(flight*Math.PI)*2;
+        const flight=Math.min(1,session.elapsed);float.position.lerpVectors(lineCurve.v0,castTarget,flight);float.position.y+=Math.sin(flight*Math.PI)*2;
         rod.rotation.x=-.08*Math.sin(flight*Math.PI);
       }else{
         float.position.copy(castTarget);float.position.y=.03+Math.sin(environmentTime*1.9)*.018;
@@ -229,6 +255,9 @@ function initialize() {
     }
     hookedFish.visible=phase==='fighting'&&session.progress>.7;
     if(hookedFish.visible){hookedFish.position.copy(float.position);hookedFish.position.y=.08;hookedFish.rotation.y=Math.sin(session.elapsed*4)*.5;fishBodyMaterial.color.set(SPECIES[session.species].color);}
+    for(let i=0;i<waterClues.length;i++){
+      const age=(environmentTime*.28+i*.23)%1;waterClues[i].scale.setScalar(1+age*1.8);waterClues[i].material.opacity=(1-age)*.17;
+    }
     renderer.render(scene,camera);
     timer=setTimeout(()=>{animation=requestAnimationFrame(draw);},Math.max(0,1000/fps-(performance.now()-now)-4));
   }
@@ -253,15 +282,37 @@ function initialize() {
 
   const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
   const lakePlane=new THREE.Plane(new THREE.Vector3(0,1,0),0),hit=new THREE.Vector3();
-  canvas.addEventListener('pointerdown',event=>{
-    if(state.observe||settingsDialog.open||!event.isPrimary||event.button!==0)return;
+  let activePointer=null;
+  function waterPoint(event){
     const rect=canvas.getBoundingClientRect();
+    if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)return null;
     pointer.set((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);
     raycaster.setFromCamera(pointer,camera);
-    if(raycaster.ray.intersectPlane(lakePlane,hit)&&hit.z<-2&&hit.z>-55&&Math.abs(hit.x)<55){
-      gameUI.castAt(hit);
-    }
+    return raycaster.ray.intersectPlane(lakePlane,hit)&&isWater(gameUI.game.progress.map,hit)?{x:hit.x,z:hit.z}:null;
+  }
+  function cancelMouse(){
+    gameUI.cancelMouse();const pointerId=activePointer;activePointer=null;
+    if(pointerId!==null&&canvas.hasPointerCapture(pointerId))canvas.releasePointerCapture(pointerId);
+  }
+  canvas.addEventListener('contextmenu',event=>{if(!state.observe&&!state.paused)event.preventDefault();});
+  canvas.addEventListener('pointerdown',event=>{
+    if(state.observe||state.paused||settingsDialog.open||!event.isPrimary)return;
+    if(event.button===2){event.preventDefault();gameUI.alternateMouse();return;}
+    if(event.button!==0)return;
+    if(gameUI.beginMouse(waterPoint(event))){event.preventDefault();activePointer=event.pointerId;canvas.setPointerCapture(event.pointerId);}
   });
+  canvas.addEventListener('pointermove',event=>{
+    if(event.pointerId===activePointer)gameUI.aimMouse(waterPoint(event));
+  });
+  canvas.addEventListener('pointerup',event=>{
+    if(event.pointerId!==activePointer||event.button!==0)return;
+    activePointer=null;gameUI.releaseMouse(waterPoint(event));
+    if(canvas.hasPointerCapture(event.pointerId))canvas.releasePointerCapture(event.pointerId);
+  });
+  canvas.addEventListener('pointercancel',cancelMouse);
+  canvas.addEventListener('lostpointercapture',()=>{if(activePointer!==null)cancelMouse();});
+  window.addEventListener('blur',cancelMouse);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelMouse();});
   // Official Lively property callbacks; embedding and occlusion behavior still need host testing.
   window.livelyPropertyListener=(name,value)=>{
     if(name==='quality'){qualityInput.value=['low','medium','high'][Number(value)]??'medium';changeSettings();}
@@ -270,7 +321,7 @@ function initialize() {
   window.livelyWallpaperPlaybackChanged=data=>{
     try {
       const status=JSON.parse(data);
-      if(typeof status?.IsPaused==='boolean'){state.paused=status.IsPaused;wake();}
+      if(typeof status?.IsPaused==='boolean'){state.paused=status.IsPaused;if(state.paused)cancelMouse();wake();}
     } catch { /* Ignore malformed host events without changing the current pause state. */ }
   };
   resize();wake();

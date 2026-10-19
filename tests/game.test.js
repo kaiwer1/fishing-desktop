@@ -2,9 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FishingGame, freshProgress, restoreProgress } from '../src/game.js';
 import { MAPS, SPECIES, FISH_CAPACITY } from '../src/content.js';
+import { SPOTS } from '../src/ecosystem.js';
 
-function bite(game) {
-  assert.equal(game.cast(), true);
+function bite(game, point) {
+  assert.equal(game.cast(point), true);
   for (let i=0; i<600 && game.phase !== 'bite'; i++) game.tick(.05);
   assert.equal(game.phase, 'bite');
 }
@@ -55,12 +56,13 @@ test('all eight species can be hooked in an appropriate map with compatible bait
   for (const [map, place] of Object.entries(MAPS)) {
     for (const bait of ['worm','corn','minnow']) {
       const pool = place.species.filter(id => SPECIES[id].bait.includes(bait));
-      for (let index=0;index<pool.length;index++) {
+      if (!pool.length) continue;
+      for (const spot of SPOTS[map]) for (let sample=0;sample<=20;sample++) {
         const progress = freshProgress(); progress.map=map;progress.bait=bait;progress.baits[bait]=10;progress.caught=1;
         let randomCalls=0;
-        const game = new FishingGame(progress,()=>randomCalls++===0 ? (index+.1)/pool.length : .3);
-        bite(game);observed.add(game.session.species);
-        assert.equal(game.session.species,pool[index]);
+        const game = new FishingGame(progress,()=>randomCalls++===0 ? .05 : randomCalls===2 ? Math.min(.999999,sample/20) : .3);
+        bite(game, spot.target);observed.add(game.session.species);
+        assert.ok(pool.includes(game.session.species));
       }
     }
   }
@@ -116,4 +118,28 @@ test('corrupt saves and hostile identifiers are sanitized; emergency supplies pr
   const progress=freshProgress();progress.coins=0;progress.energy=0;progress.baits={worm:0,corn:0,minnow:0};
   const game=new FishingGame(progress);assert.equal(game.supply(),true);assert.equal(game.cast(),true);
   assert.equal(game.supply(),false);
+});
+
+test('invalid water casts do not consume resources; moving and reloading preserve local fishing pressure', () => {
+  const game=new FishingGame(null,()=>.05), point={x:-21,z:-12};
+  for (const bad of [{x:Infinity,z:-9},{x:0,z:4},{x:90,z:-10},null]) assert.equal(game.cast(bad),false);
+  assert.equal(game.progress.baits.worm,12);assert.equal(game.progress.energy,100);
+  assert.equal(game.cast(point),true);assert.equal(game.moveSpot(1),false);game.cancel();
+  const pressure=JSON.stringify(game.progress.world.pressure);
+  assert.equal(game.moveSpot(1),true);assert.equal(game.travel('river'),true);assert.equal(game.travel('pine'),true);
+  assert.equal(JSON.stringify(game.progress.world.pressure),pressure);
+  const reload=new FishingGame(JSON.parse(JSON.stringify(game.progress)));
+  assert.deepEqual(reload.progress.world,game.progress.world);
+});
+
+test('new catches record their actual landing point, bait, time and depth without replacing old progress', () => {
+  const game=new FishingGame(null,()=>.05);catchFish(game);
+  assert.equal(game.progress.journal.length,1);
+  const record=game.progress.journal[0];assert.deepEqual(record.point,game.session.point);
+  assert.ok(record.depth>0);assert.ok(record.hour>=0&&record.hour<24);assert.equal(record.bait,'worm');
+  const reload=new FishingGame(JSON.parse(JSON.stringify(game.progress)));
+  assert.deepEqual(reload.progress.journal,game.progress.journal);
+  const old=freshProgress();delete old.world;delete old.spot;delete old.journal;old.coins=543;old.xp=123;
+  const migrated=new FishingGame(old);assert.equal(migrated.progress.coins,543);assert.equal(migrated.progress.xp,123);
+  assert.equal(migrated.progress.world.elapsed,0);assert.deepEqual(migrated.progress.journal,[]);
 });

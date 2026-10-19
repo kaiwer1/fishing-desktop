@@ -1,4 +1,5 @@
 import { BAITS, MAPS, SPECIES, GEAR, FOOD, FISH_CAPACITY, levelFor, fishPrice } from './content.js';
+import { freshWorld, restoreWorld, advanceWorld, isWater, SPOTS, fishingConditions, pickWeighted, disturb } from './ecosystem.js';
 
 const own = (object, key) => typeof key === 'string' && Object.hasOwn(object, key);
 const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
@@ -11,6 +12,7 @@ export function freshProgress() {
     baits: { worm: 12, corn: 8, minnow: 0 },
     gear: { rod: 'starter', line: 'basic', clothes: 'everyday' },
     owned: ['starter', 'basic', 'everyday'], fish: [], book: {}, xp: 0, caught: 0, sold: 0, nextId: 1,
+    world: freshWorld(), spot: 0, journal: [],
   };
 }
 
@@ -21,6 +23,8 @@ export function restoreProgress(raw) {
   state.coins = integer(raw.coins, 120, 1e9);
   state.energy = number(raw.energy, 100, 100);
   if (own(MAPS, raw.map)) state.map = raw.map;
+  state.world = restoreWorld(raw.world);
+  state.spot = integer(raw.spot, 0, SPOTS[state.map].length - 1);
   if (own(BAITS, raw.bait)) state.bait = raw.bait;
   for (const key of Object.keys(BAITS)) state.baits[key] = integer(raw.baits?.[key], state.baits[key], 9999);
   state.owned = [...new Set([...state.owned, ...(Array.isArray(raw.owned) ? raw.owned.filter(id => own(GEAR, id)) : [])])];
@@ -44,6 +48,10 @@ export function restoreProgress(raw) {
   state.xp = integer(raw.xp, 0, 1e8);
   state.caught = integer(raw.caught, 0, 1e6);
   state.sold = integer(raw.sold, 0, 1e6);
+  for (const entry of Array.isArray(raw.journal) ? raw.journal.slice(-30) : []) {
+    if (!entry || !own(SPECIES, entry.species) || !own(MAPS, entry.map) || !own(BAITS, entry.bait) || !isWater(entry.map, entry.point)) continue;
+    state.journal.push({ species: entry.species, map: entry.map, bait: entry.bait, point: {x: entry.point.x, z: entry.point.z}, weight: number(entry.weight, .1, SPECIES[entry.species].max), hour: number(entry.hour, 6, 24), depth: number(entry.depth, 1, 12) });
+  }
   return state;
 }
 
@@ -55,12 +63,14 @@ export class FishingGame {
     this.session = null;
     this.revision = 0;
     this.saveRevision = 0;
+    this.worldCheckpoint = 0;
     this.message = '选好鱼饵，点击抛竿开始。浮漂下沉时提竿。';
   }
 
   get busy() { return ['casting', 'waiting', 'bite', 'fighting'].includes(this.phase); }
   get level() { return levelFor(this.progress.xp); }
   get totalValue() { return this.progress.fish.reduce((sum, fish) => sum + fish.value, 0); }
+  get spot() { return SPOTS[this.progress.map][this.progress.spot]; }
   random() { const n = this.rng(); return Number.isFinite(n) ? clamp(n, 0, .999999) : .5; }
   changed(message, save = false) {
     if (message) this.message = message;
@@ -77,30 +87,26 @@ export class FishingGame {
     return this.changed(`已装上${BAITS[id].name}。`, true);
   }
 
-  cast() {
+  cast(point = this.spot.target) {
     if (this.busy || this.phase === 'caught') return false;
     const p = this.progress;
+    if (!isWater(p.map, point)) return this.reject('落点不在可垂钓水域，朝水面重新瞄准。');
     const cost = GEAR[p.gear.clothes].energyCost;
     if (p.fish.length >= FISH_CAPACITY) return this.reject('鱼护已满，先到鱼市卖鱼。');
     if (p.baits[p.bait] < 1) return this.reject('这种鱼饵用完了。换一种，或去渔具店补充。');
     if (p.energy < cost) return this.reject('体力不足，先去食品店喝茶或吃点东西。');
-    let candidates = MAPS[p.map].species.filter(id => SPECIES[id].bait.includes(p.bait));
+    const candidates = MAPS[p.map].species.filter(id => SPECIES[id].bait.includes(p.bait));
     if (!candidates.length) return this.reject('这里的鱼不适合这种鱼饵。查看地图鱼种，或换用蚯蚓。');
-    if (p.caught === 0) {
-      const beginner = candidates.filter(id => SPECIES[id].strength <= 1.35);
-      if (beginner.length) candidates = beginner;
-    }
-    const species = candidates[Math.floor(this.random() * candidates.length)];
-    const definition = SPECIES[species];
-    const size = p.caught === 0 ? this.random() * .22 : this.random() ** 1.8;
-    const weight = Math.round((definition.min + (definition.max - definition.min) * size) * 1000) / 1000;
     this.session = {
-      species, weight, elapsed: 0, totalTime: 0, wait: (3 + this.random() * 4) * GEAR[p.gear.clothes].wait,
+      species: null, weight: 0, elapsed: 0, totalTime: 0,
+      point: { x: point.x, z: point.z }, bait: p.bait,
+      exposure: 0, threshold: .35 - Math.log(Math.max(.000001, 1 - this.random())),
       biteWindow: p.caught === 0 ? 7 : 5, tension: 35, progress: 0, looseTime: 0, reeling: false,
-      difficulty: definition.strength * (.8 + size * .5), fish: null,
+      difficulty: 1, fish: null,
     };
     p.baits[p.bait]--;
     p.energy -= cost;
+    disturb(p.world, p.map, point, .055);
     this.phase = 'casting';
     return this.changed('正在抛竿……', true);
   }
@@ -132,18 +138,36 @@ export class FishingGame {
   }
 
   escape(reason) {
+    disturb(this.progress.world, this.progress.map, this.session.point, .08);
     this.phase = 'escaped'; this.session.reeling = false;
-    return this.changed(reason);
+    return this.changed(reason, true);
   }
 
   tick(seconds) {
-    if (!this.busy || !Number.isFinite(seconds) || seconds <= 0) return;
-    const dt = Math.min(seconds, .25), s = this.session;
+    if (!Number.isFinite(seconds) || seconds <= 0) return;
+    const dt = Math.min(seconds, .25), p = this.progress;
+    advanceWorld(p.world, dt);
+    this.worldCheckpoint += dt;
+    if (this.worldCheckpoint >= 5) { this.worldCheckpoint = 0; this.changed(null, true); }
+    if (!this.busy) return;
+    const s = this.session;
     s.elapsed += dt; s.totalTime += dt;
     if (this.phase === 'casting' && s.elapsed >= 1) {
       this.phase = 'waiting'; s.elapsed = 0; this.changed('鱼饵已入水。观察浮漂，等它完全下沉。');
-    } else if (this.phase === 'waiting' && s.elapsed >= s.wait) {
-      this.phase = 'bite'; s.elapsed = 0; this.changed('浮漂沉了！现在提竿！');
+    } else if (this.phase === 'waiting') {
+      const conditions = fishingConditions(p.world, p.map, s.point, s.bait);
+      if (s.elapsed > 2) s.exposure += dt * (p.caught === 0 ? Math.max(.22, conditions.rate) : conditions.rate) / GEAR[p.gear.clothes].wait;
+      if (s.exposure >= s.threshold) {
+        let pool = conditions.weights;
+        if (p.caught === 0 && pool.some(fish => SPECIES[fish.id].strength <= 1.35)) pool = pool.filter(fish => SPECIES[fish.id].strength <= 1.35);
+        s.species = pickWeighted(pool, this.random());
+        if (!s.species) return this.escape('暂时没有鱼问饵，换个落点或鱼饵再试。');
+        const definition = SPECIES[s.species], size = p.caught === 0 ? this.random() * .22 : this.random() ** 1.8;
+        s.weight = Math.round((definition.min + (definition.max - definition.min) * size) * 1000) / 1000;
+        s.difficulty = definition.strength * (.8 + size * .5);
+        s.conditions = { hour: conditions.environment.hour, depth: conditions.depth };
+        this.phase = 'bite'; s.elapsed = 0; this.changed('浮漂沉了！右键提竿，或点击“提竿”！');
+      } else if (s.elapsed >= 65) this.escape('这一竿暂时没有鱼问饵，试试别的远近、水草边或钓点。');
     } else if (this.phase === 'bite' && s.elapsed > s.biteWindow) {
       this.escape('提竿晚了，鱼吃掉鱼饵游走了。再试一次。');
     } else if (this.phase === 'fighting') {
@@ -167,6 +191,9 @@ export class FishingGame {
     const p = this.progress, s = this.session;
     const fish = { id: String(p.nextId++), species: s.species, weight: s.weight, value: fishPrice(s.species, s.weight), map: p.map };
     p.fish.push(fish); p.caught++;
+    p.journal.push({ species: s.species, weight: s.weight, map: p.map, point: { ...s.point }, bait: s.bait, ...s.conditions });
+    p.journal = p.journal.slice(-30);
+    disturb(p.world, p.map, s.point, .16);
     const entry = p.book[s.species] ?? { count: 0, record: 0 };
     const record = fish.weight > entry.record;
     p.book[s.species] = { count: entry.count + 1, record: Math.max(entry.record, fish.weight) };
@@ -180,7 +207,15 @@ export class FishingGame {
     if (this.busy || this.phase === 'caught') return this.reject('先结束这次垂钓，再切换地图。');
     if (!own(MAPS, id)) return false;
     this.progress.map = id; this.phase = 'idle'; this.session = null;
+    this.progress.spot = 0;
     return this.changed(`已到达${MAPS[id].name}。换一种鱼饵，看看这里的鱼。`, true);
+  }
+
+  moveSpot(index) {
+    if (this.busy || this.phase === 'caught') return this.reject('先收竿，再换钓位。');
+    if (!Number.isInteger(index) || !SPOTS[this.progress.map][index]) return false;
+    this.progress.spot = index; this.phase = 'idle'; this.session = null;
+    return this.changed(`来到${this.spot.name}。${this.spot.note}`, true);
   }
 
   buy(kind, id) {

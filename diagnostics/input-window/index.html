@@ -23,7 +23,8 @@
   }
   function report(kind, extra={}) {
     const data={kind,...session.snapshot(),...extra};
-    document.querySelector('#state').textContent=`交互: ${data.enabled}\n按住: ${data.held}\n按下/松开: ${data.presses}/${data.releases}\n键盘: ${data.keys} · 滚轮: ${data.wheels}\n取消: ${data.cancellations} (${data.lastReason})`;
+    const totals=data.buttonTotals;
+    document.querySelector('#state').textContent=`交互: ${data.enabled}\n按住: ${data.held}\n按下/松开: ${data.presses}/${data.releases}\n左: ${totals[0].down}/${totals[0].up} · 右: ${totals[2].down}/${totals[2].up} · 中: ${totals[1].down}/${totals[1].up}\n键盘: ${data.keys} · 滚轮: ${data.wheels}\n取消: ${data.cancellations} (${data.lastReason})`;
     window.chrome?.webview?.postMessage(data);
   }
   function cancel(reason) { session.cancel(reason); releaseCaptured(); report('cancel'); }
@@ -35,17 +36,21 @@
     }
   };
   surface.addEventListener('contextmenu', e => { if(session.enabled)e.preventDefault(); });
-  surface.addEventListener('pointerdown', e => {
-    if(session.down(e.pointerId,e.button)) { e.preventDefault(); surface.setPointerCapture(e.pointerId); captured.add(e.pointerId); report('down',{button:e.button,trusted:e.isTrusted}); }
-  });
-  surface.addEventListener('pointerup', e => {
-    if(session.up(e.pointerId,e.button)) {
-      report('up',{button:e.button,trusted:e.isTrusted});
-      if(!session.held.size && surface.hasPointerCapture(e.pointerId))surface.releasePointerCapture(e.pointerId);
+  function pointer(e) {
+    const changes=session.pointerButtons(e.pointerId,e.buttons,e.type==='pointerdown');
+    if(!changes.length)return;
+    e.preventDefault();
+    if(session.hasPointer(e.pointerId) && !surface.hasPointerCapture(e.pointerId)) {
+      try { surface.setPointerCapture(e.pointerId); captured.add(e.pointerId); }
+      catch { cancel('capture-failed'); return; }
     }
-  });
+    for(const change of changes)report(change.kind,{button:change.button,sourceEvent:e.type,trusted:e.isTrusted});
+    if(!session.hasPointer(e.pointerId) && surface.hasPointerCapture(e.pointerId))surface.releasePointerCapture(e.pointerId);
+  }
+  // Intermediate button transitions in a chord are pointermove, not extra pointerdown/up.
+  for(const type of ['pointerdown','pointermove','pointerup'])surface.addEventListener(type,pointer);
   surface.addEventListener('pointercancel',()=>cancel('pointercancel'));
-  surface.addEventListener('lostpointercapture',e=>{captured.delete(e.pointerId);if(session.held.size)cancel('lostcapture');});
+  surface.addEventListener('lostpointercapture',e=>{captured.delete(e.pointerId);if(session.hasPointer(e.pointerId))cancel('lostcapture');});
   surface.addEventListener('wheel',e=>{if(session.enabled){e.preventDefault();session.wheel();report('wheel',{trusted:e.isTrusted});}},{passive:false});
   surface.addEventListener('keydown',e=>{
     if(!session.enabled)return;

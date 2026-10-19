@@ -33,3 +33,9 @@
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Project-local tools and temporary verification output
+/.cache/
+/artifacts/
+/playwright-report/
+/test-results/

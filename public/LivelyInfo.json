@@ -1,0 +1,14 @@
+{
+  "AppVersion": "2.2.1.0",
+  "Title": "湖畔 · 松风湖环境预览",
+  "Thumbnail": null,
+  "Preview": null,
+  "Desc": "钓鱼桌面的早期环境技术样机，包含动态湖面与画质设置；完整钓鱼玩法开发中。",
+  "Author": "kaiwer1",
+  "License": null,
+  "Contact": "https://github.com/kaiwer1/fishing-desktop",
+  "Type": 1,
+  "FileName": "index.html",
+  "Arguments": "--pause-event true",
+  "IsAbsolutePath": false
+}

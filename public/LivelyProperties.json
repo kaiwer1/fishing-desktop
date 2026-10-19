@@ -1,0 +1,16 @@
+{
+  "quality": {
+    "type": "dropdown",
+    "value": 1,
+    "text": "画质",
+    "items": ["节能", "均衡", "精细"]
+  },
+  "frameLimit": {
+    "type": "slider",
+    "value": 30,
+    "text": "交互帧率",
+    "min": 30,
+    "max": 60,
+    "step": 30
+  }
+}

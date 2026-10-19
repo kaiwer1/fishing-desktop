@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#102a2c" />
+    <title>湖畔 · 钓鱼桌面</title>
+  </head>
+  <body>
+    <canvas id="lake" aria-label="松风湖动态三维场景"></canvas>
+    <div id="fallback" role="alert" hidden>当前环境无法创建三维画面。请使用开启硬件加速的新版 Edge 或 Chrome。</div>
+    <main id="interface">
+      <header class="masthead">
+        <div class="identity"><span class="mark" aria-hidden="true">≈</span><div><p class="eyebrow">FISHING DESKTOP</p><h1>湖畔</h1></div></div>
+        <span class="preview-tag">环境预览 · 0.1</span>
+      </header>
+      <section class="location" aria-label="当前钓点">
+        <p class="eyebrow">第一处钓点</p>
+        <h2>松风湖</h2>
+        <p class="location-copy">风拂过湖面，等一个安静的午后。</p>
+        <div class="conditions"><span>清晨</span><i></i><span>微风</span><i></i><span>淡水湖泊</span></div>
+      </section>
+      <footer class="dock">
+        <div class="preview-note"><span class="live-dot"></span><p>场景预览<span>点击水面试放浮漂，钓鱼玩法开发中</span></p></div>
+        <div class="actions"><button id="settings-open" type="button">画面设置</button><button id="observe" class="primary" type="button">静静观赏 <span aria-hidden="true">↗</span></button></div>
+      </footer>
+    </main>
+    <button id="restore" class="restore" type="button" hidden>返回操作</button>
+    <dialog id="settings" aria-labelledby="settings-title">
+      <form method="dialog">
+        <div class="dialog-header"><div><p class="eyebrow">让湖面适合你的屏幕</p><h2 id="settings-title">画面设置</h2></div><button class="icon-button" aria-label="关闭画面设置" value="close">×</button></div>
+        <label for="quality">画质<select id="quality"><option value="low">节能</option><option value="medium" selected>均衡</option><option value="high">精细</option></select></label>
+        <label for="resolution">渲染比例<select id="resolution"><option value="0.65">65%</option><option value="0.85">85%</option><option value="1" selected>100%</option></select></label>
+        <label for="frame-limit">交互帧率<select id="frame-limit"><option value="30" selected>30 帧 / 秒</option><option value="60">60 帧 / 秒</option></select></label>
+        <p class="setting-hint">降低画质或渲染比例可以减轻显卡负担。界面文字保持清晰；切到其他标签页时暂停画面。</p>
+        <output id="render-info" aria-live="polite"></output>
+        <button class="primary done" value="close">完成</button>
+      </form>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

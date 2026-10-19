@@ -14,7 +14,7 @@ Copy-Item -LiteralPath (Join-Path $taskSdk 'LICENSE.txt') -Destination (Join-Pat
 $taskPage=Join-Path $taskOutput 'page'
 New-Item -ItemType Directory -Path $taskPage -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'index.html'),(Join-Path $PSScriptRoot 'input-session.mjs') -Destination $taskPage
-$taskArgs=@('/nologo','/utf8output','/target:winexe','/platform:x64','/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll',('/reference:'+(Join-Path $taskOutput 'Microsoft.Web.WebView2.Core.dll')),('/reference:'+(Join-Path $taskOutput 'Microsoft.Web.WebView2.WinForms.dll')),('/out:'+(Join-Path $taskOutput 'InputProbeHost.exe')),(Join-Path $PSScriptRoot 'InputProbeHost.cs'))
+$taskArgs=@('/nologo','/utf8output','/target:winexe','/platform:x64','/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll',('/reference:'+(Join-Path $taskOutput 'Microsoft.Web.WebView2.Core.dll')),('/reference:'+(Join-Path $taskOutput 'Microsoft.Web.WebView2.WinForms.dll')),('/out:'+(Join-Path $taskOutput 'InputProbeHost.exe')),(Join-Path $PSScriptRoot 'InputProbeHost.cs'),(Join-Path $PSScriptRoot 'HostInstanceGuard.cs'))
 & $taskCompiler @taskArgs
 if($LASTEXITCODE -ne 0){throw 'Input window compilation failed'}
 Write-Output (Join-Path $taskOutput 'InputProbeHost.exe')

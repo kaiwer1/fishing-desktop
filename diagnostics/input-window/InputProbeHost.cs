@@ -2,6 +2,8 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Text;
+using System.Threading;
+using System.Diagnostics;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -95,10 +97,39 @@ sealed class InputProbeHost : Form
         catch(Exception e) { status.Text="Mode change failed: "+e.Message; }
     }
     [STAThread]
-    static void Main()
+    static int Main(string[] args)
     {
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new InputProbeHost());
+        bool probe=args.Length==1 && args[0]=="--instance-probe";
+        try
+        {
+            using(var guard=new HostInstanceGuard())
+            {
+                int pid=Process.GetCurrentProcess().Id;
+                string folder=AppDomain.CurrentDomain.BaseDirectory;
+                if(probe)
+                {
+                    string result="{\"pid\":"+pid+",\"owner\":"+(guard.IsOwner?"true":"false")+",\"abandoned\":"+(guard.WasAbandoned?"true":"false")+"}";
+                    File.WriteAllText(Path.Combine(folder,"instance-probe."+pid+".json"),result,Encoding.UTF8);
+                }
+                if(!guard.IsOwner)return 2;
+                if(probe)
+                {
+                    // Headless lifecycle test: never creates a window or WebView profile.
+                    var timer=Stopwatch.StartNew();
+                    string release=Path.Combine(folder,"instance-release."+pid+".signal");
+                    while(!File.Exists(release) && timer.Elapsed.TotalSeconds<20)Thread.Sleep(50);
+                    return 0;
+                }
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new InputProbeHost());
+                return 0;
+            }
+        }
+        catch(Exception)
+        {
+            // Fail closed rather than starting an unguarded second input host.
+            return 3;
+        }
     }
 }

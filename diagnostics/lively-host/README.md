@@ -25,3 +25,23 @@
 ## 清理
 
 关闭本次测试壁纸，恢复测试前布局/设置，关闭由测试启动的宿主和收集器，检查没有测试播放器残留。本项目测试安装的开机启动保持关闭；已有用户设置应按备份恢复。本次实测与未验证项见 [宿主基线](../../docs/WALLPAPER_HOST_BASELINE.md)。
+
+## 原生前台测试程序
+
+`ForegroundProbe.cs` 是独立的可见窗口，只改变自己的窗口大小和边框，不自动操作其他应用。按钮或键盘焦点上的 Enter 进入无边框全屏，Esc 恢复 960×600 的普通窗口。通过同一本机收集器报告自己的窗口状态，便于与壁纸暂停回调按时间对照；这是普通无边框全屏，不模拟独占 Direct3D 游戏。
+
+在 Windows 中使用已有 .NET Framework 编译器构建：
+
+```powershell
+./diagnostics/lively-host/build-foreground.ps1 -OutputPath 'C:\existing-private-test-folder\ForegroundProbe.exe'
+```
+
+输出目录必须已存在，并放在仓库外。编译后启动该程序，再用其按钮/键盘操作；不把编译成功或可访问性文本本身当成自动暂停通过，需要窗口状态、回调及暂停期间计数一起证明。关闭测试程序后确认无进程残留。程序不安装任何依赖，不修改系统全屏、显示或输入设置。
+
+## 短时宿主进程采样
+
+```powershell
+./diagnostics/lively-host/measure-processes.ps1 -LivelyExecutable 'C:\path\Lively.exe' -OutputPath 'C:\existing-private-test-folder\load.json' -Phase paused -Seconds 10
+```
+
+只匹配指定路径的一个宿主及其子进程，不枚举输出其他应用的资料。`Phase` 是操作者标签，必须用同时段的页面记录确认实际状态。CPU 使用前后均存在的进程及各自采样间隔计算；机器归一化值除以逻辑处理器数量。私有提交内存和工作集分别统计，合计工作集可能重复计算共享页。短时 CPU/内存数值不是 GPU/显存、实际呈现帧率、功耗或长期内存验收，暂停后也不能预设一定明显省 CPU。

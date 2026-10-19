@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lively host probe</title>
+<style>
+  body { margin:0; background:#10282b; color:#edf4df; font:24px system-ui; padding:5vw; }
+  h1 { font-size:44px; } canvas { width:400px; height:160px; border:2px solid white; margin-right:24px; }
+  #state { white-space:pre-wrap; } .note { color:#a9c9c4; }
+</style>
+<h1>钓鱼桌面 · 宿主诊断</h1>
+<p class="note">独立诊断页，不运行游戏、不读取存档。青色为 Canvas 2D，绿色为 WebGL。</p>
+<canvas id="flat" width="400" height="160"></canvas><canvas id="gpu" width="400" height="160"></canvas>
+<p id="state"></p>
+<script>
+  const endpoint = new URLSearchParams(location.search).get('collector') || 'http://127.0.0.1:43817/event';
+  // A copied local probe can only send to this machine's fixed collector.
+  if (endpoint !== 'http://127.0.0.1:43817/event') throw new Error('Invalid collector');
+  const run = crypto.randomUUID();
+  let frames = 0, ticks = 0, paused = false, lastTime = performance.now(), maxStep = 0;
+  let canvas2D = false, webgl = false, glError = null;
+  const state = document.querySelector('#state');
+  const send = (kind, data = {}) => fetch(endpoint, { method:'POST', body:JSON.stringify({
+    kind, run, frames, ticks, paused, visibility:document.visibilityState,
+    width:innerWidth, height:innerHeight, ...data,
+  }) }).catch(() => {});
+  addEventListener('error', e => send('error', { message:String(e.message).slice(0,512) }));
+  addEventListener('unhandledrejection', e => send('error', { message:String(e.reason).slice(0,512) }));
+  try {
+    const ctx = document.querySelector('#flat').getContext('2d');
+    ctx.fillStyle = '#24cbcf'; ctx.fillRect(0,0,400,160);
+    canvas2D = ctx.getImageData(20,20,1,1).data[1] === 203;
+    const gl = document.querySelector('#gpu').getContext('webgl', { preserveDrawingBuffer:true });
+    if (gl) {
+      gl.clearColor(0.1,0.8,0.2,1); gl.clear(gl.COLOR_BUFFER_BIT);
+      const pixel = new Uint8Array(4); gl.readPixels(20,20,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+      glError = gl.getError(); webgl = pixel[1] >= 200 && glError === gl.NO_ERROR;
+    }
+  } catch (e) { send('error', { message:String(e).slice(0,512) }); }
+  window.livelyWallpaperPlaybackChanged = data => {
+    const value = typeof data === 'string' ? JSON.parse(data) : data;
+    paused = Boolean(value.IsPaused ?? value.isPaused);
+    lastTime = performance.now();
+    send('pause', { callback:value });
+  };
+  window.livelyPropertyListener = (name,value) => send('property', { name,value });
+  document.addEventListener('visibilitychange', () => send('visibility'));
+  document.addEventListener('pointerdown', e => send('pointer', { button:e.button }));
+  // Do not collect arbitrary typed text or key values.
+  document.addEventListener('keydown', () => send('key'));
+  function frame(time) {
+    frames++;
+    if (!paused) { ticks++; maxStep = Math.max(maxStep, Math.min((time-lastTime)/1000,0.05)); }
+    lastTime = time;
+    state.textContent = `Canvas 2D: ${canvas2D}\nWebGL: ${webgl}\n帧: ${frames} · 模拟步: ${ticks}\n暂停: ${paused}\n尺寸: ${innerWidth} × ${innerHeight}`;
+    requestAnimationFrame(frame);
+  }
+  send('boot', { canvas2D,webgl,glError,dpr:devicePixelRatio });
+  requestAnimationFrame(frame);
+  setInterval(() => send('heartbeat', { canvas2D,webgl,maxStep }), 1000);
+</script>
+</html>

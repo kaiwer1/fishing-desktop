@@ -1,0 +1,10 @@
+{
+  "AppVersion": "2.2.1.0",
+  "Title": "Fishing desktop host probe",
+  "Desc": "Isolated local diagnostics; no game code or save access.",
+  "Author": "kaiwer1",
+  "Type": 1,
+  "FileName": "index.html",
+  "Arguments": "--pause-event true",
+  "IsAbsolutePath": false
+}

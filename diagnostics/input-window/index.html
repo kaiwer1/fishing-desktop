@@ -15,26 +15,37 @@
 </div>
 <script type="module">
   import { InputSession } from './input-session.mjs';
+  import { PageBridge } from './page-bridge.mjs';
   const session = new InputSession(), surface=document.querySelector('#surface');
+  const documentId=crypto.randomUUID(), bridge=new PageBridge(documentId,session);
+  let lastModeReceipt=null;
+  window.inputProbeDocumentId=documentId;
+  window.inputProbeSnapshot=()=>({documentId,...session.snapshot(),focused:document.hasFocus(),lastModeReceipt});
   const captured = new Set();
   function releaseCaptured() {
     for(const id of captured)if(surface.hasPointerCapture(id))surface.releasePointerCapture(id);
     captured.clear();
   }
   function report(kind, extra={}) {
-    const data={kind,...session.snapshot(),...extra};
+    const data={kind,documentId,...session.snapshot(),...extra};
     const totals=data.buttonTotals;
     document.querySelector('#state').textContent=`交互: ${data.enabled}\n按住: ${data.held}\n按下/松开: ${data.presses}/${data.releases}\n左: ${totals[0].down}/${totals[0].up} · 右: ${totals[2].down}/${totals[2].up} · 中: ${totals[1].down}/${totals[1].up}\n键盘: ${data.keys} · 滚轮: ${data.wheels}\n取消: ${data.cancellations} (${data.lastReason})`;
     window.chrome?.webview?.postMessage(data);
   }
   function cancel(reason) { session.cancel(reason); releaseCaptured(); report('cancel'); }
   window.hostInputMode = data => {
-    if(session.setMode(data.enabled,data.revision,data.reason)) {
+    const accepted=bridge.apply(data,{focused:document.hasFocus() && !document.hidden});
+    lastModeReceipt={documentId:data?.documentId,revision:data?.revision,accepted};
+    if(accepted) {
       releaseCaptured();
       if(session.enabled) surface.focus();
       report('mode');
+    } else {
+      if(!session.enabled)releaseCaptured();
+      report('mode-rejected');
     }
   };
+  window.chrome?.webview?.addEventListener('message',e=>window.hostInputMode(e.data));
   surface.addEventListener('contextmenu', e => { if(session.enabled)e.preventDefault(); });
   function pointer(e) {
     const changes=session.pointerButtons(e.pointerId,e.buttons,e.type==='pointerdown');
@@ -58,6 +69,7 @@
     session.key();report('key',{trusted:e.isTrusted});
   });
   window.addEventListener('blur',()=>cancel('blur'));
+  window.addEventListener('pagehide',()=>cancel('pagehide'));
   document.addEventListener('visibilitychange',()=>{if(document.hidden)cancel('hidden');});
   report('ready');
 </script>

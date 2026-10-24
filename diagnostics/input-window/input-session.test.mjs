@@ -27,6 +27,35 @@ test('late enable cannot override a newer host cancellation', () => {
   assert.equal(s.setMode(true,2),false); assert.equal(s.enabled,false);
   assert.equal(s.setMode(true,NaN),false); assert.equal(s.setMode(true,3.5),false);
 });
+test('local cancellation invalidates an already queued newer enable', () => {
+  const s = new InputSession(); s.setMode(true,1);
+  const queuedEpoch = s.cancellationEpoch;
+  s.pointerButtons(1,1,true); s.cancel('blur');
+  assert.equal(s.setMode(true,2,'queued-enable',queuedEpoch),false);
+  assert.equal(s.enabled,false); assert.equal(s.held.size,0);
+  assert.equal(s.revision,2); assert.equal(s.cancellationEpoch,queuedEpoch+1);
+  assert.equal(s.setMode(true,2,'replayed-enable',s.cancellationEpoch),false);
+  assert.equal(s.setMode(true,3,'new-explicit-enable',s.cancellationEpoch),true);
+  assert.deepEqual(s.pointerButtons(1,0),[]);
+  assert.equal(s.releases,0);
+});
+test('disable always cancels even with an outdated epoch; enable does not advance epoch', () => {
+  const s = new InputSession(); s.cancel('hidden');
+  assert.equal(s.setMode(true,1,'explicit-enable',1),true);
+  assert.equal(s.cancellationEpoch,1); s.pointerButtons(1,2,true);
+  assert.equal(s.setMode(false,2,'host-deactivate',0),true);
+  assert.equal(s.cancellationEpoch,2); assert.equal(s.enabled,false);
+  assert.equal(s.held.size,0); assert.equal(s.trackedPointers.size,0);
+  assert.equal(s.snapshot().cancellationEpoch,2);
+});
+test('a stale activation with a newer revision fails closed without inventing another epoch', () => {
+  const s = new InputSession(); s.cancel('escape');
+  s.setMode(true,3,'explicit-enable',1); s.pointerButtons(1,1,true);
+  assert.equal(s.setMode(true,4,'stale-enable',0),false);
+  assert.equal(s.enabled,false); assert.equal(s.held.size,0);
+  assert.equal(s.cancellationEpoch,1); assert.equal(s.revision,4);
+  assert.equal(s.setMode(true,4,'replay',1),false);
+});
 
 test('W3C chord sequence handles intermediate left/right transitions on pointermove', () => {
   const s = new InputSession(); s.setMode(true,1);

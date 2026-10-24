@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-**开发顺序更新（2026-10-19）**：按用户要求，当前界面与钓鱼流程开发先暂停，先做 RF4 客户端调查，再按整套体验的计划推进。[模块调查与反编译范围](docs/RF4_MODULE_RESEARCH.md)、[整体开发计划](docs/DEVELOPMENT_PLAN.md)、[首项输入/钓组规格草案](docs/INPUT_RIG_SPEC.md)。本机界面草稿未作为新版本发布；本次公开更新为研究结论和计划。
+**开发顺序更新（2026-10-24）**：按用户要求，当前界面与钓鱼流程开发先暂停，先做 RF4 客户端调查，再按整套体验的计划推进。[模块调查与反编译范围](docs/RF4_MODULE_RESEARCH.md)、[整体开发计划](docs/DEVELOPMENT_PLAN.md)、[首项输入/钓组规格草案](docs/INPUT_RIG_SPEC.md)。目前推进 P0：[独立输入候选](diagnostics/input-window/README.md)已通过单实例、页面会话隔离、真实 WebView2 重载和故障退出检查，完整鼠标/桌面兼容仍待验收。本机界面草稿未作为新版本发布。
 
 研究报告已按最新授权公开。新增[鼠标抛竿链路规格](docs/CASTING_FLOW_SPEC.md)，记录开始、蓄力、松开和动画提交的证据及未知项；已开始[桌面宿主基线](docs/WALLPAPER_HOST_BASELINE.md)验证。原客户端数据、完整配置和伪代码不随文档发布。
 

@@ -2,6 +2,7 @@
 export class InputSession {
   enabled = false;
   revision = 0;
+  cancellationEpoch = 0;
   held = new Map();
   trackedPointers = new Set();
   buttonTotals = [0,1,2].map(() => ({down:0,up:0}));
@@ -12,19 +13,34 @@ export class InputSession {
   cancellations = 0;
   lastReason = 'startup';
 
-  setMode(enabled, revision, reason = 'host') {
-    if (!Number.isSafeInteger(revision) || revision <= this.revision) return false;
+  setMode(enabled, revision, reason = 'host', expectedEpoch = this.cancellationEpoch) {
+    if (typeof enabled !== 'boolean' || typeof reason !== 'string' ||
+        !Number.isSafeInteger(revision) || revision <= this.revision) return false;
     this.revision = revision;
-    this.cancel(reason);
-    this.enabled = Boolean(enabled);
+    if (!enabled) {
+      this.cancel(reason);
+      return true;
+    }
+    // A host command queued before a local blur/Esc must not undo that cancellation.
+    // Consume its revision so replaying the command cannot activate a later session.
+    if (expectedEpoch !== this.cancellationEpoch) {
+      this.clearInput('stale-enable');
+      return false;
+    }
+    this.clearInput(reason);
+    this.enabled = true;
     return true;
   }
-  cancel(reason) {
+  clearInput(reason) {
     this.held.clear();
     this.trackedPointers.clear();
     this.enabled = false;
-    this.cancellations++;
     this.lastReason = reason;
+  }
+  cancel(reason) {
+    this.clearInput(reason);
+    this.cancellations++;
+    this.cancellationEpoch++;
   }
   down(pointerId, button) {
     if (!this.enabled || ![0,1,2].includes(button)) return false;
@@ -65,7 +81,7 @@ export class InputSession {
   key() { if (this.enabled) this.keys++; }
   wheel() { if (this.enabled) this.wheels++; }
   snapshot() {
-    return { enabled:this.enabled, revision:this.revision, held:this.held.size,
+    return { enabled:this.enabled, revision:this.revision, cancellationEpoch:this.cancellationEpoch, held:this.held.size,
       presses:this.presses, releases:this.releases, keys:this.keys, wheels:this.wheels,
       cancellations:this.cancellations, lastReason:this.lastReason,
       buttonTotals:this.buttonTotals.map(value => ({...value})) };

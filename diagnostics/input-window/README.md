@@ -9,6 +9,7 @@
 ```powershell
 ./diagnostics/input-window/build.ps1 -SdkDirectory 'C:\private-tools\webview2-sdk' -OutputDirectory 'C:\existing-private-test-folder'
 node --test diagnostics/input-window/input-session.test.mjs
+node --test diagnostics/input-window/page-bridge.test.mjs
 ```
 
 输出目录须已存在且放在仓库外。脚本使用 SDK 的 net462/x64 文件，复制必要 DLL、网页和 SDK 许可，生成 `InputProbeHost.exe`。运行后，专用 WebView2 配置、`input-events.jsonl` 与 `input-page.png` 都写在输出目录，不接触用户浏览器资料。
@@ -16,9 +17,10 @@ node --test diagnostics/input-window/input-session.test.mjs
 - F8 或 Enable input：明确开启本窗口交互。
 - F6 或 Observe / cancel：取消输入会话，进入观赏状态。
 - F7 或 Save page image：通过 WebView2 自身接口保存**本诊断页**画面，不截取其他应用。
+- F5 或 Reload diagnostic：取消当前会话并重载，完成后仍为观赏状态。
 - 页面内 Esc、失焦、隐藏、宿主失焦或最小化：取消并清空按住状态。返回窗口不会自动启用，须再次主动开启。
 
-这些快捷键只属于该窗口，不是全局热键。网页采用固定本地虚拟域名，只允许导航该来源，弹出窗口不打开。桥接只传模式、版本号和取消原因；事件记录只含计数、鼠标按钮编号和可信标志，不保存键盘内容。
+这些快捷键只属于该窗口，不是全局热键。网页采用固定本地虚拟域名，只允许导航本诊断文档，弹出窗口不打开。桥接传模式、文档标识、版本号、取消代次和原因；事件记录只含这些诊断状态、计数、鼠标按钮编号和可信标志，不保存键盘内容。
 
 ## 2026-10-19 19:07 验证结果
 
@@ -72,3 +74,31 @@ node --test diagnostics/input-window/input-session.test.mjs
 原有七项输入状态测试仍通过，候选编译通过。本轮结束时没有测试宿主或专用 WebView2 残留。
 
 范围仅限加入该保护的新候选、同一 Windows 会话。旧二进制、Lively、其他程序及未来服务端不受它约束；它还不能证明共享游戏状态或存档只有一个写入者。尚未验证正常 UI 分支在加入保护后的全部输入流程。下一步继续候选生命周期与跨视图状态方案，实际鼠标和桌面图标验收保留待办，不提前进入 P1。
+
+## 2026-10-24 22:58 文档会话隔离与故障退出
+
+本轮修复两类可复现的输入竞态：页面本地失焦/Esc 取消后，队列里较新版本的旧启用仍可能被接受；重载后新页面从版本 0 开始，旧页面命令也可能生效。现在每个页面生成独立文档 ID，宿主同时检查导航 ID 与加载代次，所有模式消息按文档寻址。本地取消推进 `cancellationEpoch`，启用必须匹配最新取消代次；已失焦/隐藏的页面拒绝启用。重复完成握手不回滚取消历史。
+
+重载立即清除就绪状态；成功加载后发送观赏命令。关闭和 WebView2 进程故障使会话终止，故障时退出码为 4，并在回调结束后释放控件。当前候选采用保守的关闭策略，所有 `ProcessFailed` 类型都会结束候选；需要用户明确重新启动，尚未做 GPU 等可恢复故障的分类恢复。事件处理与导航边界参考微软的[导航事件说明](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/navigation-events)和[进程事件说明](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/process-related-events)。日志写入异常也会关闭候选，避免输入状态继续运行但失去诊断记录。
+
+```powershell
+./diagnostics/input-window/test-host-state.ps1 -OutputDirectory 'C:\existing-private-test-folder'
+./diagnostics/input-window/test-lifecycle.ps1 -SdkDirectory 'C:\private-tools\webview2-sdk' -OutputDirectory 'C:\existing-private-test-folder'
+```
+
+后一个脚本在全新私有目录编译，创建不激活、不可见且不拦鼠标的测试窗体，使用真实 WebView2 本地页面和消息通道。它会终止**该控件自己创建的专用浏览器进程**，验证故障处理，再明确启动新宿主。既不操作系统桌面，也不模拟硬件鼠标。测试输出、浏览器配置与进程记录留在仓库外；成功和失败路径都会等待专用进程退出，检查失败时保留原错误与清理记录。
+
+| 验证 | 实际结果 |
+| --- | --- |
+| JS 输入状态与页面桥接 | 16 项通过，含本地取消后的迟到启用、重载旧文档、乱序和无效消息 |
+| C# 宿主生命周期 | 9 项通过，含重复握手、旧页面消息、关闭后拒绝和连续 24 次状态重载 |
+| WebView2 首次启动及连续 3 次真实重载 | 输入关闭、按住 0、页面 ID 更新；旧文档消息取得明确拒绝回执 |
+| WebView2 后台启用请求 | 真正经过宿主/页面消息通道后拒绝 |
+| 专用浏览器进程终止 | 触发 ProcessFailed，宿主返回 4 |
+| 明确重启后的加载/重载 | 再次完成同一组 5 项真实页面检查，默认输入关闭 |
+| 单实例回归 | 同目录/跨目录拒绝、正常/强制退出后重开等 5 项通过 |
+| 收尾 | 专用 WebView2 无残留，没有保留可见测试窗口 |
+
+最初受限执行环境中的 GPU 子进程以拒绝访问错误退出；正常 Windows 权限下复测通过。另曾因只等待 5 秒误报子进程残留，后续确认其正常退出，脚本改为最多 15 秒并完成复验。没有关闭 GPU 加速或降低安全设置来绕过。
+
+可见窗口中新版 F8/Enable 的正向开启、真实左右中键/滚轮/按住切窗仍待验收。原生 Enable 按钮使页面失焦时，若取消回报迟到，首次请求可能被安全拒绝，这个操作体验也需检查；隐藏窗口测试只证明拒绝条件和恢复边界。桌面嵌入、图标、多屏、唯一模拟/存档写入者及长期性能依旧未完成，不以本轮结果宣布 P0 全部通过。

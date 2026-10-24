@@ -39,6 +39,8 @@
 
 2026-10-25 北京时间本机验证：固定测试 34 项通过；可选自有隐藏窗口边界测试 1 项通过。原生边界记录 raw parent 是否为系统桌面、归一父为 0、目标矩形、隐藏状态、定位 / 销毁结果和前台未改变，不输出第三方窗口信息。DLL 与测试程序使用本机 .NET Framework x64 C# 编译器编译。真实桌面挂接仍未执行。
 
+同日 00:09 另运行只读发现探针：调用 `Screen.PrimaryScreen.Bounds` 和 `Discover`，不创建窗口、不调用 `Attach`。本机主屏为 1920×1080；默认 .NET Framework 进程返回 `dpi-context-incompatible`，将探针 EXE 清单声明为 `PerMonitorV2, PerMonitor`（兼容声明 `true/pm`）后，返回 `Available=True`、无原生错误。该结果只证明当时已有候选层与探针上下文匹配，不证明实际挂接、输入或多屏兼容。探针源码、清单与原始输出留在仓库外；未改变系统 DPI。后续宿主需在创建窗口/WebView 前声明并验证对应进程 DPI，继续保留不兼容拒绝。
+
 ## 官方依据
 
 - [SetParent](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setparent)：不会自动调整 `WS_CHILD` / `WS_POPUP`；返回值是原父窗口，NULL 需结合错误码判断；不同 DPI awareness 的跨进程挂接有重置或异常风险，因此本组件在上下文不兼容时拒绝，且从不修改全局 DPI。

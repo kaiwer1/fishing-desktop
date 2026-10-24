@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { QUALITY, normalizeSettings, renderSize, frameRate } from './display.js';
+import { createFrameScheduler } from './frame-scheduler.js';
 import { mountGameUI } from './game-ui.js';
 import { SPECIES } from './content.js';
 import { isWater } from './ecosystem.js';
@@ -216,8 +217,9 @@ function initialize() {
 
   const state={observe:false,paused:false,portrait:false,hidden:document.hidden,fps:settings.fps};
   const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
-  let time=0,last=performance.now(),timer=0,animation=0;
+  let time=0;
   let lastGameTime=performance.now();
+  const frames=createFrameScheduler({render:draw});
   // Fishing timing must continue at its own rate when an occluded browser delays GPU frames.
   setInterval(()=>{
     const now=performance.now(),elapsed=Math.min(1,Math.max(0,(now-lastGameTime)/1000));lastGameTime=now;
@@ -239,9 +241,8 @@ function initialize() {
     waterMaterial.uniforms.detail.value=QUALITY[settings.quality].waveDetail;
     document.querySelector('#render-info').textContent=`画面 ${size.width} × ${size.height} · 界面 ${innerWidth} × ${innerHeight}`;
   }
-  function draw(now) {
-    const fps=frameRate(state);if(!fps)return;
-    const dt=Math.min(.1,Math.max(0,(now-last)/1000));time+=dt;last=now;
+  function draw(now,dt) {
+    time+=dt;
     const environmentTime=reducedMotion.matches?4:time;
     waterMaterial.uniforms.time.value=environmentTime;
     const phase=gameUI.game.phase,session=gameUI.game.session;
@@ -268,9 +269,8 @@ function initialize() {
       const age=(environmentTime*.28+i*.23)%1;waterClues[i].scale.setScalar(1+age*1.8);waterClues[i].material.opacity=(1-age)*.17;
     }
     renderer.render(scene,camera);
-    timer=setTimeout(()=>{animation=requestAnimationFrame(draw);},Math.max(0,1000/fps-(performance.now()-now)-4));
   }
-  function wake() { clearTimeout(timer);cancelAnimationFrame(animation);last=performance.now();lastGameTime=last;if(frameRate(state))animation=requestAnimationFrame(draw); }
+  function wake() { lastGameTime=performance.now();frames.wake(frameRate(state)); }
   function changeSettings() {
     settings=normalizeSettings({quality:qualityInput.value,scale:scaleInput.value,fps:fpsInput.value});state.fps=settings.fps;
     try { localStorage.setItem('fishing-desktop.settings.v1',JSON.stringify(settings)); } catch { /* Private hosts may disable storage; keep settings in memory. */ }

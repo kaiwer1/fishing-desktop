@@ -48,6 +48,8 @@
 
 ## 官方依据
 
+2026-10-25 00:07 更新：[两个独立窗口](../diagnostics/dual-window/README.md)现在由应用控制器持有唯一计数状态，关闭两窗不终止 owner，重新打开后旧文档与旧授权仍失效。10 项纯 C# 和 11 项真实 WebView 协议检查通过，包含当前页面授权握手、取消后迟到回执以及受控旧导航异常。尚未连接 WorkerW 或游戏，真实鼠标/图标和可见按钮体验仍未验收；最终宿主路线尚未选定。
+
 - [2.2.1.0 输入枚举](https://github.com/lively-community/lively/blob/v2.2.1.0/src/Lively/Lively.Models/Enums/InputForwardMode.cs)
 - [2.2.1.0 桌面输入转发](https://github.com/lively-community/lively/blob/v2.2.1.0/src/Lively/Lively/Core/WinDesktopCore.cs)
 - [2.2.1.0 暂停检测算法枚举](https://github.com/lively-community/lively/blob/v2.2.1.0/src/Lively/Lively.Models/Enums/ProcessMonitorAlgorithm.cs)

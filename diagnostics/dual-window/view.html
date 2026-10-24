@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Independent window counter diagnostic</title>
+<style>body{font:18px system-ui;background:#183035;color:#eff5e7;padding:22px}button{padding:12px;font:inherit}pre{white-space:pre-wrap;font-size:14px}small{color:#b5cebf}</style>
+<h1 id="role">等待独立窗口角色</h1>
+<small>仅验证共享计数器。关闭此窗口不会退出状态持有者；通过另一窗口或托盘重新打开。</small>
+<p><button id="add" disabled>提交一次 +1</button></p><pre id="state">等待宿主</pre>
+<script type="module">
+import { LeaseSession } from './lease-session.mjs';
+const documentId=crypto.randomUUID();
+const session=new LeaseSession(documentId);
+let snapshot=null,lastReply=null,lastRevoke=null,lastActivation=null,lastActivationReply=null,received=0;
+function render(){
+  document.querySelector('#state').textContent=JSON.stringify({snapshot,可操作:Boolean(session.state().lease),lastReply},null,2);
+  document.querySelector('#add').disabled=!session.state().lease || !snapshot || snapshot.Faulted;
+}
+const send=command=>window.chrome.webview.postMessage({...command,documentId});
+function revoke(reason){
+  const canceled=session.cancel();render();
+  send({kind:'revoke',reason,...canceled,activationRequestId:lastActivation?.requestId??'',transportId:crypto.randomUUID()});
+}
+window.dualProbe={documentId,state:()=>({documentId,...session.state(),snapshot,lastReply,lastRevoke,lastActivation,lastActivationReply,received}),
+  send,sendRaw:command=>window.chrome.webview.postMessage(command),cancel:()=>revoke('diagnostic-cancel')};
+window.chrome.webview.addEventListener('message',e=>{
+  const m=e.data;if(!m || m.documentId!==documentId)return;
+  if(m.kind==='prepare-activation'){
+    if(!m.allowUnfocused && (document.hidden || !document.hasFocus()))return;
+    lastActivation={requestId:m.requestId,epoch:session.state().epoch};
+    send({kind:'activation-ready',requestId:m.requestId,cancellationEpoch:session.state().epoch,lease:'',transportId:m.requestId});
+  }
+  if(m.kind==='snapshot' || m.kind==='reply'){
+    if(snapshot && snapshot.OwnerId===m.snapshot.OwnerId && m.snapshot.Sequence<snapshot.Sequence)return;
+    snapshot=m.snapshot;
+    if(m.kind==='reply')lastReply={requestId:m.requestId,transportId:m.transportId,...m.reply};
+  }
+  if(m.kind==='lease'){
+    const before=session.state().revision,accepted=session.apply(m);
+    if(!accepted && m.lease && session.state().revision===m.revision && m.revision>before)
+      send({kind:'revoke',lease:m.lease,cancellationEpoch:session.state().epoch,transportId:crypto.randomUUID(),reason:'late-grant'});
+  }
+  if(m.kind==='revoke-reply')lastRevoke=m;
+  if(m.kind==='activation-reply')lastActivationReply=m;
+  if(m.kind==='role')document.querySelector('#role').textContent=m.role;
+  received++;render();
+});
+document.querySelector('#add').addEventListener('click',()=>{
+  const lease=session.state().lease;if(!lease || !snapshot)return;
+  send({kind:'command',lease,requestId:crypto.randomUUID(),transportId:crypto.randomUUID(),delta:1,expectedSequence:snapshot.Sequence});
+});
+window.addEventListener('blur',()=>revoke('blur'));
+window.addEventListener('pagehide',()=>revoke('pagehide'));
+document.addEventListener('visibilitychange',()=>{if(document.hidden)revoke('hidden')});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')revoke('escape')});
+</script></html>

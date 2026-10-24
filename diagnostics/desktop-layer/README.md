@@ -1,6 +1,6 @@
 # 桌面层挂接诊断组件（P0，未验收宿主）
 
-本目录提供可复用的 C# 组件和隔离测试，不提供自动运行的桌面壁纸。当前没有运行真实 WorkerW 挂接，也没有证明桌面图标、右键菜单、鼠标穿透、多显示器或 Explorer 重启恢复可用。它不改变暂停中的 UI / 游戏流程。
+本目录提供可复用的 C# 组件和隔离测试，不提供自动运行的桌面壁纸。已完成一次自有隐藏窗口的真实 WorkerW 挂接、验证与撤回；没有证明可见壁纸、桌面图标、右键菜单、鼠标穿透、多显示器或 Explorer 重启恢复可用。它不改变暂停中的 UI / 游戏流程。
 
 ## 已实现边界
 
@@ -42,6 +42,8 @@
 同日 00:09 另运行只读发现探针：调用 `Screen.PrimaryScreen.Bounds` 和 `Discover`，不创建窗口、不调用 `Attach`。本机主屏为 1920×1080；默认 .NET Framework 进程返回 `dpi-context-incompatible`，将探针 EXE 清单声明为 `PerMonitorV2, PerMonitor`（兼容声明 `true/pm`）后，返回 `Available=True`、无原生错误。该结果只证明当时已有候选层与探针上下文匹配，不证明实际挂接、输入或多屏兼容。探针源码、清单与原始输出留在仓库外；未改变系统 DPI。后续宿主需在创建窗口/WebView 前声明并验证对应进程 DPI，继续保留不兼容拒绝。
 
 ## 官方依据
+
+后续真实隐藏挂接补测（2026-10-25 00:10）：使用上述 PerMonitorV2 探针清单，创建本进程隐藏无边框 WinForms 窗口，执行发现、`Attach`、隐藏状态核对、`ValidateAndRecover` 及 finally 中的 `Detach`，最后销毁自有窗口。结果为 `Attached=True`、`HiddenAndValidated=True`、`Detached=True`、`Cleanup=restored-hidden`、`ForegroundUnchanged=True`，进程正常退出。未显示窗口、未连接 WebView、未操作图标或创建/隐藏 Explorer 图层。此前测试记录中的“真实挂接未执行”指该次补测之前；当前仅通过上述单屏隐藏窗口路径。
 
 - [SetParent](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setparent)：不会自动调整 `WS_CHILD` / `WS_POPUP`；返回值是原父窗口，NULL 需结合错误码判断；不同 DPI awareness 的跨进程挂接有重置或异常风险，因此本组件在上下文不兼容时拒绝，且从不修改全局 DPI。
 - [GetAncestor](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getancestor)：`GA_PARENT` 只查真实父关系，不混入 owner 关系。

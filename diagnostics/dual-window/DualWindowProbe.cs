@@ -147,6 +147,25 @@ sealed partial class DualWindowContext
                 CheckDesktop(read);
                 Require(desktopAttachments==3 && desktopDetachments==2 && desktopLeases.Count==1,"Desktop close/reopen did not release old native parents.");
                 checks.Add("desktop WebView direct dispose and close release prior native attachments while retaining owner state");
+                // Change only our hidden child's native geometry. The real UI
+                // timer must detect it; no Explorer window is altered/restarted.
+                var ownLease=desktopLeases[read];
+                var ownState=desktopApi.ReadWindow(ownLease.WindowHandle);
+                var changed=ownState.Bounds;changed.Right--;
+                var moved=desktopApi.Position(ownLease.WindowHandle,ownState.Parent,changed,FishingDesktop.Diagnostics.DesktopLayer.DesktopLayerController.SafePositionFlags);
+                Require(moved.Success,"Controlled own-window geometry change failed.");
+                var lossWait=Stopwatch.StartNew();
+                while(windows.ContainsKey(false) && !stopping && lossWait.ElapsedMilliseconds<4000)await Task.Delay(25);
+                Require(!stopping && !windows.ContainsKey(false) && desktopLosses==1 && desktopLastLossReason=="attached-window-changed","Timer did not retire the invalid desktop view.");
+                Require(Live(control) && owner.Snapshot().OwnerId==ownerId,"Desktop loss terminated interaction or owner.");
+                LockHeld();
+                await Wait(control,s=>s["lease"]==null);
+                Reply(await Command(control,lease,Guid.NewGuid().ToString("D"),1,2),false,"inactive-lease");
+                checks.Add("real timer detects controlled own-window geometry loss and revokes control without releasing owner lock");
+                read=await Open(false);a=await Ready(read);SameOwner(a,ownerId,2,10);CheckDesktop(read);
+                lease=await Activate(control);Reply(await Command(control,lease,request,7,0),true,null);
+                Require(desktopAttachments==4 && desktopDetachments==3 && desktopLeases.Count==1 && owner.Snapshot().Sequence==2,"Explicit view recovery lost owner or duplicated state.");
+                checks.Add("explicit desktop view reopen after controlled loss retains committed state and deduplication");
             }
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),ownerId=ownerId,value=owner.Snapshot().Value,sequence=owner.Snapshot().Sequence,

@@ -16,6 +16,14 @@ sealed partial class DualWindowContext
     int desktopAttachments,desktopDetachments,desktopValidations;
     bool desktopCleanupFailed;
     IntPtr desktopInitialForeground;
+    int desktopLosses;
+    string desktopLastLossReason;
+    sealed class DesktopAttachmentLost : InvalidOperationException
+    {
+        internal readonly ProbeWindow Pane;
+        internal readonly string Reason;
+        internal DesktopAttachmentLost(ProbeWindow pane,AttachmentResult result):base("Desktop attachment invalidated: "+result.Reason+"; cleanup="+result.Cleanup){Pane=pane;Reason=result.Reason;}
+    }
 
     void AttachDesktop(ProbeWindow pane)
     {
@@ -25,6 +33,7 @@ sealed partial class DualWindowContext
             desktopApi=new Win32DesktopApi();desktopController=new DesktopLayerController(desktopApi);
             desktopWatch.Tick+=delegate{
                 try{foreach(var attached in new List<ProbeWindow>(desktopLeases.Keys))CheckDesktop(attached);}
+                catch(DesktopAttachmentLost error){try{RetireLostDesktop(error);}catch(Exception failure){Fail(failure);}}
                 catch(Exception error){Fail(error);}
             };
         }
@@ -43,11 +52,23 @@ sealed partial class DualWindowContext
         AttachmentLease lease;
         if(!desktopLeases.TryGetValue(pane,out lease))throw new InvalidOperationException("Missing desktop lease.");
         var result=desktopController.ValidateAndRecover(lease);
-        if(!result.Success)throw new InvalidOperationException("Desktop attachment invalidated: "+result.Reason+"; cleanup="+result.Cleanup);
+        if(!result.Success)throw new DesktopAttachmentLost(pane,result);
         var state=desktopApi.ReadWindow(lease.WindowHandle);
         if(state==null || state.Visible || pane.Visible)throw new InvalidOperationException("Desktop diagnostic must remain hidden.");
         if(GetForegroundWindow()!=desktopInitialForeground)throw new InvalidOperationException("Foreground changed during hidden desktop diagnostic.");
         desktopValidations++;
+    }
+    void RetireLostDesktop(DesktopAttachmentLost error)
+    {
+        desktopLosses++;desktopLastLossReason=error.Reason;
+        ProbeWindow control;
+        if(windows.TryGetValue(true,out control))Revoke(control);
+        if(stopping)return;
+        // A failed presentation is not a new state owner. Cancel control and
+        // retire only that view; retry requires an explicit Open, never a loop.
+        Retire(error.Pane);
+        try{error.Pane.Close();}finally{error.Pane.Dispose();}
+        if(desktopCleanupFailed)Fail(new InvalidOperationException("Desktop cleanup failed; refusing view recovery."));
     }
     void ReleaseDesktop(ProbeWindow pane)
     {
@@ -79,6 +100,7 @@ sealed partial class DualWindowContext
         File.WriteAllText(Path.Combine(root,"desktop-summary.json"),json.Serialize(new{
             passed=cleaned && foregroundUnchanged && ExitCode==0,attachments=desktopAttachments,detachments=desktopDetachments,
             validations=desktopValidations,remainingLeases=desktopLeases.Count,foregroundUnchanged=foregroundUnchanged,
+            recoveredViewLosses=desktopLosses,lastLossReason=desktopLastLossReason,
             hiddenOnly=true,realDesktopAttachment=desktopAttachments>0,nativeInputTested=false,multipleMonitorsTested=false
         }),Encoding.UTF8);
     }

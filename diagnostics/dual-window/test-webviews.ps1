@@ -70,13 +70,14 @@ try{
   }
   if($taskProcess.ExitCode -ne 0){throw ('Dual-window self-test exited '+$taskProcess.ExitCode+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  $taskExpectedChecks=if($DesktopLayer){13}else{11}
+  $taskExpectedChecks=if($DesktopLayer){15}else{11}
   if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
   $taskDesktopReport=$null
   if($DesktopLayer){
     $taskDesktopReport=Get-Content -LiteralPath (Join-Path $taskRun 'desktop-summary.json') -Raw | ConvertFrom-Json
-    if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne 3 -or $taskDesktopReport.detachments -ne 3 -or
-      $taskDesktopReport.remainingLeases -ne 0 -or -not $taskDesktopReport.foregroundUnchanged){throw 'Desktop shutdown report mismatch.'}
+    if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne 4 -or $taskDesktopReport.detachments -ne 4 -or
+      $taskDesktopReport.remainingLeases -ne 0 -or -not $taskDesktopReport.foregroundUnchanged -or
+      $taskDesktopReport.recoveredViewLosses -ne 1 -or $taskDesktopReport.lastLossReason -ne 'attached-window-changed'){throw 'Desktop shutdown report mismatch.'}
   }
 }catch{$taskFailure=$_}
 finally{

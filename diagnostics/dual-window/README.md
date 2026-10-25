@@ -19,6 +19,7 @@
 | `DualWindowHost.cs` | ApplicationContext、两个独立窗口、托盘恢复入口、WebView 消息和关闭处理 |
 | `DualWindowProbe.cs` | `--self-test` 的真实页面消息协议验证 |
 | `DualWindowDesktop.cs` / `desktop.manifest` | 可选隐藏桌面挂接、UI 线程定时核对、撤回及本进程 PerMonitorV2 声明 |
+| `DualWindowVisual.cs` / `visual-probe.mjs` | 显式可见自测、单个可取消动画排程与仅本 WebView 的像素检查 |
 | `view.html` | 只呈现快照的页面和计数器提交按钮；`sendRaw` 仅用于重放过期诊断消息 |
 | `DualWindowOwnerTests.cs` | 无浏览器的生命周期、写锁和旧身份回归测试 |
 
@@ -95,6 +96,23 @@ $taskBuild
 20:46 增加失效隔离：只把本进程隐藏子窗口的实际宽度减小 1 像素，由真实 500 ms 定时器发现 `attached-window-changed` 并回退。失效视图关闭，交互 lease 被撤销，owner 身份、序号及写锁保持；旧 lease 命令经真实消息通道被拒绝，显式重开只读窗口后原回执仍防重。最终 **15 项检查通过**，四次挂接/四次撤回、一次受控视图失效、剩余 lease 为 0，无强制清理或专用进程残留，测试用 Lively 正常退出并恢复原设置。受控几何改变不是 Explorer 重启、系统显示器变化或浏览器崩溃的复现。
 
 ## 可见模式手动使用
+
+### 可见桌面渲染自测
+
+```powershell
+& ./diagnostics/dual-window/test-webviews.ps1 -SdkDirectory $taskSdk -OutputDirectory $taskOutput -VisibleDesktop
+node --test diagnostics/dual-window/visual-probe.test.mjs
+```
+
+该独立开关包含 `-DesktopLayer`，启动 `--desktop-visible-self-test`。仅在明确传入时，将第一个只读桌面子窗口通过 WinForms `ShowWithoutActivation` 和 `WS_EX_NOACTIVATE` 短暂显示；前后均核对父关系、尺寸及前台窗口，没有 Activate/BringToFront。只读视图不再包含普通窗口的调试按钮栏，视口匹配主屏。检查结束停止动画、隐藏，再继续原有重建及受控失效检查。
+
+2026-10-26 07:47 北京时间实测：**16 项真实 WebView 检查通过**；1920×1080 的本 WebView PNG 包含预期的两块颜色标记，至少 3 个 RAF 绘制后停止计数稳定；四次挂接/撤回、一次受控失效、零剩余 lease，前台核对一致，无强制清理或专用残留进程。普通模式 11 项、纯 C# 10 项回归通过。另 3 项绘制生命周期测试验证重复开启只有一个排程、停止后的旧回调不能干扰重启、反复启停只分配一个画布。测试用 Lively 正常退出并恢复原设置。
+
+图像由 `CoreWebView2.CapturePreviewAsync` 生成，**仅是本 WebView 内容**，不是包含图标/任务栏的桌面合成截图。可见窗口归属、页面实际绘制和未抢焦点已有证据；最终合成、遮挡、图标输入及鼠标穿透仍未验收。测试图像、profile 和报告留仓库外，没有捕获其他应用画面，也没有把此图用于坐标输入。
+
+API 依据：[Form.ShowWithoutActivation](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.form.showwithoutactivation)、[CapturePreviewAsync](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2.capturepreviewasync)。这些 API 本身不证明桌面图标输入可用。
+
+### 普通窗口
 
 在明确要测试普通窗口时，手动运行 `$taskBuild.executable`，不传 `--self-test`。只读窗口和交互窗口分别显示；点击交互窗口的 `Enable interaction` 后才能提交 +1。切到其他窗口会撤销授权，回来后需再次显式启用。窗口顶部及托盘可重开已关闭的窗口；标题栏关闭按钮只关闭该窗口。
 

@@ -5,11 +5,12 @@ using System.Text;
 using System.Windows.Forms;
 using FishingDesktop.Diagnostics.DesktopLayer;
 
-// Opt-in hidden integration diagnostic only. Never makes a desktop child
-// visible, creates an Explorer layer, or changes global DPI awareness.
+// Opt-in integration diagnostics. Only the explicit visible test shows its own
+// no-activate child. Never creates an Explorer layer or changes global DPI.
 sealed partial class DualWindowContext
 {
     readonly Dictionary<ProbeWindow,AttachmentLease> desktopLeases=new Dictionary<ProbeWindow,AttachmentLease>();
+    readonly HashSet<ProbeWindow> desktopShown=new HashSet<ProbeWindow>();
     readonly Timer desktopWatch=new Timer {Interval=500};
     Win32DesktopApi desktopApi;
     DesktopLayerController desktopController;
@@ -54,8 +55,13 @@ sealed partial class DualWindowContext
         var result=desktopController.ValidateAndRecover(lease);
         if(!result.Success)throw new DesktopAttachmentLost(pane,result);
         var state=desktopApi.ReadWindow(lease.WindowHandle);
-        if(state==null || state.Visible || pane.Visible)throw new InvalidOperationException("Desktop diagnostic must remain hidden.");
-        if(GetForegroundWindow()!=desktopInitialForeground)throw new InvalidOperationException("Foreground changed during hidden desktop diagnostic.");
+        bool shouldShow=desktopShown.Contains(pane);
+        if(state==null || state.Visible!=shouldShow || pane.Visible!=shouldShow)throw new InvalidOperationException("Desktop diagnostic visibility changed unexpectedly.");
+        if(GetForegroundWindow()!=desktopInitialForeground){
+            string kind="external-or-shell";IntPtr foreground=GetForegroundWindow();
+            foreach(var view in windows.Values)if(view.IsHandleCreated && view.Handle==foreground)kind=view.Ticket.CanControl?"own-interaction":"own-observer";
+            throw new InvalidOperationException("Foreground changed during desktop diagnostic; current category="+kind+". No external title or identity recorded.");
+        }
         desktopValidations++;
     }
     void RetireLostDesktop(DesktopAttachmentLost error)
@@ -87,7 +93,7 @@ sealed partial class DualWindowContext
             try{File.WriteAllText(Path.Combine(root,"desktop-cleanup-error.txt"),json.Serialize(new{reason=result.Reason,cleanup=result.Cleanup,issues=result.Issues}),Encoding.UTF8);}catch(IOException){}catch(UnauthorizedAccessException){}
             return; // Keep identity for Dispose's retry; never claim cleanup.
         }
-        desktopLeases.Remove(pane);desktopDetachments++;
+        desktopLeases.Remove(pane);desktopShown.Remove(pane);desktopDetachments++;
     }
     void StopDesktopWatch(){desktopWatch.Stop();}
     void WriteDesktopShutdownReport()
@@ -101,7 +107,8 @@ sealed partial class DualWindowContext
             passed=cleaned && foregroundUnchanged && ExitCode==0,attachments=desktopAttachments,detachments=desktopDetachments,
             validations=desktopValidations,remainingLeases=desktopLeases.Count,foregroundUnchanged=foregroundUnchanged,
             recoveredViewLosses=desktopLosses,lastLossReason=desktopLastLossReason,
-            hiddenOnly=true,realDesktopAttachment=desktopAttachments>0,nativeInputTested=false,multipleMonitorsTested=false
+            hiddenOnly=!visibleDesktopTest,realDesktopAttachment=desktopAttachments>0,nativeInputTested=false,multipleMonitorsTested=false,
+            visual=visualResult
         }),Encoding.UTF8);
     }
 }

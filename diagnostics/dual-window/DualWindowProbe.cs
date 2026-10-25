@@ -69,6 +69,7 @@ sealed partial class DualWindowContext
             var read=windows[false];var control=windows[true];
             var a=await Ready(read);var b=await Ready(control);
             if(desktopMode){CheckDesktop(read);checks.Add("real read-only WebView initializes inside a hidden existing desktop layer without activation");}
+            if(visibleDesktopTest)await VerifyVisibleDesktop(read);
             string ownerId=owner.Snapshot().OwnerId;
             Require(owner.Snapshot().Sequence==0,"Self-test requires a new private journal.");
             SameOwner(a,ownerId,0,0);SameOwner(b,ownerId,0,0);Require(b["lease"]==null,"Fresh page had authority.");
@@ -170,7 +171,7 @@ sealed partial class DualWindowContext
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),ownerId=ownerId,value=owner.Snapshot().Value,sequence=owner.Snapshot().Sequence,
                 realWebViewMessages=true,independentWindows=true,nativeInputTested=false,gameLoaded=false,
-                invisibleNoActivateMode=true,browserCrashTested=false,desktopLayer=desktopMode
+                invisibleNoActivateMode=!visibleDesktopTest,browserCrashTested=false,desktopLayer=desktopMode
             }),Encoding.UTF8);
             Shutdown();
         }catch(Exception e){Fail(e);}

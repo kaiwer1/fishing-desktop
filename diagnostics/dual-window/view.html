@@ -7,6 +7,7 @@
 <p><button id="add" disabled>提交一次 +1</button></p><pre id="state">等待宿主</pre>
 <script type="module">
 import { LeaseSession } from './lease-session.mjs';
+import { createVisualProbe } from './visual-probe.mjs';
 const documentId=crypto.randomUUID();
 const session=new LeaseSession(documentId);
 let snapshot=null,lastReply=null,lastRevoke=null,lastActivation=null,lastActivationReply=null,received=0;
@@ -20,7 +21,7 @@ function revoke(reason){
   send({kind:'revoke',reason,...canceled,activationRequestId:lastActivation?.requestId??'',transportId:crypto.randomUUID()});
 }
 window.dualProbe={documentId,state:()=>({documentId,...session.state(),snapshot,lastReply,lastRevoke,lastActivation,lastActivationReply,received}),
-  send,sendRaw:command=>window.chrome.webview.postMessage(command),cancel:()=>revoke('diagnostic-cancel')};
+  send,sendRaw:command=>window.chrome.webview.postMessage(command),cancel:()=>revoke('diagnostic-cancel'),visual:createVisualProbe(document)};
 window.chrome.webview.addEventListener('message',e=>{
   const m=e.data;if(!m || m.documentId!==documentId)return;
   if(m.kind==='prepare-activation'){

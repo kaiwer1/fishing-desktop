@@ -28,7 +28,7 @@ sealed class ProbeWindow : Form
         Size=new Size(650,570);StartPosition=FormStartPosition.Manual;
         Location=new Point(ticket.CanControl?720:60,120);
         if(automated){if(!DesktopReadOnly)Opacity=0;ShowInTaskbar=false;}
-        if(DesktopReadOnly){FormBorderStyle=FormBorderStyle.None;AutoScaleMode=AutoScaleMode.None;}
+        if(DesktopReadOnly){FormBorderStyle=FormBorderStyle.None;AutoScaleMode=AutoScaleMode.None;Size=Screen.PrimaryScreen.Bounds.Size;}
         var bar=new FlowLayoutPanel {Dock=DockStyle.Top,AutoSize=true,WrapContents=true};
         AddButton(bar,"Open read only",delegate{context.OpenFromUser(false);});
         AddButton(bar,"Open interaction",delegate{context.OpenFromUser(true);});
@@ -38,7 +38,7 @@ sealed class ProbeWindow : Form
         }
         AddButton(bar,"Reload page",delegate{context.Reload(this);});
         AddButton(bar,"Exit both + owner",delegate{context.Shutdown();});
-        Controls.Add(View);Controls.Add(bar);
+        Controls.Add(View);if(!DesktopReadOnly)Controls.Add(bar);else bar.Dispose();
         Deactivate+=delegate{context.Revoke(this);};
         FormClosing+=delegate{context.Retire(this);};
     }
@@ -72,6 +72,7 @@ sealed partial class DualWindowContext : ApplicationContext
     readonly ActivationHandshake activation=new ActivationHandshake();
     readonly bool automated;
     readonly bool desktopMode;
+    readonly bool visibleDesktopTest;
     readonly NotifyIcon tray;
     CoreWebView2Environment environment;
     bool stopping;
@@ -80,9 +81,9 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest)
     {
-        this.automated=automated;this.desktopMode=desktopMode;
+        this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;
         owner=new DualWindowOwner(Path.Combine(root,"counter.journal.jsonl"));
         if(dispatcher.Handle==IntPtr.Zero)throw new InvalidOperationException("Owner dispatcher handle unavailable.");
         if(!automated){
@@ -311,14 +312,15 @@ sealed partial class DualWindowContext : ApplicationContext
     }
     [STAThread] static int Main(string[] args)
     {
-        bool desktop=args.Length==1 && args[0]=="--desktop-self-test";
+        bool visibleDesktop=args.Length==1 && args[0]=="--desktop-visible-self-test";
+        bool desktop=visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
         bool automated=desktop || (args.Length==1 && args[0]=="--self-test");
         if(args.Length>0 && !automated)return 5;
         try{
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

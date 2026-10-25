@@ -12,13 +12,13 @@ Copy-Item -LiteralPath (Join-Path $taskSdk 'runtimes/win-x64/native/WebView2Load
 Copy-Item -LiteralPath (Join-Path $taskSdk 'LICENSE.txt') -Destination (Join-Path $taskRun 'WEBVIEW2-LICENSE.txt')
 $taskPage=Join-Path $taskRun 'page'
 New-Item -ItemType Directory -Path $taskPage | Out-Null
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'view.html'),(Join-Path $PSScriptRoot '../state-owner/lease-session.mjs') -Destination $taskPage
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'view.html'),(Join-Path $PSScriptRoot 'visual-probe.mjs'),(Join-Path $PSScriptRoot '../state-owner/lease-session.mjs') -Destination $taskPage
 $taskExecutable=Join-Path $taskRun 'DualWindowHost.exe'
 $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platform:x64','/warnaserror+',
   '/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll',
   ('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.Core.dll')),('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.WinForms.dll')),('/out:'+$taskExecutable))
 if($DesktopLayer){$taskArgs+=('/win32manifest:'+(Join-Path $PSScriptRoot 'desktop.manifest'))}
-foreach($taskName in @('ActivationHandshake.cs','DualWindowOwner.cs','DualWindowHost.cs','DualWindowProbe.cs','DualWindowDesktop.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+foreach($taskName in @('ActivationHandshake.cs','DualWindowOwner.cs','DualWindowHost.cs','DualWindowProbe.cs','DualWindowDesktop.cs','DualWindowVisual.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
 foreach($taskName in @('DesktopLayer.cs','Win32DesktopApi.cs')){$taskArgs+=(Join-Path $PSScriptRoot "../desktop-layer/$taskName")}
 foreach($taskName in @('DurableCounterStore.cs','ViewAuthority.cs')){$taskArgs+=(Join-Path $PSScriptRoot "../state-owner/$taskName")}
 $taskArgs+=(Join-Path $PSScriptRoot '../input-window/HostInstanceGuard.cs')

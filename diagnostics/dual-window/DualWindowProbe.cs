@@ -68,6 +68,7 @@ sealed partial class DualWindowContext
         try{
             var read=windows[false];var control=windows[true];
             var a=await Ready(read);var b=await Ready(control);
+            if(desktopMode){CheckDesktop(read);checks.Add("real read-only WebView initializes inside a hidden existing desktop layer without activation");}
             string ownerId=owner.Snapshot().OwnerId;
             Require(owner.Snapshot().Sequence==0,"Self-test requires a new private journal.");
             SameOwner(a,ownerId,0,0);SameOwner(b,ownerId,0,0);Require(b["lease"]==null,"Fresh page had authority.");
@@ -97,7 +98,10 @@ sealed partial class DualWindowContext
             Require((bool)Field(Field(b,"lastReply"),"Receipt")["Duplicate"] && owner.Snapshot().Sequence==1,"Retry duplicated a commit.");
             Reply(await Command(control,lease,request,8,1),false,"request-conflict");
             checks.Add("replayed closed-document cancellation and duplicate/conflicting requests preserve current state");
-            read.Close();read.Dispose();LockHeld();read=await Open(false);a=await Ready(read);SameOwner(a,ownerId,1,7);
+            // The desktop path also tests direct Dispose, which does not raise
+            // FormClosing, while the ordinary path retains its Close coverage.
+            if(desktopMode)read.Dispose();else{read.Close();read.Dispose();}
+            LockHeld();read=await Open(false);a=await Ready(read);SameOwner(a,ownerId,1,7);
             b=await Command(control,lease,Guid.NewGuid().ToString("D"),3,1);Reply(b,true,null);
             a=await Wait(read,s=>Number(Field(s,"snapshot"),"Sequence")==2);SameOwner(a,ownerId,2,10);
             checks.Add("read-only window recreation preserves interaction lease and receives later commits");
@@ -139,10 +143,15 @@ sealed partial class DualWindowContext
             lease=await Activate(control);
             Reply(await Command(control,lease,request,7,0),true,null);
             checks.Add("epoch handshake requires current explicit request and cancelled acknowledgements cannot revive authority");
+            if(desktopMode){
+                CheckDesktop(read);
+                Require(desktopAttachments==3 && desktopDetachments==2 && desktopLeases.Count==1,"Desktop close/reopen did not release old native parents.");
+                checks.Add("desktop WebView direct dispose and close release prior native attachments while retaining owner state");
+            }
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),ownerId=ownerId,value=owner.Snapshot().Value,sequence=owner.Snapshot().Sequence,
                 realWebViewMessages=true,independentWindows=true,nativeInputTested=false,gameLoaded=false,
-                invisibleNoActivateMode=true,browserCrashTested=false
+                invisibleNoActivateMode=true,browserCrashTested=false,desktopLayer=desktopMode
             }),Encoding.UTF8);
             Shutdown();
         }catch(Exception e){Fail(e);}

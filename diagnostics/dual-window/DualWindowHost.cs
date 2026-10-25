@@ -19,13 +19,16 @@ sealed class ProbeWindow : Form
     internal bool AwaitingNavigationStart=true;
     internal bool Ready;
     readonly bool automated;
-    internal ProbeWindow(DualWindowContext context,DualWindowOwner.Ticket ticket,bool automated)
+    readonly DualWindowContext context;
+    internal readonly bool DesktopReadOnly;
+    internal ProbeWindow(DualWindowContext context,DualWindowOwner.Ticket ticket,bool automated,bool desktop)
     {
-        Ticket=ticket;this.automated=automated;
+        Ticket=ticket;this.automated=automated;this.context=context;DesktopReadOnly=desktop && !ticket.CanControl;
         Text=ticket.CanControl?"Fishing Dual Window - Interaction":"Fishing Dual Window - Read Only";
         Size=new Size(650,570);StartPosition=FormStartPosition.Manual;
         Location=new Point(ticket.CanControl?720:60,120);
-        if(automated){Opacity=0;ShowInTaskbar=false;}
+        if(automated){if(!DesktopReadOnly)Opacity=0;ShowInTaskbar=false;}
+        if(DesktopReadOnly){FormBorderStyle=FormBorderStyle.None;AutoScaleMode=AutoScaleMode.None;}
         var bar=new FlowLayoutPanel {Dock=DockStyle.Top,AutoSize=true,WrapContents=true};
         AddButton(bar,"Open read only",delegate{context.OpenFromUser(false);});
         AddButton(bar,"Open interaction",delegate{context.OpenFromUser(true);});
@@ -42,6 +45,13 @@ sealed class ProbeWindow : Form
     static void AddButton(FlowLayoutPanel panel,string text,Action action)
     {
         var button=new Button {Text=text,AutoSize=true};button.Click+=delegate{action();};panel.Controls.Add(button);
+    }
+    protected override void Dispose(bool disposing)
+    {
+        // Dispose() can bypass FormClosing. Release the native parent while the
+        // HWND still exists, before WebView child handles are destroyed.
+        if(disposing)context.Retire(this);
+        base.Dispose(disposing);
     }
     protected override bool ShowWithoutActivation {get{return automated;}}
     protected override CreateParams CreateParams {
@@ -61,6 +71,7 @@ sealed partial class DualWindowContext : ApplicationContext
     readonly DualWindowOwner owner;
     readonly ActivationHandshake activation=new ActivationHandshake();
     readonly bool automated;
+    readonly bool desktopMode;
     readonly NotifyIcon tray;
     CoreWebView2Environment environment;
     bool stopping;
@@ -69,9 +80,9 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated)
+    internal DualWindowContext(bool automated,bool desktopMode)
     {
-        this.automated=automated;
+        this.automated=automated;this.desktopMode=desktopMode;
         owner=new DualWindowOwner(Path.Combine(root,"counter.journal.jsonl"));
         if(dispatcher.Handle==IntPtr.Zero)throw new InvalidOperationException("Owner dispatcher handle unavailable.");
         if(!automated){
@@ -114,9 +125,10 @@ sealed partial class DualWindowContext : ApplicationContext
     {
         if(stopping)throw new InvalidOperationException("Owner is stopping.");
         ProbeWindow existing;if(windows.TryGetValue(canControl,out existing))return existing;
-        var pane=new ProbeWindow(this,owner.Open(canControl),automated);
-        windows.Add(canControl,pane);pane.Show();
+        var pane=new ProbeWindow(this,owner.Open(canControl),automated,desktopMode);
+        windows.Add(canControl,pane);
         try{
+            if(pane.DesktopReadOnly)AttachDesktop(pane);else pane.Show();
             await pane.View.EnsureCoreWebView2Async(environment);
             if(!Live(pane))return pane;
             var core=pane.View.CoreWebView2;
@@ -159,13 +171,15 @@ sealed partial class DualWindowContext : ApplicationContext
             core.PermissionRequested+=delegate(object sender,CoreWebView2PermissionRequestedEventArgs e){e.State=CoreWebView2PermissionState.Deny;};
             core.DownloadStarting+=delegate(object sender,CoreWebView2DownloadStartingEventArgs e){e.Cancel=true;};
             core.Navigate(PageUrl);return pane;
-        }catch{if(Live(pane))throw;return pane;}
+        }catch{if(Live(pane)){Retire(pane);pane.Dispose();throw;}return pane;}
     }
     internal void Retire(ProbeWindow pane)
     {
-        if(!Live(pane))return;
-        // Remove identity before child controls dispose or their asynchronous events return.
-        activation.Cancel(pane.Ticket.ViewId);owner.Close(pane.Ticket);windows.Remove(pane.Ticket.CanControl);pane.Ready=false;
+        if(Live(pane)){
+            // Remove identity before child controls dispose or their asynchronous events return.
+            activation.Cancel(pane.Ticket.ViewId);owner.Close(pane.Ticket);windows.Remove(pane.Ticket.CanControl);pane.Ready=false;
+        }
+        ReleaseDesktop(pane);
     }
     internal void Reload(ProbeWindow pane)
     {
@@ -273,7 +287,7 @@ sealed partial class DualWindowContext : ApplicationContext
         if(stopping)return;
         closingPanes=new List<ProbeWindow>(windows.Values);
         foreach(var pane in closingPanes)Retire(pane);
-        stopping=true;deadline.Stop();
+        stopping=true;deadline.Stop();StopDesktopWatch();
         if(tray!=null)tray.Visible=false;
         // Defer WebView disposal until after the current browser event returns.
         dispatcher.BeginInvoke(new Action(FinishShutdown));
@@ -287,7 +301,7 @@ sealed partial class DualWindowContext : ApplicationContext
                 try{pane.Close();pane.Dispose();}catch(Exception){ExitCode=4;}
             }
         }finally{
-            try{owner.Dispose();}finally{ExitThread();}
+            try{try{WriteDesktopShutdownReport();}finally{owner.Dispose();}}finally{ExitThread();}
         }
     }
     protected override void Dispose(bool disposing)
@@ -297,13 +311,14 @@ sealed partial class DualWindowContext : ApplicationContext
     }
     [STAThread] static int Main(string[] args)
     {
-        bool automated=args.Length==1 && args[0]=="--self-test";
+        bool desktop=args.Length==1 && args[0]=="--desktop-self-test";
+        bool automated=desktop || (args.Length==1 && args[0]=="--self-test");
         if(args.Length>0 && !automated)return 5;
         try{
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

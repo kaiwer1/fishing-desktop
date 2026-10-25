@@ -1,6 +1,6 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer)
 $ErrorActionPreference='Stop'
-$taskBuild=& (Join-Path $PSScriptRoot 'build.ps1') -SdkDirectory $SdkDirectory -OutputDirectory $OutputDirectory
+$taskBuild=& (Join-Path $PSScriptRoot 'build.ps1') -SdkDirectory $SdkDirectory -OutputDirectory $OutputDirectory -DesktopLayer:$DesktopLayer
 $taskRun=$taskBuild.outputDirectory
 $taskProfile=Join-Path $taskRun 'private-profile'
 $taskKnown=@{}
@@ -59,7 +59,8 @@ function Stop-DualOwned($Identity) {
   finally{if($null -ne $taskOwned){$taskOwned.Dispose()}}
 }
 try{
-  $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList '--self-test' -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
+  $taskMode=if($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
+  $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList $taskMode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
   $taskRootIdentity=[pscustomobject]@{id=$taskProcess.Id;startTicks=$taskProcess.StartTime.ToUniversalTime().Ticks;path=$taskBuild.executable}
   $taskKnown[$taskRootIdentity.id]=$taskRootIdentity
   $taskTimer=[Diagnostics.Stopwatch]::StartNew()
@@ -69,7 +70,14 @@ try{
   }
   if($taskProcess.ExitCode -ne 0){throw ('Dual-window self-test exited '+$taskProcess.ExitCode+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne 11){throw 'Dual-window self-test report mismatch.'}
+  $taskExpectedChecks=if($DesktopLayer){13}else{11}
+  if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
+  $taskDesktopReport=$null
+  if($DesktopLayer){
+    $taskDesktopReport=Get-Content -LiteralPath (Join-Path $taskRun 'desktop-summary.json') -Raw | ConvertFrom-Json
+    if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne 3 -or $taskDesktopReport.detachments -ne 3 -or
+      $taskDesktopReport.remainingLeases -ne 0 -or -not $taskDesktopReport.foregroundUnchanged){throw 'Desktop shutdown report mismatch.'}
+  }
 }catch{$taskFailure=$_}
 finally{
   try{
@@ -97,5 +105,5 @@ finally{
 }
 if($taskFailure){throw $taskFailure}
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;
-  realWebViewMessages=$true;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
+  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
   ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $taskRun 'summary.json')

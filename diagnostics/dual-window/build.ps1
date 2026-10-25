@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'private-path.ps1')
 $taskRoot=Get-DualWindowPrivateRoot $OutputDirectory
@@ -17,7 +17,9 @@ $taskExecutable=Join-Path $taskRun 'DualWindowHost.exe'
 $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platform:x64','/warnaserror+',
   '/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll',
   ('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.Core.dll')),('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.WinForms.dll')),('/out:'+$taskExecutable))
-foreach($taskName in @('ActivationHandshake.cs','DualWindowOwner.cs','DualWindowHost.cs','DualWindowProbe.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+if($DesktopLayer){$taskArgs+=('/win32manifest:'+(Join-Path $PSScriptRoot 'desktop.manifest'))}
+foreach($taskName in @('ActivationHandshake.cs','DualWindowOwner.cs','DualWindowHost.cs','DualWindowProbe.cs','DualWindowDesktop.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+foreach($taskName in @('DesktopLayer.cs','Win32DesktopApi.cs')){$taskArgs+=(Join-Path $PSScriptRoot "../desktop-layer/$taskName")}
 foreach($taskName in @('DurableCounterStore.cs','ViewAuthority.cs')){$taskArgs+=(Join-Path $PSScriptRoot "../state-owner/$taskName")}
 $taskArgs+=(Join-Path $PSScriptRoot '../input-window/HostInstanceGuard.cs')
 $taskCompilerOutput=@(& $taskCompiler @taskArgs)

@@ -2,6 +2,8 @@
 
 普通 WinForms + WebView2 窗口，直接接收自己前台窗口内的网页输入。当前只加载本目录诊断页，不运行游戏、不读取游戏存档，不嵌入桌面层，也不与 Lively 同时运行游戏模拟。它是输入路线试验，尚不是壁纸发行版。
 
+2026-10-25 20:49 重试原生工具：最新源码新建私有构建，成功启动并通过可访问性读到默认交互关闭、按住/按下/松开及滚轮计数均为 0。窗口截图仍返回 `FrameArrived timed out`；重新绑定并取得可访问性树后，按其按钮索引请求点击返回 `coordinate input geometry is unavailable`。再次观察计数及模式不变；没有改用页面脚本注入鼠标事件。经原生 Alt+F4 关闭后核对专用进程残留为 0，未保留可见窗口。左右中键、滚轮、按住切窗仍未验收。
+
 ## 构建与运行
 
 环境：Windows x64、.NET Framework 编译器、WebView2 Runtime。SDK 固定为 `Microsoft.Web.WebView2 1.0.3405.78`，与本次 Lively 内使用版本一致。从 [NuGet 包端点](https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3405.78/microsoft.web.webview2.1.0.3405.78.nupkg)下载并解压到仓库外。该次下载 SHA-256 为 `d035807b2aaba871e8c014759626f566e96934e6ce6f0587056ee81d5228c373`；未将 SDK 或编译程序加入 Git。

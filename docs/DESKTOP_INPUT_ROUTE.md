@@ -1,5 +1,7 @@
 # P0：桌面输入路线与缺口
 
+2026-10-25 20:49：用当前 Computer Use 工具重新检查真实输入窗口，可访问性读取成功，但窗口截图仍 `FrameArrived timed out`、按钮点击 `coordinate input geometry is unavailable`。未完成任何鼠标事件，已关闭本次窗口并核对专用进程残留为 0。隐藏桌面 WebView 已扩展到 15 项生命周期/受控失效检查，仍不能替代鼠标或图标验收。
+
 2026-10-25 20:43：可选[双窗口桌面自测](../diagnostics/dual-window/README.md)已把真实只读 WebView 隐藏挂接现有 WorkerW，13 项消息/生命周期检查及三次挂接撤回通过，零专用残留；未显示可见壁纸，也未验证图标、真实鼠标、多屏或 Explorer 重启。没有现有层时拒绝，失效时整个诊断退出；仍需完成实际输入与产品宿主策略。
 
 最新进展（2026-10-25 00:08）：[桌面层组件](../diagnostics/desktop-layer/README.md)已提供既有传统 WorkerW 的身份核对、自有隐藏窗口挂接及失效回退。34 项固定测试和 1 项真实隐藏窗口边界测试通过；后者没有调用 Explorer 枚举或 SetParent。下一步与独立双窗口宿主连接，真实桌面挂接、图标及输入仍待验收。

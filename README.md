@@ -22,7 +22,7 @@
 
 已完成 RX 580 上 30/60 档、暂停及GPU/内存/呈现的[有限性能对照](docs/P0_RENDER_PERFORMANCE.md)、[二维桌面循环](docs/P0_DESKTOP_SOAK.md)和[占位三维十五分钟循环与资源记录](diagnostics/three-scene/README.md)；这些不是最终写实三维画质或长期稳定性的承诺。独立计数器/双窗口还没有接入正式游戏模拟和存档。
 
-[模块调查与反编译范围](docs/RF4_MODULE_RESEARCH.md)、[鼠标抛竿链路](docs/CASTING_FLOW_SPEC.md)、[浮漂装配](docs/FLOAT_RIG_ASSEMBLY_SPEC.md)、[库存与菜单交易](docs/INVENTORY_TRANSACTION_SPEC.md)、[单竿遛鱼](docs/FIGHTING_MODEL_SPEC.md)、[咬钩与漂相](docs/BITE_PRESENTATION_SPEC.md)及[竿架三竿规格](docs/MULTIROD_STAND_SPEC.md)已形成研究/实现前置资料。这些规格尚不代表玩法已接通。研究文档按授权公开，原客户端、完整配置、伪代码、素材、个人存档和录屏不随文档发布。
+[模块调查与反编译范围](docs/RF4_MODULE_RESEARCH.md)、[鼠标抛竿链路](docs/CASTING_FLOW_SPEC.md)、[浮漂装配](docs/FLOAT_RIG_ASSEMBLY_SPEC.md)、[库存与菜单交易](docs/INVENTORY_TRANSACTION_SPEC.md)、[单竿遛鱼](docs/FIGHTING_MODEL_SPEC.md)、[咬钩与漂相](docs/BITE_PRESENTATION_SPEC.md)、[竿架三竿](docs/MULTIROD_STAND_SPEC.md)及[技能成长与制作](docs/GROWTH_CRAFTING_SPEC.md)已形成研究/实现前置资料。这些规格尚不代表玩法已接通。研究文档按授权公开，原客户端、完整配置、伪代码、素材、个人存档和录屏不随文档发布。
 
 当前版本为 **0.3.1 寻找鱼群试玩**，包含鼠标蓄力抛竿、等待、提竿、控线遛鱼、入护与卖鱼的完整基础循环。提供松风湖、芦苇湾、白桦河三处水域、九个可切换钓位、八种鱼，渔具/食品/服装商店，背包、图鉴、垂钓记录和本地进度保存。
 

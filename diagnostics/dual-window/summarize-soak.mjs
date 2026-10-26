@@ -84,13 +84,15 @@ export function summarizeSoak(heartbeats, resourceSamples = []) {
       if(b.frames>=a.frames)drawRates.push((b.frames-a.frames)/(b.elapsedSeconds-a.elapsedSeconds));
     }
   }
-  const result={evidenceKind:'P0 2D diagnostic scene only',heartbeatCount:heartbeats.length,
+  // Heartbeats do not identify the scene dimension. Keep this label neutral;
+  // actual scene proof belongs to the same run's native scene report.
+  const result={evidenceKind:'P0 diagnostic scene only',heartbeatCount:heartbeats.length,
     observedSeconds:heartbeats.at(-1).elapsedSeconds-heartbeats[0].elapsedSeconds,requestedSeconds:heartbeats[0].requestedSeconds,
     ownerIdentityStable:true,committedSequence:sequence,committedValue:value,pausedClockViolations,activeDrawStalls,
     maximumViewRebuilds:Math.max(...heartbeats.map(row=>row.rebuilds)),runtimeVersions:[...new Set(heartbeats.map(row=>row.runtimeVersion).filter(item=>typeof item==='string'))],
     activeDrawCallbacksPerSecond:stats(drawRates),unclassifiedHeartbeats:heartbeats.length-phases.active.length-phases.paused.length,
     resourceIntervalsAccepted:resourceGroups.active.length+resourceGroups.paused.length,resourceIntervalsExcluded:excludedResourceIntervals,
-    phases:{},limits:['2D diagnostic results do not predict 3D scene performance or prove a final quality budget.',
+    phases:{},limits:['Heartbeat records alone do not establish scene dimension; inspect the same run scene report. Diagnostic scenes do not prove a final quality budget.',
       'Only exact owner/proven descendant samples should be supplied. DWM, preparation Lively and collector overhead are outside this process scope.',
       'Phase correlation rejects transitions, missing nearby evidence, revision changes and view rebuild intervals; UTC clocks must remain monotonic.',
       'Means are arithmetic means of available samples. CPU means require complete current-process delta coverage; missing metrics stay null.',

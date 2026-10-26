@@ -14,9 +14,9 @@
 
 [双窗口宿主](diagnostics/dual-window/README.md)已有唯一状态持有者、重建/重载与去重、可见桌面挂接、选择性挂起和自有静帧、会话/电源通知及显示变化屏障的分层证据。[启动准备](diagnostics/desktop-startup/README.md)24项规则与16项真实宿主检查通过，但实机均复用已有层、Shell准备消息0；首次登录缺层、Explorer重启、多屏和真实系统转换仍待验证。历史完整全屏和长轮各保留版本边界；最新[点击开始的完整全屏入口](diagnostics/host-policy/OPERATOR_FULLSCREEN.md)尚缺完成记录，不把独立显示结果当作全屏通过。
 
-已完成 RX 580 上 30/60 档、暂停及GPU/内存/呈现的[有限性能对照](docs/P0_RENDER_PERFORMANCE.md)，以及[二维桌面循环记录](docs/P0_DESKTOP_SOAK.md)；这些不是最终写实三维画质或长期稳定性的承诺。独立计数器/双窗口还没有接入正式游戏模拟和存档。
+已完成 RX 580 上 30/60 档、暂停及GPU/内存/呈现的[有限性能对照](docs/P0_RENDER_PERFORMANCE.md)、[二维桌面循环](docs/P0_DESKTOP_SOAK.md)和[占位三维十五分钟循环与资源记录](diagnostics/three-scene/README.md)；这些不是最终写实三维画质或长期稳定性的承诺。独立计数器/双窗口还没有接入正式游戏模拟和存档。
 
-[模块调查与反编译范围](docs/RF4_MODULE_RESEARCH.md)、[鼠标抛竿链路](docs/CASTING_FLOW_SPEC.md)、[浮漂装配](docs/FLOAT_RIG_ASSEMBLY_SPEC.md)及[库存与菜单交易规格](docs/INVENTORY_TRANSACTION_SPEC.md)已形成研究/实现前置资料。研究文档按授权公开，原客户端、完整配置、伪代码、素材、个人存档和录屏不随文档发布。
+[模块调查与反编译范围](docs/RF4_MODULE_RESEARCH.md)、[鼠标抛竿链路](docs/CASTING_FLOW_SPEC.md)、[浮漂装配](docs/FLOAT_RIG_ASSEMBLY_SPEC.md)、[库存与菜单交易](docs/INVENTORY_TRANSACTION_SPEC.md)及[单竿遛鱼规格](docs/FIGHTING_MODEL_SPEC.md)已形成研究/实现前置资料。研究文档按授权公开，原客户端、完整配置、伪代码、素材、个人存档和录屏不随文档发布。
 
 当前版本为 **0.3.1 寻找鱼群试玩**，包含鼠标蓄力抛竿、等待、提竿、控线遛鱼、入护与卖鱼的完整基础循环。提供松风湖、芦苇湾、白桦河三处水域、九个可切换钓位、八种鱼，渔具/食品/服装商店，背包、图鉴、垂钓记录和本地进度保存。
 

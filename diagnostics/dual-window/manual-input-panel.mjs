@@ -17,9 +17,10 @@ export function mountManualInput({documentId,container,send,onCancel}) {
     next.textContent=value.evidenceComplete?'六项动作已记录；还须正常退出并核对宿主记录。':
       value.heldLeftCancelObserved && !value.returnedDisabledObserved?'已记录按住后取消；松开左键并返回，保持交互关闭。':
       !input.enabled?'点进本窗口，点击上方“开启交互”，再在绿色区域操作。':
-      !complete.return && Object.entries(complete).filter(([name])=>name!=='return').every(([,done])=>done)?'在绿色区域按住左键，Alt+Tab 切窗、松开，再返回；不要重新启用。':
-      '请依次在绿色区域按下并松开左/右/中键、滚动滚轮，再按普通字母键。';
-    container.querySelector('#manual-state').textContent=`交互: ${input.enabled} · 按住: ${input.held.size}\n按下/松开: ${input.presses}/${input.releases} · 滚轮: ${input.wheels} · 键盘: ${input.keys}`;
+      !complete.return && Object.entries(complete).filter(([name])=>name!=='return').every(([,done])=>done)?'用鼠标左键按住绿色区域，看到“鼠标左键：按住”后，保持鼠标按住并 Alt+Tab 切窗、松开，再返回。':
+      '请依次在绿色区域按下并松开鼠标左/右/中键、滚动滚轮，再按普通字母键。';
+    const leftHeld=[...input.held.values()].includes(0);
+    container.querySelector('#manual-state').textContent=`交互: ${input.enabled} · 鼠标左键：${leftHeld?'按住':'未按住'} · 鼠标按住数: ${input.held.size}\n按下/松开: ${input.presses}/${input.releases} · 滚轮: ${input.wheels} · 键盘: ${input.keys}`;
     send(data);
   }
   function cancel(reason) {input.cancel(reason);release();report('cancel');}

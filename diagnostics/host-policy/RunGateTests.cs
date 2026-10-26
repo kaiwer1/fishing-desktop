@@ -1,0 +1,32 @@
+using System;
+using System.Threading;
+using FishingDesktop.Diagnostics.HostPolicy;
+static class RunGateTests
+{
+    static int passed,failed;
+    static void Need(bool value,string message){if(!value)throw new Exception(message);}
+    static void Equal(double actual,double expected){Need(Math.Abs(actual-expected)<0.000001,"Unexpected elapsed time.");}
+    static void Reject(Action action){bool rejected=false;try{action();}catch(ArgumentOutOfRangeException){rejected=true;}Need(rejected,"Invalid observation accepted.");}
+    static RunGate Running(){var gate=new RunGate();gate.Set(PauseReason.Startup,false);return gate;}
+    static void Test(string name,Action test){try{test();passed++;Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.WriteLine("FAIL "+name+": "+e.Message);}}
+    static int Main()
+    {
+        Test("startup denies activity and activation until explicitly cleared",()=>{var g=new RunGate();Need(!g.Snapshot().CanRun && !g.CanActivate(0),"Startup open.");g.Set(PauseReason.Startup,false);Need(g.CanActivate(g.Snapshot().Revision),"Startup not cleared.");});
+        Test("pause entry revokes input while resume requires a new current request",()=>{var g=Running();long old=g.Snapshot().Revision;var pause=g.Set(PauseReason.Manual,true);Need(pause.RevokeInput && !g.CanActivate(old),"Pause did not revoke.");var resume=g.Set(PauseReason.Manual,false);Need(!resume.RevokeInput && resume.State.CanRun && !g.CanActivate(old) && g.CanActivate(resume.State.Revision),"Resume accepted old request.");});
+        Test("multiple reasons are independent and partial clearing remains paused",()=>{var g=Running();g.Set(PauseReason.Manual,true);g.Set(PauseReason.Fullscreen,true);g.Set(PauseReason.Manual,false);Need(!g.Snapshot().CanRun,"Other reason lost.");g.Set(PauseReason.Fullscreen,false);Need(g.Snapshot().CanRun,"Clear failed.");});
+        Test("repeated native observations do not churn revisions or cancellation epochs",()=>{var g=Running();g.Set(PauseReason.Fullscreen,true);var before=g.Snapshot();var same=g.Set(PauseReason.Fullscreen,true);Need(!same.Changed && !same.RevokeInput && same.State.Revision==before.Revision && same.State.ControlEpoch==before.ControlEpoch,"Repeated signal changed authority.");});
+        Test("adding a reason while already paused still invalidates pending control",()=>{var g=Running();g.Set(PauseReason.Manual,true);long before=g.Snapshot().ControlEpoch;var next=g.Set(PauseReason.SessionUnavailable,true);Need(next.RevokeInput && next.State.ControlEpoch==before+1,"New barrier did not invalidate.");});
+        Test("environment replacement has no transient unpaused state",()=>{var g=Running();g.Set(PauseReason.Fullscreen,true);var next=g.Replace(PauseReason.Fullscreen|PauseReason.SessionUnavailable,PauseReason.SessionUnavailable);Need(next.Changed && next.RevokeInput && !next.State.CanRun && next.State.Reasons==PauseReason.SessionUnavailable,"Environment replacement failed.");});
+        Test("focus cancellation revokes input without pausing activity",()=>{var g=Running();var before=g.Snapshot();var next=g.CancelInput();Need(next.State.CanRun && next.RevokeInput && next.State.ControlEpoch==before.ControlEpoch+1 && !g.CanActivate(before.Revision),"Focus cancellation changed simulation policy.");});
+        Test("renderer loss and no-view reasons cannot clear manual pause",()=>{var g=Running();g.Set(PauseReason.Manual,true);g.Set(PauseReason.RendererUnavailable,true);g.Set(PauseReason.NoViews,true);g.Replace(PauseReason.RendererUnavailable|PauseReason.NoViews,PauseReason.None);Need(g.Snapshot().Reasons==PauseReason.Manual,"View recovery cleared manual pause.");});
+        Test("unknown and combined single-reason signals are rejected without mutation",()=>{var g=Running();long revision=g.Snapshot().Revision;Reject(()=>g.Set(PauseReason.None,true));Reject(()=>g.Set(PauseReason.Manual|PauseReason.Fullscreen,true));Reject(()=>g.Set((PauseReason)2048,true));Reject(()=>g.Replace(PauseReason.Manual,PauseReason.Fullscreen));Need(g.Snapshot().Revision==revision,"Rejected signal changed state.");});
+        Test("foreign threads cannot read or alter owner policy",()=>{var g=Running();int rejected=0;var t=new Thread(()=>{try{g.Snapshot();}catch(InvalidOperationException){rejected++;}try{g.Set(PauseReason.Manual,true);}catch(InvalidOperationException){rejected++;}});t.Start();t.Join();Need(rejected==2 && g.Snapshot().CanRun,"Foreign policy access accepted.");});
+        Test("active samples advance by monotonic elapsed time",()=>{var c=new ActiveClock(.25);Equal(c.Advance(10,true),0);Equal(c.Advance(10.05,true),.05);Equal(c.Advance(10.2,true),.15);Equal(c.ActiveSeconds,.2);});
+        Test("paused samples and the first resumed sample never catch up",()=>{var c=new ActiveClock(.25);c.Advance(1,true);c.Advance(1.1,true);c.Advance(1.2,false);c.Advance(100,false);c.Advance(101,true);Equal(c.ActiveSeconds,.1);Equal(c.Advance(101.05,true),.05);});
+        Test("startup paused time is discarded",()=>{var c=new ActiveClock(.25);c.Advance(1,false);c.Advance(500,true);Equal(c.ActiveSeconds,0);Equal(c.Advance(500.1,true),.1);});
+        Test("stalled active samples are bounded and record discarded time",()=>{var c=new ActiveClock(.25);c.Advance(1,true);Equal(c.Advance(11,true),.25);Equal(c.DroppedActiveSeconds,9.75);Equal(c.Advance(11.05,true),.05);});
+        Test("bad or reversed timestamps do not corrupt the previous baseline",()=>{var c=new ActiveClock(.25);c.Advance(10,true);Reject(()=>c.Advance(9,true));Reject(()=>c.Advance(Double.NaN,true));Reject(()=>c.Advance(Double.PositiveInfinity,true));Equal(c.Advance(10.1,true),.1);});
+        Test("clock step limits must be finite positive numbers",()=>{Reject(()=>new ActiveClock(0));Reject(()=>new ActiveClock(-1));Reject(()=>new ActiveClock(Double.NaN));Reject(()=>new ActiveClock(Double.PositiveInfinity));});
+        Console.WriteLine("RESULT "+passed+" passed / "+failed+" failed");return failed==0?0:1;
+    }
+}

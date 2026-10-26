@@ -168,10 +168,11 @@ sealed partial class DualWindowContext
                 Require(desktopAttachments==4 && desktopDetachments==3 && desktopLeases.Count==1 && owner.Snapshot().Sequence==2,"Explicit view recovery lost owner or duplicated state.");
                 checks.Add("explicit desktop view reopen after controlled loss retains committed state and deduplication");
             }
+            if(policySelfTest)await RunPolicyProbe(read,control,ownerId,request);
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),ownerId=ownerId,value=owner.Snapshot().Value,sequence=owner.Snapshot().Sequence,
                 realWebViewMessages=true,independentWindows=true,nativeInputTested=false,gameLoaded=false,
-                invisibleNoActivateMode=!visibleDesktopTest,browserCrashTested=false,desktopLayer=desktopMode
+                invisibleNoActivateMode=!visibleDesktopTest,browserCrashTested=false,desktopLayer=desktopMode,hostPolicy=policyResult
             }),Encoding.UTF8);
             Shutdown();
         }catch(Exception e){Fail(e);}

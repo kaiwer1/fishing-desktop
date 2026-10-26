@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using FishingDesktop.Diagnostics.HostPolicy;
 
 // The application controller owns this object; no Form owns the journal lifetime.
 sealed class DualWindowOwner : IDisposable
@@ -16,9 +17,10 @@ sealed class DualWindowOwner : IDisposable
     }
     readonly DurableCounterStore store;
     readonly ViewAuthority authority;
+    readonly RunGate runGate=new RunGate();
     readonly Dictionary<string,Ticket> views = new Dictionary<string,Ticket>();
     bool disposed;
-    public DualWindowOwner(string journal) { store=new DurableCounterStore(journal); authority=new ViewAuthority(store); }
+    public DualWindowOwner(string journal) { store=new DurableCounterStore(journal); authority=new ViewAuthority(store);runGate.Set(PauseReason.Startup,false); }
     void Check() { if(disposed)throw new ObjectDisposedException("DualWindowOwner"); authority.Snapshot(); }
     public OwnerSnapshot Snapshot() { Check(); return authority.Snapshot(); }
     public Ticket Open(bool canControl)
@@ -50,7 +52,15 @@ sealed class DualWindowOwner : IDisposable
     }
     public string Grant(Ticket ticket)
     {
-        return IsCurrent(ticket) && ticket.DocumentId!=null ? authority.Activate(ticket.ViewId) : null;
+        return IsCurrent(ticket) && ticket.DocumentId!=null && runGate.Snapshot().CanRun ? authority.Activate(ticket.ViewId) : null;
+    }
+    public RunState ActivityState(){Check();return runGate.Snapshot();}
+    public RunTransition SetPause(PauseReason reason,bool blocked){Check();return Apply(runGate.Set(reason,blocked));}
+    public RunTransition ReplacePause(PauseReason mask,PauseReason blocked){Check();return Apply(runGate.Replace(mask,blocked));}
+    RunTransition Apply(RunTransition transition)
+    {
+        if(transition.RevokeInput)foreach(var ticket in views.Values)authority.Revoke(ticket.ViewId);
+        return transition;
     }
     public void Revoke(Ticket ticket) { if(IsCurrent(ticket))authority.Revoke(ticket.ViewId); }
     public bool Cancel(Ticket ticket,string document,string lease,int epoch)
@@ -67,6 +77,7 @@ sealed class DualWindowOwner : IDisposable
     public OwnerReply Execute(Ticket ticket,string document,string lease,string request,int delta,long expected)
     {
         Check();
+        if(!runGate.Snapshot().CanRun)return new OwnerReply{Ok=false,Error="host-paused",Snapshot=authority.Snapshot()};
         // Detached tickets retain their unique ViewId, so even a late callback cannot
         // address a replacement window's authority.
         return authority.Execute(ticket.ViewId,document,lease,request,delta,expected);

@@ -1,6 +1,7 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy)
 $ErrorActionPreference='Stop'
 if($VisibleDesktop){$DesktopLayer=$true}
+if($HostPolicy -and $DesktopLayer){throw 'Run controlled policy and desktop tests separately.'}
 $taskBuild=& (Join-Path $PSScriptRoot 'build.ps1') -SdkDirectory $SdkDirectory -OutputDirectory $OutputDirectory -DesktopLayer:$DesktopLayer
 $taskRun=$taskBuild.outputDirectory
 $taskProfile=Join-Path $taskRun 'private-profile'
@@ -60,7 +61,7 @@ function Stop-DualOwned($Identity) {
   finally{if($null -ne $taskOwned){$taskOwned.Dispose()}}
 }
 try{
-  $taskMode=if($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
+  $taskMode=if($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
   $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList $taskMode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
   $taskRootIdentity=[pscustomobject]@{id=$taskProcess.Id;startTicks=$taskProcess.StartTime.ToUniversalTime().Ticks;path=$taskBuild.executable}
   $taskKnown[$taskRootIdentity.id]=$taskRootIdentity
@@ -71,9 +72,10 @@ try{
   }
   if($taskProcess.ExitCode -ne 0){throw ('Dual-window self-test exited '+$taskProcess.ExitCode+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  $taskExpectedChecks=if($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
+  $taskExpectedChecks=if($HostPolicy){15}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
   $taskDesktopReport=$null
+  if($HostPolicy -and (-not $taskReport.hostPolicy.passed -or -not $taskReport.hostPolicy.pausedClockStable -or -not $taskReport.hostPolicy.noAutomaticLeaseRestore)){throw 'Host policy report mismatch.'}
   if($DesktopLayer){
     $taskDesktopReport=Get-Content -LiteralPath (Join-Path $taskRun 'desktop-summary.json') -Raw | ConvertFrom-Json
     if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne 4 -or $taskDesktopReport.detachments -ne 4 -or
@@ -108,5 +110,5 @@ finally{
 }
 if($taskFailure){throw $taskFailure}
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;
-  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
+  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
   ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $taskRun 'summary.json')

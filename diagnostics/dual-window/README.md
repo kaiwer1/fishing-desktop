@@ -20,6 +20,7 @@
 | `DualWindowProbe.cs` | `--self-test` 的真实页面消息协议验证 |
 | `DualWindowDesktop.cs` / `desktop.manifest` | 可选隐藏桌面挂接、UI 线程定时核对、撤回及本进程 PerMonitorV2 声明 |
 | `DualWindowVisual.cs` / `visual-probe.mjs` | 显式可见自测、单个可取消动画排程与仅本 WebView 的像素检查 |
+| `DualWindowPolicy.cs` / `../host-policy/RunGate.cs` | 多原因暂停、单调活动时钟、owner 命令门禁及受控真实消息测试 |
 | `view.html` | 只呈现快照的页面和计数器提交按钮；`sendRaw` 仅用于重放过期诊断消息 |
 | `DualWindowOwnerTests.cs` | 无浏览器的生命周期、写锁和旧身份回归测试 |
 
@@ -96,6 +97,16 @@ $taskBuild
 20:46 增加失效隔离：只把本进程隐藏子窗口的实际宽度减小 1 像素，由真实 500 ms 定时器发现 `attached-window-changed` 并回退。失效视图关闭，交互 lease 被撤销，owner 身份、序号及写锁保持；旧 lease 命令经真实消息通道被拒绝，显式重开只读窗口后原回执仍防重。最终 **15 项检查通过**，四次挂接/四次撤回、一次受控视图失效、剩余 lease 为 0，无强制清理或专用进程残留，测试用 Lively 正常退出并恢复原设置。受控几何改变不是 Explorer 重启、系统显示器变化或浏览器崩溃的复现。
 
 ## 可见模式手动使用
+
+### 受控宿主暂停自测
+
+```powershell
+& ./diagnostics/dual-window/test-webviews.ps1 -SdkDirectory $taskSdk -OutputDirectory $taskOutput -HostPolicy
+```
+
+此模式与桌面自测分开运行，创建不可见的两个普通窗口。唯一 owner 维护原因位，暂停时拒绝命令、撤销授权并保留日志锁；恢复只重建活动时钟基准。宿主启用请求同时检查运行 revision，防止暂停前的回执在恢复后复活控制。页面只显示宿主快照，不能设置原因。
+
+2026-10-26 实测 15 项真实页面检查通过，其中新增手动暂停、多个受控原因、时钟冻结/恢复及迟到启用。纯 owner 测试增加到 14 项；普通模式 11 项、可见桌面 16 项回归通过，均正常退出且零专用残留。原生环境采样器另行通过自有全屏窗口试验，尚未接入此循环；实际系统信号与真实页面之间的联合验证仍待完成。边界及复现见[暂停策略说明](../host-policy/README.md)。
 
 ### 可见桌面渲染自测
 

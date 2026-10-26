@@ -73,6 +73,7 @@ sealed partial class DualWindowContext : ApplicationContext
     readonly bool automated;
     readonly bool desktopMode;
     readonly bool visibleDesktopTest;
+    readonly bool policySelfTest;
     readonly NotifyIcon tray;
     CoreWebView2Environment environment;
     bool stopping;
@@ -81,11 +82,12 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest)
     {
-        this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;
+        this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         owner=new DualWindowOwner(Path.Combine(root,"counter.journal.jsonl"));
         if(dispatcher.Handle==IntPtr.Zero)throw new InvalidOperationException("Owner dispatcher handle unavailable.");
+        InitializeActivityPolicy();
         if(!automated){
             var menu=new ContextMenuStrip();
             menu.Items.Add("Open read only",null,delegate{OpenFromUser(false);});
@@ -160,8 +162,9 @@ sealed partial class DualWindowContext : ApplicationContext
                     if(document==null)throw new InvalidOperationException("Diagnostic page module did not initialize.");
                     if(!Live(pane) || pane.Navigation!=navigation || pane.NavigationGeneration!=generation)return;
                     owner.Attach(pane.Ticket,document);pane.Ready=true;
+                    PolicyPageReady();
                     Send(pane,new {kind="role",documentId=document,role=canControl?"独立交互窗口":"独立只读窗口"});
-                    SendLease(pane,null);Broadcast();
+                    SendLease(pane,null);Broadcast();SendPolicy(pane);
                 }catch(Exception error){NavigationError(pane,navigation,generation,error);}
             };
             core.WebMessageReceived+=delegate(object sender,CoreWebView2WebMessageReceivedEventArgs e){
@@ -200,8 +203,8 @@ sealed partial class DualWindowContext : ApplicationContext
     }
     string BeginActivation(ProbeWindow pane)
     {
-        if(!Live(pane) || !pane.Ready || !pane.Ticket.CanControl || !Foreground(pane))return null;
-        string request=activation.Begin(pane.Ticket.ViewId,pane.Ticket.DocumentId,pane.NavigationGeneration);
+        if(!Live(pane) || !pane.Ready || !pane.Ticket.CanControl || !Foreground(pane) || !owner.ActivityState().CanRun)return null;
+        string request=activation.Begin(pane.Ticket.ViewId,pane.Ticket.DocumentId,pane.NavigationGeneration,owner.ActivityState().Revision);
         Send(pane,new{kind="prepare-activation",documentId=pane.Ticket.DocumentId,requestId=request,allowUnfocused=automated});
         return request;
     }
@@ -249,7 +252,7 @@ sealed partial class DualWindowContext : ApplicationContext
                 string requestId;object epoch;
                 if(!StringField(m,"requestId",out requestId) || !m.TryGetValue("cancellationEpoch",out epoch) || !(epoch is int))return;
                 bool accepted=activation.Complete(requestId,pane.Ticket.ViewId,document,pane.NavigationGeneration,
-                    document==pane.Ticket.DocumentId && Foreground(pane),(int)epoch,pane.Ticket.Epoch);
+                    document==pane.Ticket.DocumentId && Foreground(pane) && owner.ActivityState().CanRun,(int)epoch,pane.Ticket.Epoch,owner.ActivityState().Revision);
                 if(accepted){
                     pane.Ticket.Epoch=(int)epoch;
                     SendLease(pane,owner.Grant(pane.Ticket));
@@ -288,7 +291,7 @@ sealed partial class DualWindowContext : ApplicationContext
         if(stopping)return;
         closingPanes=new List<ProbeWindow>(windows.Values);
         foreach(var pane in closingPanes)Retire(pane);
-        stopping=true;deadline.Stop();StopDesktopWatch();
+        stopping=true;deadline.Stop();StopDesktopWatch();StopActivityPolicy();
         if(tray!=null)tray.Visible=false;
         // Defer WebView disposal until after the current browser event returns.
         dispatcher.BeginInvoke(new Action(FinishShutdown));
@@ -302,7 +305,7 @@ sealed partial class DualWindowContext : ApplicationContext
                 try{pane.Close();pane.Dispose();}catch(Exception){ExitCode=4;}
             }
         }finally{
-            try{try{WriteDesktopShutdownReport();}finally{owner.Dispose();}}finally{ExitThread();}
+            try{try{WriteDesktopShutdownReport();DisposeActivityPolicy();}finally{owner.Dispose();}}finally{ExitThread();}
         }
     }
     protected override void Dispose(bool disposing)
@@ -313,14 +316,15 @@ sealed partial class DualWindowContext : ApplicationContext
     [STAThread] static int Main(string[] args)
     {
         bool visibleDesktop=args.Length==1 && args[0]=="--desktop-visible-self-test";
+        bool policy=args.Length==1 && args[0]=="--policy-self-test";
         bool desktop=visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
-        bool automated=desktop || (args.Length==1 && args[0]=="--self-test");
+        bool automated=desktop || policy || (args.Length==1 && args[0]=="--self-test");
         if(args.Length>0 && !automated)return 5;
         try{
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

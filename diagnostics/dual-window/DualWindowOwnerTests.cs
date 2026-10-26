@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading;
+using FishingDesktop.Diagnostics.HostPolicy;
 
 static class DualWindowOwnerTests
 {
@@ -118,6 +119,40 @@ static class DualWindowOwnerTests
             Assert(!ActivationHandshake.CurrentNavigation(7,1,7,2,false),"Old generation considered current.");
             Assert(!ActivationHandshake.CurrentNavigation(7,2,7,2,true),"Pending reload considered current.");
             Assert(ActivationHandshake.CurrentNavigation(8,3,8,3,false),"Current failure would be ignored.");
+        });
+        Test("owner pause blocks grants and commands including receipt lookup until a fresh resume grant",delegate {
+            using(var owner=new DualWindowOwner(Journal())){
+                var control=View(owner,true);var lease=owner.Grant(control);var request=Id();
+                Assert(owner.Execute(control,control.DocumentId,lease,request,7,0).Ok,"Initial commit failed.");
+                owner.SetPause(PauseReason.Manual,true);
+                Assert(owner.Grant(control)==null,"Paused owner issued a lease.");
+                Reject(owner.Execute(control,control.DocumentId,lease,request,7,0),"host-paused");
+                owner.SetPause(PauseReason.Manual,false);
+                Reject(owner.Execute(control,control.DocumentId,lease,request,7,0),"inactive-lease");
+                var retry=owner.Execute(control,control.DocumentId,owner.Grant(control),request,7,0);
+                Assert(retry.Ok && retry.Receipt.Duplicate && owner.Snapshot().Sequence==1,"Resume lost deduplication.");
+            }
+        });
+        Test("view reconstruction does not clear owner pause or release its writer lock",delegate {
+            var path=Journal();using(var owner=new DualWindowOwner(path)){
+                var control=View(owner,true);string id=owner.Snapshot().OwnerId;
+                owner.SetPause(PauseReason.SessionUnavailable,true);owner.Close(control);control=View(owner,true);Locked(path);
+                Assert(owner.Grant(control)==null && !owner.ActivityState().CanRun && owner.Snapshot().OwnerId==id,"View reconstruction reset pause or owner.");
+                owner.SetPause(PauseReason.Manual,true);owner.SetPause(PauseReason.SessionUnavailable,false);
+                Assert(!owner.ActivityState().CanRun,"Clearing one pause resumed owner.");
+            }
+        });
+        Test("foreign thread cannot change owner pause state",delegate {
+            using(var owner=new DualWindowOwner(Journal())){
+                bool rejected=false;var thread=new Thread(()=>{try{owner.SetPause(PauseReason.Manual,true);}catch(InvalidOperationException){rejected=true;}});
+                thread.Start();thread.Join();Assert(rejected && owner.ActivityState().CanRun,"Foreign thread changed policy.");
+            }
+        });
+        Test("activation acknowledgements are bound to host run revision",delegate {
+            var gate=new ActivationHandshake();var request=gate.Begin("view","doc",1,10);
+            Assert(!gate.Complete(request,"view","doc",1,true,0,0,12),"Old run revision authorized input.");
+            Assert(!gate.Complete(request,"view","doc",1,true,0,0,10),"Rejected acknowledgement was reusable.");
+            request=gate.Begin("view","doc",1,12);Assert(gate.Complete(request,"view","doc",1,true,0,0,12),"Fresh host revision rejected.");
         });
         return failures==0?0:1;
     }

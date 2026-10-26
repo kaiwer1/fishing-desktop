@@ -68,6 +68,7 @@ sealed partial class DualWindowContext
         try{
             var read=windows[false];var control=windows[true];
             var a=await Ready(read);var b=await Ready(control);
+            if(sceneViewport){await RunViewportProbe(read,control);Shutdown();return;}
             if(desktopMode){CheckDesktop(read);checks.Add("real read-only WebView initializes inside a hidden existing desktop layer without activation");}
             if(startupPreparation){
                 Require(startupCalls==1 && startupRequestCalls<=1 && shellLayerRequest.MessageAttempts<=1,"Startup preparation violated its bounded initial path.");

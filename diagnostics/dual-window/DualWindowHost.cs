@@ -96,9 +96,9 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false,bool sceneViewport=false)
     {
-        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;this.threeScene=threeScene;
+        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;this.threeScene=threeScene;this.sceneViewport=sceneViewport;
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         this.nativePolicySelfTest=nativePolicySelfTest;
         this.rendererSelfTest=rendererSelfTest;
@@ -362,8 +362,9 @@ sealed partial class DualWindowContext : ApplicationContext
         bool displaySoak=args.Length>0 && args[0]=="--display-soak-self-test";
         int soak=0;bool soakRequested=threeSceneSoak || displaySoak || (args.Length>0 && args[0]=="--wallpaper-soak-self-test");
         if(soakRequested && (args.Length!=2 || !Int32.TryParse(args[1],out soak) || soak<120 || soak>7200))return 5;
-        bool threeScene=threeSceneSoak || (args.Length==1 && args[0]=="--three-scene-self-test");
-        bool displayOnly=threeScene || displaySoak || (args.Length==1 && args[0]=="--display-policy-self-test");
+        bool sceneViewport=args.Length==1 && args[0]=="--three-viewport-self-test";
+        bool threeScene=sceneViewport || threeSceneSoak || (args.Length==1 && args[0]=="--three-scene-self-test");
+        bool displayOnly=(threeScene && !sceneViewport) || displaySoak || (args.Length==1 && args[0]=="--display-policy-self-test");
         bool operatorStart=args.Length==1 && args[0]=="--wallpaper-operator-self-test";
         bool wallpaperPolicy=operatorStart || displayOnly || soakRequested || (args.Length==1 && args[0]=="--wallpaper-policy-self-test");
         bool visibleDesktop=manual || wallpaperPolicy || (args.Length==1 && args[0]=="--desktop-visible-self-test");
@@ -372,13 +373,13 @@ sealed partial class DualWindowContext : ApplicationContext
         bool policy=renderer || nativePolicy || (args.Length==1 && args[0]=="--policy-self-test");
         bool startup=args.Length==1 && args[0]=="--desktop-startup-self-test";
         bool desktop=startup || visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
-        bool automated=!manual && (desktop || policy || (args.Length==1 && args[0]=="--self-test"));
+        bool automated=!manual && (sceneViewport || desktop || policy || (args.Length==1 && args[0]=="--self-test"));
         if(args.Length>0 && !automated && !manual)return 5;
         try{
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene,sceneViewport)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

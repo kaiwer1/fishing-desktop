@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Web.WebView2.Core;
 
 // Real WebView2 transport/navigation tests, not native mouse acceptance tests.
 sealed partial class InputProbeHost
@@ -53,11 +54,18 @@ sealed partial class InputProbeHost
                 }
                 return; // ProcessFailed must terminate the host with exit code 4.
             }
+            var evidence=state["manualEvidence"] as Dictionary<string,object>;
+            Check(evidence!=null && (int)evidence["eventCount"]>0 && !(bool)evidence["evidenceComplete"] &&
+                !(bool)evidence["ordinaryWindowInputAccepted"] && (int)state["checklistComplete"]==0 && (bool)state["checklistFits"],"live-checklist-must-start-incomplete-and-fit");
+            using(var image=File.Create(Path.Combine(root,"checklist-page.png")))
+                await view.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,image);
+            probeChecks.Add("live evidence module loads, checklist starts incomplete and fits the diagnostic viewport");
             for(int attempt=0;attempt<3;attempt++) {
                 string previous=lifecycle.DocumentId;
                 ReloadPage();
                 state=await WaitState(s=>(string)s["documentId"]!=previous && (int)s["cancellationEpoch"]>0);
                 Check(!(bool)state["enabled"] && (int)state["held"]==0,"reload-must-be-disabled");
+                Check((int)state["checklistComplete"]==0,"reload-must-reset-live-checklist");
                 int before=(int)state["revision"];
                 // An old-document cancel with a huge revision must not mutate the new document either.
                 view.CoreWebView2.PostWebMessageAsJson(json.Serialize(new { kind="mode",documentId=previous,

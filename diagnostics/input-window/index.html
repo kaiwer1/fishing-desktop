@@ -3,26 +3,43 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Fishing Input Window Probe</title>
 <style>
-  body { margin:0; padding:36px; color:#ecf3e1; background:#142e32; font:22px system-ui; }
-  #surface { margin-top:24px; padding:28px; border:2px solid #87b7ae; min-height:230px; touch-action:none; }
-  pre { line-height:1.6; } small { color:#acc7c2; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:20px 24px; color:#ecf3e1; background:#142e32; font:16px system-ui; }
+  h1 { margin:0 0 4px; font-size:26px; } small { color:#acc7c2; font-size:13px; }
+  #next { min-height:42px; margin:12px 0; color:#ffdf94; }
+  #checklist { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; list-style:none; padding:0; margin:0; }
+  #checklist li { padding:10px 12px; border:1px solid #627a79; border-radius:4px; background:#203d40; font-size:14px; }
+  #checklist li[data-complete=true] { color:#caffcd; border-color:#6db479; background:#244932; }
+  #surface { margin-top:14px; padding:16px; border:2px solid #87b7ae; background:#214c42; min-height:200px; touch-action:none; user-select:none; }
+  #surface:focus { outline:3px solid #ffdf94; outline-offset:2px; }
+  pre { line-height:1.4; margin:10px 0 0; font:14px/1.4 ui-monospace,monospace; }
+  #boundary { margin:10px 0 0; color:#acc7c2; font-size:13px; }
 </style>
 <h1>独立输入窗口验证</h1>
 <small>不运行游戏，不读取存档。仅统计输入次数，不记录键盘内容。</small>
+<p id="next" role="status" aria-live="polite">正在加载记录工具；点进窗口后按 F8 开启交互。</p>
+<ul id="checklist" aria-label="本轮已记录的操作">
+  <li data-check="left">左键：待操作</li><li data-check="right">右键：待操作</li><li data-check="middle">中键：待操作</li>
+  <li data-check="wheel">滚轮：待操作</li><li data-check="key">普通按键：待操作</li><li data-check="return">按住切窗并返回：待操作</li>
+</ul>
 <div id="surface" tabindex="0" role="region" aria-label="输入测试区域">
-  左键 / 右键 / 中键 / 滚轮 / 键盘
+  请在此绿色区域内操作，启用后边框会亮起
   <pre id="state"></pre>
 </div>
+<p id="boundary">仅显示本页已记录的动作；重载后从头记录。全部完成后关闭窗口，再检查正常退出结果。尚未验收桌面图标或游戏。</p>
 <script type="module">
   import { InputSession } from './input-session.mjs';
   import { PageBridge } from './page-bridge.mjs';
   import { PageActivation } from './page-activation.mjs';
+  import { ManualEvidence } from './manual-evidence.mjs';
   const session = new InputSession(), surface=document.querySelector('#surface');
   const documentId=crypto.randomUUID(), bridge=new PageBridge(documentId,session);
   const activation=new PageActivation(documentId,session);
+  const evidence=new ManualEvidence();
   let lastModeReceipt=null,lastInputPreparation=null;
   window.inputProbeDocumentId=documentId;
-  window.inputProbeSnapshot=()=>({documentId,...session.snapshot(),focused:document.hasFocus(),lastModeReceipt,lastInputPreparation});
+  window.inputProbeSnapshot=()=>({documentId,...session.snapshot(),focused:document.hasFocus(),lastModeReceipt,lastInputPreparation,manualEvidence:evidence.snapshot(),checklistComplete:document.querySelectorAll('#checklist li[data-complete=true]').length,
+    checklistFits:document.querySelector('#boundary').getBoundingClientRect().bottom<=innerHeight && document.documentElement.scrollWidth<=innerWidth});
   const captured = new Set();
   function releaseCaptured() {
     for(const id of captured)if(surface.hasPointerCapture(id))surface.releasePointerCapture(id);
@@ -30,6 +47,23 @@
   }
   function report(kind, extra={}) {
     const data={kind,documentId,...session.snapshot(),...extra};
+    evidence.add(data);
+    const summary=evidence.snapshot();
+    const checks={left:summary.pointer.left.matchedPairs>0,right:summary.pointer.right.matchedPairs>0,middle:summary.pointer.middle.matchedPairs>0,
+      wheel:summary.trustedWheelEvents>0,key:summary.trustedKeyEvents>0,return:summary.heldLeftCancelObserved && summary.returnedDisabledObserved};
+    const labels={left:'左键',right:'右键',middle:'中键',wheel:'滚轮',key:'普通按键',return:'按住切窗并返回'};
+    for(const [name,complete] of Object.entries(checks)){
+      const item=document.querySelector(`[data-check="${name}"]`);item.dataset.complete=String(complete);item.textContent=`${labels[name]}：${complete?'已记录':'待操作'}`;
+    }
+    const next=document.querySelector('#next');
+    if(summary.evidenceComplete)next.textContent='六项动作已记录。请关闭窗口，完成本轮正常退出检查；这还不代表桌面集成通过。';
+    else if(summary.heldLeftCancelObserved && !summary.returnedDisabledObserved)next.textContent='已记录左键按住后取消。请松开左键后切回本窗口，保持交互关闭，不要再按 F8。';
+    else if(!data.enabled)next.textContent='点进窗口，按 F8 开启交互；确认下方“交互: true”，再在绿色区域内操作。';
+    else {
+      const missing=Object.keys(checks).find(name=>!checks[name]);
+      next.textContent=missing==='return'?'最后一步：在绿色区域按住左键，用 Alt+Tab 切到别的窗口，松开左键，再切回来；不要再按 F8。':
+        `下一项：${labels[missing]}。${missing==='key'?'在绿色区域按一个普通字母键，例如 A。':missing==='wheel'?'在绿色区域滚动滚轮。':'在绿色区域按下并松开一次。'}`;
+    }
     const totals=data.buttonTotals;
     document.querySelector('#state').textContent=`交互: ${data.enabled}\n按住: ${data.held}\n按下/松开: ${data.presses}/${data.releases}\n左: ${totals[0].down}/${totals[0].up} · 右: ${totals[2].down}/${totals[2].up} · 中: ${totals[1].down}/${totals[1].up}\n键盘: ${data.keys} · 滚轮: ${data.wheels}\n取消: ${data.cancellations} (${data.lastReason})`;
     window.chrome?.webview?.postMessage(data);

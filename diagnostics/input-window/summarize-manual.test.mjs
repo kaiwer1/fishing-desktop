@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {parseManualLog,summarizeManual} from './summarize-manual.mjs';
+import {ManualEvidence} from './manual-evidence.mjs';
 
 const id='11111111-1111-1111-1111-111111111111';
 function fixture(trusted=true) {
@@ -55,4 +56,23 @@ test('return snapshot alone cannot invent the missing held-cancel record',()=>{
 test('an untrusted release breaks a trusted hold chain',()=>{
   const rows=fixture(),release=structuredClone(rows.at(-2));release.data.kind='up';release.data.enabled=true;release.data.button=0;release.data.trusted=false;release.data.sourceEvent='pointerup';rows.splice(-2,0,release);
   assert.equal(summarizeManual(rows).heldLeftCancelObserved,false);
+});
+
+test('live incremental evidence matches offline summary after every event',()=>{
+  const rows=fixture(),evidence=new ManualEvidence();
+  assert.equal(evidence.snapshot().evidenceComplete,false);
+  for(let index=0;index<rows.length;index++){
+    evidence.add(rows[index].data);
+    assert.deepEqual(evidence.snapshot(),summarizeManual(rows.slice(0,index+1)));
+    assert.equal(evidence.snapshot().ordinaryWindowInputAccepted,false);
+  }
+});
+
+test('incremental evidence owns counter snapshots when a caller reuses objects',()=>{
+  const evidence=new ManualEvidence(),data=fixture()[0].data;evidence.add(data);
+  data.buttonTotals[0].down=9;data.presses=9;
+  const lower=fixture()[0].data;lower.presses=1;lower.buttonTotals[0].down=1;
+  assert.doesNotThrow(()=>evidence.add(lower));
+  lower.presses=0;lower.buttonTotals[0].down=0;
+  assert.throws(()=>evidence.add(lower),/backwards/);
 });

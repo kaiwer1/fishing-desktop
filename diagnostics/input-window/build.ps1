@@ -15,6 +15,7 @@ $taskPage=Join-Path $taskOutput 'page'
 New-Item -ItemType Directory -Path $taskPage -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'index.html'),(Join-Path $PSScriptRoot 'input-session.mjs'),(Join-Path $PSScriptRoot 'page-bridge.mjs') -Destination $taskPage
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'page-activation.mjs') -Destination $taskPage
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'manual-evidence.mjs') -Destination $taskPage
 $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platform:x64','/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll','/reference:System.Web.Extensions.dll',('/reference:'+(Join-Path $taskOutput 'Microsoft.Web.WebView2.Core.dll')),('/reference:'+(Join-Path $taskOutput 'Microsoft.Web.WebView2.WinForms.dll')),('/out:'+(Join-Path $taskOutput 'InputProbeHost.exe')),(Join-Path $PSScriptRoot 'InputProbeHost.cs'),(Join-Path $PSScriptRoot 'HostInstanceGuard.cs'),(Join-Path $PSScriptRoot 'InputHostLifecycle.cs'),(Join-Path $PSScriptRoot 'LifecycleProbe.cs'),(Join-Path $PSScriptRoot 'ManualInputProbe.cs'))
 $taskArgs+=(Join-Path $PSScriptRoot '../dual-window/ActivationHandshake.cs')
 & $taskCompiler @taskArgs

@@ -96,9 +96,9 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false)
     {
-        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;
+        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         this.nativePolicySelfTest=nativePolicySelfTest;
         this.rendererSelfTest=rendererSelfTest;
@@ -121,7 +121,7 @@ sealed partial class DualWindowContext : ApplicationContext
     async void Start()
     {
         try{
-            if(automated){if(nativePolicySelfTest)deadline.Interval=85000+soakSeconds*1000;deadline.Tick+=delegate{Fail(new InvalidOperationException("Dual-window self-test deadline exceeded."));};deadline.Start();}
+            if(automated){if(nativePolicySelfTest)deadline.Interval=85000+soakSeconds*1000+(nativeOperatorStart?180000:0);deadline.Tick+=delegate{Fail(new InvalidOperationException("Dual-window self-test deadline exceeded."));};deadline.Start();}
             StartManualLifetime();
             environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(root,"private-profile"));
             if(stopping)return;
@@ -359,7 +359,8 @@ sealed partial class DualWindowContext : ApplicationContext
         int soak=0;bool soakRequested=args.Length>0 && args[0]=="--wallpaper-soak-self-test";
         if(soakRequested && (args.Length!=2 || !Int32.TryParse(args[1],out soak) || soak<120 || soak>7200))return 5;
         bool displayOnly=args.Length==1 && args[0]=="--display-policy-self-test";
-        bool wallpaperPolicy=displayOnly || soakRequested || (args.Length==1 && args[0]=="--wallpaper-policy-self-test");
+        bool operatorStart=args.Length==1 && args[0]=="--wallpaper-operator-self-test";
+        bool wallpaperPolicy=operatorStart || displayOnly || soakRequested || (args.Length==1 && args[0]=="--wallpaper-policy-self-test");
         bool visibleDesktop=manual || wallpaperPolicy || (args.Length==1 && args[0]=="--desktop-visible-self-test");
         bool nativePolicy=manual || wallpaperPolicy || (args.Length==1 && args[0]=="--native-policy-self-test");
         bool renderer=args.Length==1 && args[0]=="--renderer-self-test";
@@ -372,7 +373,7 @@ sealed partial class DualWindowContext : ApplicationContext
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

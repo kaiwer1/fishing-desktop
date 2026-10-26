@@ -14,6 +14,7 @@ sealed partial class DualWindowContext
     Process nativeFixture;
     long nativeFixtureStart;
     object nativePolicyResult;
+    readonly bool nativeOperatorStart;
     [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr window,out uint pid);
     void StartNativePolicy()
     {
@@ -72,13 +73,13 @@ sealed partial class DualWindowContext
         StartNativePolicy();
         string path=Path.Combine(root,"NativeEnvironmentFixture.exe");
         if(!File.Exists(path))throw new InvalidOperationException("Build with NativePolicy to include the owned fixture.");
-        nativeFixture=Process.Start(new ProcessStartInfo(path,"\""+root.TrimEnd(Path.DirectorySeparatorChar)+"\""){
+        nativeFixture=Process.Start(new ProcessStartInfo(path,"\""+root.TrimEnd(Path.DirectorySeparatorChar)+"\""+(nativeOperatorStart?" --operator-start":"")){
             UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden});
         nativeFixtureStart=nativeFixture.StartTime.ToUniversalTime().Ticks;
         var timer=Stopwatch.StartNew();int full=0,consecutive=0,maxConsecutive=0,normal=0,restored=0;
         double frozen=-1;bool checkedPaused=false,checkedRestored=false;
         long fullRevision=-1;
-        while(!nativeFixture.HasExited && !stopping && timer.ElapsedMilliseconds<65000){
+        while(!nativeFixture.HasExited && !stopping && timer.ElapsedMilliseconds<65000+(nativeOperatorStart?180000:0)){
             string phase="";try{phase=File.ReadAllText(Path.Combine(root,"fixture-phase.txt"));}catch(IOException){}
             uint foregroundPid;GetWindowThreadProcessId(GetForegroundWindow(),out foregroundPid);
             bool ownFullscreen=foregroundPid==nativeFixture.Id && nativeSample!=null && nativeSample.Known && nativeSample.Fullscreen;
@@ -117,12 +118,18 @@ sealed partial class DualWindowContext
             }
             await Task.Delay(100);
         }
-        Require(!stopping && nativeFixture.HasExited && nativeFixture.ExitCode==0,"Owned native fixture failed or timed out.");
         File.WriteAllText(Path.Combine(root,"native-observation.json"),json.Serialize(new{
             normalSamples=normal,fullSamples=full,maximumConsecutiveFullSamples=maxConsecutive,restoredSamples=restored,
             checkedPaused=checkedPaused,checkedRestored=checkedRestored,lastSampleKnown=nativeSample!=null && nativeSample.Known,
-            lastSampleReason=nativeSample==null?"none":nativeSample.Reason,actualDisplayOrDpiChange=false}));
+            lastSampleReason=nativeSample==null?"none":nativeSample.Reason,actualDisplayOrDpiChange=false,
+            operatorStartRequested=nativeOperatorStart,fixtureExited=nativeFixture.HasExited,fixtureExitCode=nativeFixture.HasExited?(int?)nativeFixture.ExitCode:null}));
+        Require(!stopping && nativeFixture.HasExited && nativeFixture.ExitCode==0,"Owned native fixture failed or timed out.");
         Require(normal>=1 && maxConsecutive>=10 && restored>=3 && checkedPaused && checkedRestored,"Native/WebView joint result inconclusive; foreground samples missing.");
+        if(nativeOperatorStart){
+            var operatorReport=json.Deserialize<System.Collections.Generic.Dictionary<string,object>>(File.ReadAllText(Path.Combine(root,"fixture-operator.json")));
+            Require((bool)operatorReport["operatorStarted"] && (bool)operatorReport["normalExit"],"Operator fixture did not record its complete bounded start/exit.");
+            checks.Add("explicit operator-started fixture completes its native normal-fullscreen-normal interval before joint acceptance");
+        }
         Require(owner.Snapshot().OwnerId==ownerId && owner.Snapshot().Sequence==2,"Native policy changed owner or committed sequence.");
         checks.Add("native owned fullscreen observations automatically pause the real WebView owner and revoke page commands");
         checks.Add("confirmed native fullscreen samples freeze owner activity while committed state and storage lock remain intact");
@@ -136,6 +143,6 @@ sealed partial class DualWindowContext
         }
         nativePolicyResult=new{passed=true,nativeSignalsTested=true,controlledOwnFixture=true,fullSamples=full,
             maximumConsecutiveFullSamples=maxConsecutive,normalSamples=normal,restoredSamples=restored,
-            ownerClockFrozen=true,noAutomaticLeaseRestore=true,fixtureNormalExit=true,lockOrPowerTransitionTested=false};
+            ownerClockFrozen=true,noAutomaticLeaseRestore=true,fixtureNormalExit=true,lockOrPowerTransitionTested=false,operatorStartUsed=nativeOperatorStart};
     }
 }

@@ -25,6 +25,7 @@ $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/NativeSignalState.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/NativeSignalWindow.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/DisplayBarrier.cs')
 $taskArgs+=(Join-Path $PSScriptRoot 'DualWindowDisplay.cs')
+$taskArgs+=(Join-Path $PSScriptRoot 'DualWindowAvailability.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/RendererSuspender.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/BoundedFrameStream.cs')
 foreach($taskName in @('DesktopLayer.cs','Win32DesktopApi.cs')){$taskArgs+=(Join-Path $PSScriptRoot "../desktop-layer/$taskName")}

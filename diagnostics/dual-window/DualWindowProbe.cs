@@ -108,8 +108,11 @@ sealed partial class DualWindowContext
             checks.Add("read-only window recreation preserves interaction lease and receives later commits");
             control.Close();control.Dispose();read.Close();read.Dispose();LockHeld();
             Require(windows.Count==0 && owner.Snapshot().OwnerId==ownerId && owner.Snapshot().Sequence==2,"No-window interval terminated owner.");
+            double zeroWindowClock=activityClock.ActiveSeconds;
+            if(policySelfTest)Require(owner.ActivityState().Reasons==FishingDesktop.Diagnostics.HostPolicy.PauseReason.NoViews,"Zero windows were not paused.");
             // Message-loop yield proves continuation does not depend on an open Form.
-            await Task.Delay(50);
+            await Task.Delay(policySelfTest?250:50);
+            if(policySelfTest){Require(activityClock.ActiveSeconds==zeroWindowClock,"Zero-window activity clock advanced.");zeroWindowPolicyVerified=true;}
             read=await Open(false);control=await Open(true);a=await Ready(read);b=await Ready(control);
             SameOwner(a,ownerId,2,10);SameOwner(b,ownerId,2,10);Require(b["lease"]==null,"Both-window rebuild restored old authority.");
             checks.Add("zero-window interval retains controller, journal lock and committed sequence");
@@ -169,6 +172,7 @@ sealed partial class DualWindowContext
                 checks.Add("explicit desktop view reopen after controlled loss retains committed state and deduplication");
             }
             if(policySelfTest)await RunPolicyProbe(read,control,ownerId,request);
+            if(policySelfTest)await RunAvailabilityProbe(read,control,ownerId,request);
             if(nativePolicySelfTest){
                 if(displayOnlySelfTest){await PrepareNativePresentation(read);StartNativePolicy();}
                 else await RunNativePolicyProbe(read,control,ownerId,request);
@@ -180,7 +184,7 @@ sealed partial class DualWindowContext
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),ownerId=ownerId,value=owner.Snapshot().Value,sequence=owner.Snapshot().Sequence,
                 realWebViewMessages=true,independentWindows=true,nativeInputTested=false,gameLoaded=false,
-                invisibleNoActivateMode=!visibleDesktopTest,browserCrashTested=false,desktopLayer=desktopMode,hostPolicy=policyResult,nativePolicy=nativePolicyResult,nativeSignals=nativeSignalsResult,display=displayResult,renderer=rendererResult,soak=soakResult,nativeForegroundTestSkipped=displayOnlySelfTest
+                invisibleNoActivateMode=!visibleDesktopTest,browserCrashTested=false,desktopLayer=desktopMode,hostPolicy=policyResult,availability=availabilityResult,nativePolicy=nativePolicyResult,nativeSignals=nativeSignalsResult,display=displayResult,renderer=rendererResult,soak=soakResult,nativeForegroundTestSkipped=displayOnlySelfTest
             }),Encoding.UTF8);
             Shutdown();
         }catch(Exception e){Fail(e);}

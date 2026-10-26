@@ -14,6 +14,7 @@ sealed partial class DualWindowContext
     {
         if(!policySelfTest)return;
         SetHostPause(PauseReason.Startup,true);
+        UpdateViewAvailability();
         activityTimer.Tick+=delegate{
             try{activityClock.Advance(activityWatch.Elapsed.TotalSeconds,owner.ActivityState().CanRun);}
             catch(Exception error){Fail(error);}

@@ -149,6 +149,7 @@ sealed partial class DualWindowContext : ApplicationContext
         ProbeWindow existing;if(windows.TryGetValue(canControl,out existing))return existing;
         var pane=new ProbeWindow(this,owner.Open(canControl),automated,desktopMode);
         windows.Add(canControl,pane);
+        UpdateViewAvailability();
         try{
             if(pane.DesktopReadOnly)AttachDesktop(pane);else pane.Show();
             await pane.View.EnsureCoreWebView2Async(environment);
@@ -164,6 +165,7 @@ sealed partial class DualWindowContext : ApplicationContext
                 activation.Cancel(pane.Ticket.ViewId);
                 RendererNavigating(pane);
                 owner.Navigating(pane.Ticket);pane.Navigation=e.NavigationId;pane.Ready=false;
+                UpdateViewAvailability();
                 pane.NavigationGeneration=checked(pane.NavigationGeneration+1);pane.AwaitingNavigationStart=false;
             };
             core.NavigationCompleted+=async delegate(object sender,CoreWebView2NavigationCompletedEventArgs e){
@@ -182,6 +184,7 @@ sealed partial class DualWindowContext : ApplicationContext
                     if(document==null)throw new InvalidOperationException("Diagnostic page module did not initialize.");
                     if(!Live(pane) || pane.Navigation!=navigation || pane.NavigationGeneration!=generation)return;
                     owner.Attach(pane.Ticket,document);pane.Ready=true;
+                    UpdateViewAvailability();
                     PolicyPageReady();DisplayPageReady(pane);
                     if(!Live(pane))return;
                     Send(pane,new {kind="role",documentId=document,role=canControl?"独立交互窗口":"独立只读窗口"});
@@ -204,16 +207,21 @@ sealed partial class DualWindowContext : ApplicationContext
         if(Live(pane)){
             // Remove identity before child controls dispose or their asynchronous events return.
             activation.Cancel(pane.Ticket.ViewId);owner.Close(pane.Ticket);windows.Remove(pane.Ticket.CanControl);pane.Ready=false;
+            UpdateViewAvailability();
         }
         ReleaseDesktop(pane);
     }
     internal void Reload(ProbeWindow pane)
     {
-        if(!Live(pane) || pane.View.CoreWebView2==null)return;
+        if(PrepareReload(pane))pane.View.CoreWebView2.Reload();
+    }
+    bool PrepareReload(ProbeWindow pane)
+    {
+        if(!Live(pane) || pane.View.CoreWebView2==null)return false;
         RendererNavigating(pane);
         Revoke(pane);owner.Navigating(pane.Ticket);pane.Ready=false;pane.AwaitingNavigationStart=true;
         pane.NavigationGeneration=checked(pane.NavigationGeneration+1);
-        pane.View.CoreWebView2.Reload();
+        UpdateViewAvailability();return true;
     }
     internal void GrantFromUser(ProbeWindow pane)
     {

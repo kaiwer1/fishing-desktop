@@ -166,9 +166,9 @@ API 依据：[Form.ShowWithoutActivation](https://learn.microsoft.com/en-us/dotn
 
 ### 有时限的桌面循环
 
-显式传入 `-SoakSeconds 900` 会先运行完整联合模式，再按30秒暂停/恢复、180秒重建只读视图的顺序循环15分钟。可选范围120至7200秒；显示回退版最终要求32项检查及按实际重建次数计算的挂接/撤回一致（08:53历史版本26项，08:58通知版29项）。资源读取和阶段汇总见[循环测试说明](../../docs/P0_DESKTOP_SOAK.md)，纯汇总检查可运行 `node --test diagnostics/dual-window/summarize-soak.test.mjs`。心跳和进程原始数据留在仓库外。
+显式传入 `-SoakSeconds 900` 会先运行完整联合模式，再按30秒暂停/恢复、180秒重建只读视图的顺序循环15分钟。可选范围120至7200秒；视图可用性接入版最终要求34项检查及按实际重建次数计算的挂接/撤回一致（08:53历史版本26项，08:58通知版29项）。资源读取和阶段汇总见[循环测试说明](../../docs/P0_DESKTOP_SOAK.md)，纯汇总检查可运行 `node --test diagnostics/dual-window/summarize-soak.test.mjs`。心跳和进程原始数据留在仓库外。
 
-原生模式同时注册[本会话/电源通知](../host-policy/NATIVE_SIGNALS.md)，在原有检查后直接调用宿主回调进行受控锁定、挂起与恢复检查。加入显示阶段后，普通原生模式预期24项、完整可见联合31项；含循环32项。受控信号不改变真实系统会话/电源，报告明确保留 `actualLockOrPowerTransition=false`。通知接收窗口由 owner 持有，在只读视图重建时持续存在，退出时先解注册再销毁。心跳从异步绘制读取返回后复核策略代次，跨代次标记未分类；手动原因应用次数字段改为 `manualPolicyApplications`，避免把初次设置也误称一次状态转换。
+原生模式同时注册[本会话/电源通知](../host-policy/NATIVE_SIGNALS.md)，在原有检查后直接调用宿主回调进行受控锁定、挂起与恢复检查。加入显示与视图可用性阶段后，普通原生模式预期26项、完整可见联合33项；含循环34项。受控信号不改变真实系统会话/电源，报告明确保留 `actualLockOrPowerTransition=false`。通知接收窗口由 owner 持有，在只读视图重建时持续存在，退出时先解注册再销毁。心跳从异步绘制读取返回后复核策略代次，跨代次标记未分类；手动原因应用次数字段改为 `manualPolicyApplications`，避免把初次设置也误称一次状态转换。
 
 ### 独立显示回退模式
 
@@ -177,13 +177,15 @@ API 依据：[Form.ShowWithoutActivation](https://learn.microsoft.com/en-us/dotn
 ./diagnostics/dual-window/test-failure-report.ps1 -SdkDirectory <SDK目录> -OutputDirectory <已有仓库外目录>
 ```
 
-独立显示模式需要已有桌面层，包含可见画布、受控会话/电源以及[显示代次回退](../host-policy/DISPLAY_CHANGES.md)，共26项；明确不运行原生全屏窗，也不与完整/长循环开关混用。报告必须为 `nativeForegroundTestSkipped=true`、`nativePolicy=null`、`nativeFullscreenCombined=false`，不能拿该模式补写全屏通过。
+独立显示模式需要已有桌面层，包含可见画布、受控会话/电源、[显示代次回退](../host-policy/DISPLAY_CHANGES.md)及[视图可用性](../host-policy/VIEW_AVAILABILITY.md)，当前共28项；明确不运行原生全屏窗，也不与完整/长循环开关混用。报告必须为 `nativeForegroundTestSkipped=true`、`nativePolicy=null`、`nativeFullscreenCombined=false`，不能拿该模式补写全屏通过。
 
 2026-10-26 09:12，26项通过，五次挂接/撤回、11次自有呈现操作前台核对，当前 owner / sequence 2 / value 10 保留，零强制清理和专用残留。实际分辨率、缩放、多屏均未改变。先前两轮完整模式因原生全屏有效样本不足失败；第二轮记录普通17、全屏0、恢复90，本次独立结果不覆盖它们。普通11项回归通过；Lively正常退出后已有层仍可用，另一次直接复用也通过26项，隐藏模式15项通过。全新登录无已有层、Explorer重启恢复仍未知。
 
 测试失败现在另写私有 `failure-summary.json`，保留模式、退出码、是否强制清理以及清理是否确认。失败报告集成检查用有30秒上限的自有守卫进程占用同一实例门禁，第二宿主退出2、未创建日志/profile、正常清理；守卫正常退出。未通过的运行不会生成整轮成功的 `summary.json`；较早的 `webview-summary.json` 仅表示页面检查，不能替代最终清理结果。不会扩大清理范围。
 
 ### 普通窗口
+
+09:18 可用视图策略接入：零窗口或全部页面未就绪时停止诊断活动，至少一个当前页面就绪后才清除对应原因，保留其他暂停和 owner/写锁。真实策略17项、渲染21项、独立显示28项及普通11项通过，无强制清理或专用残留；该规则不代表所有加载中的 WebView 都被挂起。完整模式仍待全屏样本，详见[可用性边界](../host-policy/VIEW_AVAILABILITY.md)。
 
 在明确要测试普通窗口时，手动运行 `$taskBuild.executable`，不传 `--self-test`。只读窗口和交互窗口分别显示；点击交互窗口的 `Enable interaction` 后才能提交 +1。切到其他窗口会撤销授权，回来后需再次显式启用。窗口顶部及托盘可重开已关闭的窗口；标题栏关闭按钮只关闭该窗口。
 

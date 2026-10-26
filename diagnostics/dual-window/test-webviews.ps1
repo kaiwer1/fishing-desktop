@@ -82,7 +82,7 @@ try{
   $taskObservedExit=$taskProcess.ExitCode
   if($taskObservedExit -ne 0){throw ('Dual-window self-test exited '+$taskObservedExit+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  $taskExpectedChecks=if($DisplayPolicy){26}elseif($SoakSeconds -gt 0){32}elseif($WallpaperPolicy){31}elseif($RendererPolicy){19}elseif($NativePolicy){24}elseif($HostPolicy){15}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
+  $taskExpectedChecks=if($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
   $taskDesktopReport=$null
   $taskRebuilds=0
@@ -91,6 +91,7 @@ try{
     $taskRebuilds=[int]$taskReport.soak.viewRebuilds
   }
   if($HostPolicy -and (-not $taskReport.hostPolicy.passed -or -not $taskReport.hostPolicy.pausedClockStable -or -not $taskReport.hostPolicy.noAutomaticLeaseRestore)){throw 'Host policy report mismatch.'}
+  if($HostPolicy -and (-not $taskReport.availability.passed -or -not $taskReport.availability.zeroWindowsObserved -or -not $taskReport.availability.bothDocumentsReplaced -or -not $taskReport.availability.unavailableClockFrozen)){throw 'View availability report mismatch.'}
   if($NativePolicy -and -not $DisplayPolicy -and (-not $taskReport.nativePolicy.passed -or -not $taskReport.nativePolicy.fixtureNormalExit -or $taskReport.nativePolicy.maximumConsecutiveFullSamples -lt 10)){throw 'Native joint policy report mismatch.'}
   if($DisplayPolicy -and (-not $taskReport.nativeForegroundTestSkipped -or $null -ne $taskReport.nativePolicy)){throw 'Display mode must explicitly omit native foreground evidence.'}
   if($NativePolicy -and (-not $taskReport.nativeSignals.passed -or -not $taskReport.nativeSignals.notificationWindowRegistered -or -not $taskReport.nativeSignals.controlledCallbacks -or $taskReport.nativeSignals.actualLockOrPowerTransition)){throw 'Controlled native signal report mismatch.'}
@@ -140,5 +141,5 @@ if($taskFailure){
   throw $taskFailure
 }
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;
-  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;nativePolicy=$taskReport.nativePolicy;nativeForegroundTestSkipped=$taskReport.nativeForegroundTestSkipped;nativeSignals=$taskReport.nativeSignals;display=$taskReport.display;renderer=$taskReport.renderer;soak=$taskReport.soak;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
+  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;availability=$taskReport.availability;nativePolicy=$taskReport.nativePolicy;nativeForegroundTestSkipped=$taskReport.nativeForegroundTestSkipped;nativeSignals=$taskReport.nativeSignals;display=$taskReport.display;renderer=$taskReport.renderer;soak=$taskReport.soak;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
   ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $taskRun 'summary.json')

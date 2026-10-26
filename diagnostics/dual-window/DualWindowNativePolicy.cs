@@ -63,7 +63,7 @@ sealed partial class DualWindowContext
             rendererEnabled=true;RendererPageReady(read);await WaitRenderer(read,"active");
             // Foreground changes by the owned fixture are intentional. Verify
             // foreground around our own show/hide actions instead of globally.
-            desktopAllowForegroundChanges=!displayOnlySelfTest;
+            desktopAllowForegroundChanges=soakSeconds>0 || !displayOnlySelfTest;
         }
     }
     async Task RunNativePolicyProbe(ProbeWindow read,ProbeWindow control,string ownerId,string originalRequest)

@@ -1,5 +1,9 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak)
 $ErrorActionPreference='Stop'
+if($DisplaySoak){
+  if($OperatorFullscreen -or $StartupPreparation -or $DisplayPolicy -or $NativePolicy -or $WallpaperPolicy -or $VisibleDesktop -or $HostPolicy -or $RendererPolicy -or $SoakSeconds -lt 120){throw 'Choose independent display soak with at least 120 seconds and no other mode switches.'}
+  $DisplayPolicy=$true
+}
 if($OperatorFullscreen){
   if($StartupPreparation -or $DisplayPolicy -or $SoakSeconds -gt 0){throw 'Run operator fullscreen separately from startup/display/soak modes.'}
   $WallpaperPolicy=$true
@@ -8,7 +12,7 @@ if($StartupPreparation){
   if($VisibleDesktop -or $HostPolicy -or $NativePolicy -or $RendererPolicy -or $WallpaperPolicy -or $DisplayPolicy -or $SoakSeconds -gt 0){throw 'Run startup preparation separately from other policy/visible modes.'}
   $DesktopLayer=$true
 }
-if($DisplayPolicy){if($SoakSeconds -gt 0 -or $NativePolicy -or $WallpaperPolicy){throw 'Choose independent display checks or the full native/soak mode.'};$WallpaperPolicy=$true}
+if($DisplayPolicy){if((-not $DisplaySoak -and $SoakSeconds -gt 0) -or $NativePolicy -or $WallpaperPolicy){throw 'Choose independent display checks or the full native/soak mode.'};$WallpaperPolicy=$true}
 if($SoakSeconds -gt 0){if($SoakSeconds -lt 120){throw 'SoakSeconds must be zero or at least 120.'};$WallpaperPolicy=$true}
 if($WallpaperPolicy){$VisibleDesktop=$true;$NativePolicy=$true}
 if($VisibleDesktop){$DesktopLayer=$true}
@@ -77,7 +81,7 @@ function Stop-DualOwned($Identity) {
   finally{if($null -ne $taskOwned){$taskOwned.Dispose()}}
 }
 try{
-  $taskMode=if($OperatorFullscreen){'--wallpaper-operator-self-test'}elseif($StartupPreparation){'--desktop-startup-self-test'}elseif($DisplayPolicy){'--display-policy-self-test'}elseif($SoakSeconds -gt 0){'--wallpaper-soak-self-test '+$SoakSeconds}elseif($WallpaperPolicy){'--wallpaper-policy-self-test'}elseif($RendererPolicy){'--renderer-self-test'}elseif($NativePolicy){'--native-policy-self-test'}elseif($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
+  $taskMode=if($DisplaySoak){'--display-soak-self-test '+$SoakSeconds}elseif($OperatorFullscreen){'--wallpaper-operator-self-test'}elseif($StartupPreparation){'--desktop-startup-self-test'}elseif($DisplayPolicy){'--display-policy-self-test'}elseif($SoakSeconds -gt 0){'--wallpaper-soak-self-test '+$SoakSeconds}elseif($WallpaperPolicy){'--wallpaper-policy-self-test'}elseif($RendererPolicy){'--renderer-self-test'}elseif($NativePolicy){'--native-policy-self-test'}elseif($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
   $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList $taskMode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
   $taskRootIdentity=[pscustomobject]@{id=$taskProcess.Id;startTicks=$taskProcess.StartTime.ToUniversalTime().Ticks;path=$taskBuild.executable}
   $taskKnown[$taskRootIdentity.id]=$taskRootIdentity
@@ -90,7 +94,7 @@ try{
   $taskObservedExit=$taskProcess.ExitCode
   if($taskObservedExit -ne 0){throw ('Dual-window self-test exited '+$taskObservedExit+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  $taskExpectedChecks=if($OperatorFullscreen){34}elseif($StartupPreparation){16}elseif($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
+  $taskExpectedChecks=if($DisplaySoak){29}elseif($OperatorFullscreen){34}elseif($StartupPreparation){16}elseif($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
   $taskDesktopReport=$null
   $taskRebuilds=0

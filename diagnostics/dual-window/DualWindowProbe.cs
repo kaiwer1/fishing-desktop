@@ -171,10 +171,11 @@ sealed partial class DualWindowContext
             if(policySelfTest)await RunPolicyProbe(read,control,ownerId,request);
             if(nativePolicySelfTest)await RunNativePolicyProbe(read,control,ownerId,request);
             if(rendererSelfTest)await RunRendererProbe(read,control,ownerId,request);
+            if(soakSeconds>0)await RunSoak(read,control,ownerId,request);
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),ownerId=ownerId,value=owner.Snapshot().Value,sequence=owner.Snapshot().Sequence,
                 realWebViewMessages=true,independentWindows=true,nativeInputTested=false,gameLoaded=false,
-                invisibleNoActivateMode=!visibleDesktopTest,browserCrashTested=false,desktopLayer=desktopMode,hostPolicy=policyResult,nativePolicy=nativePolicyResult,renderer=rendererResult
+                invisibleNoActivateMode=!visibleDesktopTest,browserCrashTested=false,desktopLayer=desktopMode,hostPolicy=policyResult,nativePolicy=nativePolicyResult,renderer=rendererResult,soak=soakResult
             }),Encoding.UTF8);
             Shutdown();
         }catch(Exception e){Fail(e);}

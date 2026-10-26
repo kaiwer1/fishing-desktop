@@ -18,7 +18,7 @@ $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platfor
   '/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll',
   ('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.Core.dll')),('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.WinForms.dll')),('/out:'+$taskExecutable))
 if($DesktopLayer -or $NativePolicy){$taskArgs+=('/win32manifest:'+(Join-Path $PSScriptRoot 'desktop.manifest'))}
-foreach($taskName in @('ActivationHandshake.cs','DualWindowOwner.cs','DualWindowHost.cs','DualWindowProbe.cs','DualWindowDesktop.cs','DualWindowVisual.cs','DualWindowPolicy.cs','DualWindowNativePolicy.cs','DualWindowRenderer.cs','FrozenFrameSurface.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+foreach($taskName in @('ActivationHandshake.cs','DualWindowOwner.cs','DualWindowHost.cs','DualWindowProbe.cs','DualWindowDesktop.cs','DualWindowVisual.cs','DualWindowPolicy.cs','DualWindowNativePolicy.cs','DualWindowRenderer.cs','FrozenFrameSurface.cs','DualWindowSoak.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/RunGate.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/NativeEnvironment.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/RendererSuspender.cs')

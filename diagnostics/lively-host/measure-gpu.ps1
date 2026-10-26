@@ -1,7 +1,9 @@
+[CmdletBinding(DefaultParameterSetName='Lively')]
 param(
-  [Parameter(Mandatory=$true)][string]$LivelyExecutable,
+  [Parameter(Mandatory=$true,ParameterSetName='Lively')][string]$LivelyExecutable,
+  [Parameter(Mandatory=$true,ParameterSetName='Owner')][string]$OwnerExecutable,
   [Parameter(Mandatory=$true)][string]$OutputDirectory,
-  [ValidateRange(5,300)][int]$Seconds = 30,
+  [ValidateRange(5,7200)][int]$Seconds = 30,
   [ValidateRange(1,60)][int]$IntervalSeconds = 1,
   [ValidateSet('active','paused','unlabelled')][string]$Phase = 'unlabelled'
 )
@@ -18,9 +20,11 @@ function Assert-DirectOutputDirectory([string]$taskPath){
   }
 }
 if($IntervalSeconds -gt $Seconds){throw 'IntervalSeconds must not exceed Seconds.'}
-$taskExecutable=(Resolve-Path -LiteralPath $LivelyExecutable).Path
-if(-not (Test-Path -LiteralPath $taskExecutable -PathType Leaf)){throw 'LivelyExecutable must be a file.'}
-if([IO.Path]::GetFileName($taskExecutable) -ine 'Lively.exe'){throw 'Specify the intended Lively.exe host.'}
+$taskExpectedName=if($PSCmdlet.ParameterSetName -eq 'Owner'){'DualWindowHost.exe'}else{'Lively.exe'}
+$taskRequestedExecutable=if($PSCmdlet.ParameterSetName -eq 'Owner'){$OwnerExecutable}else{$LivelyExecutable}
+$taskExecutable=(Resolve-Path -LiteralPath $taskRequestedExecutable).Path
+if(-not (Test-Path -LiteralPath $taskExecutable -PathType Leaf)){throw 'The requested host executable must be a file.'}
+if([IO.Path]::GetFileName($taskExecutable) -ine $taskExpectedName){throw ('Specify the intended '+$taskExpectedName+' host.')}
 $taskOutput=(Resolve-Path -LiteralPath $OutputDirectory).Path
 if(-not (Test-Path -LiteralPath $taskOutput -PathType Container)){throw 'OutputDirectory must be an existing directory.'}
 $taskRepository=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..')).TrimEnd([IO.Path]::DirectorySeparatorChar)
@@ -31,10 +35,10 @@ Assert-DirectOutputDirectory $taskOutput
 
 # No host/window is started or changed. Enumeration remains internal; only the
 # exact requested host and proven descendants are written to the private report.
-$taskRootCandidates=@(Get-CimInstance Win32_Process -Filter "Name='Lively.exe'" -Property ProcessId,CreationDate,ExecutablePath -OperationTimeoutSec 5 | Where-Object {
+$taskRootCandidates=@(Get-CimInstance Win32_Process -Filter "Name='$taskExpectedName'" -Property ProcessId,CreationDate,ExecutablePath -OperationTimeoutSec 5 | Where-Object {
   $_.ExecutablePath -and $_.ExecutablePath.Equals($taskExecutable,[StringComparison]::OrdinalIgnoreCase)
 })
-if($taskRootCandidates.Count -ne 1){throw 'Expected exactly one running instance of the specified Lively executable.'}
+if($taskRootCandidates.Count -ne 1){throw 'Expected exactly one running instance of the specified host executable.'}
 $taskRootId=[int]$taskRootCandidates[0].ProcessId
 $taskRootProcess=Get-Process -Id $taskRootId
 try{$taskRootStart=$taskRootProcess.StartTime.ToUniversalTime()}
@@ -303,6 +307,7 @@ $taskSummary=[pscustomobject]@{
   startedAtUtc=$taskStarted.ToString('o');phaseLabel=$Phase;requestedSeconds=$Seconds;elapsedSeconds=$taskTimer.Elapsed.TotalSeconds
   minimumSampleIntervalSeconds=$IntervalSeconds;sampleCount=$taskSamples.Count;stopReason=$taskStopReason
   rootProcessId=$taskRootId;rootStartTimeUtc=$taskRootStart.ToString('o');livelyExecutable=$taskExecutable
+  ownerExecutable=$taskExecutable;ownerKind=$PSCmdlet.ParameterSetName
   logicalProcessors=[Environment]::ProcessorCount;counterClasses=$taskClassInfo
   cpuMachineNormalizedPercent=(Nullable-Stats @($taskSamples | ForEach-Object {$_.cpuMachineNormalizedPercent}))
   privateBytes=(Nullable-Stats @($taskSamples | ForEach-Object {$_.privateBytes}))

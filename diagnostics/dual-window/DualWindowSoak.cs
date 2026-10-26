@@ -42,11 +42,16 @@ sealed partial class DualWindowContext
                 if(!policy.CanRun && !renderer.Pending)Require(suspended && backend.Surface.IsShown,"Soak pause lost suspension or frozen frame.");
                 long? frames=null;
                 if(policy.CanRun && !suspended && !renderer.Pending)frames=Number(await VisualState(read),"frames");
+                // Awaiting page telemetry permits owner-thread notifications to
+                // run. Mark such a crossed revision unclassified for resources.
+                bool policyConsistent=owner.ActivityState().Revision==policy.Revision;
+                suspended=read.View.CoreWebView2.IsSuspended;
                 object row;
                 using(var process=Process.GetCurrentProcess()){
                     process.Refresh();row=new{kind="soak-heartbeat",atUtc=DateTime.UtcNow.ToString("o"),elapsedSeconds=clock.Elapsed.TotalSeconds,
                         requestedSeconds=soakSeconds,ownerId=ownerId,sequence=snapshot.Sequence,value=snapshot.Value,
                         manualPause=manual,canRun=policy.CanRun,reasons=policy.Reasons.ToString(),policyRevision=policy.Revision,
+                        policyConsistent=policyConsistent,
                         activeSeconds=activityClock.ActiveSeconds,droppedActiveSeconds=activityClock.DroppedActiveSeconds,
                         rendererOutcome=renderer.Outcome,rendererPending=renderer.Pending,isSuspended=suspended,frozenShown=backend.Surface.IsShown,
                         frozenWidth=backend.Surface.ImageSize.Width,frozenHeight=backend.Surface.ImageSize.Height,captures=backend.Captures,
@@ -65,7 +70,7 @@ sealed partial class DualWindowContext
         LockHeld();Require(owner.Snapshot().OwnerId==ownerId && owner.Snapshot().Sequence==2,"Soak lost owner or deduplication.");
         checks.Add("bounded desktop soak cycles preserve owner state clock suspension frozen frame and view reconstruction");
         soakResult=new{passed=true,requestedSeconds=soakSeconds,elapsedSeconds=clock.Elapsed.TotalSeconds,heartbeatCount=samples,
-            viewRebuilds=rebuilds,manualTransitions=transitions,diagnosticSceneOnly=true,resourceTrendAccepted=false};
+            viewRebuilds=rebuilds,manualPolicyApplications=transitions,diagnosticSceneOnly=true,resourceTrendAccepted=false};
         File.WriteAllText(Path.Combine(root,"soak-summary.json"),json.Serialize(soakResult),Encoding.UTF8);
     }
 }

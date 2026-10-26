@@ -1,5 +1,7 @@
 # P0：桌面输入路线与缺口
 
+2026-10-26 宿主启动边界补充：当前独立双窗口仍要求已有且核对通过的传统 WorkerW；空闲 Lively 只用于测试准备，不是已完成的产品启动器。官方[应用壁纸说明](https://github.com/lively-community/lively/wiki/Application-Wallpaper)明确列出多窗口不支持、运行中窗口尺寸由 Lively 管理等约束（页面编辑于2023年，具体行为仍须结合本机2.2.1.0核对）；[发行版差异](https://github.com/lively-community/lively/wiki/Differences-Between-Distributions)仍说明商店版不支持应用/游戏壁纸。因此不能直接把当前双窗可执行文件写进应用壁纸配置，就宣称补齐无已有层启动。后续须分别验证单一呈现进程与 owner/交互进程的分离，或独立桌面层的创建/失效路径；当前不自动创建 Explorer 图层，不替用户切换宿主发行版。
+
 2026-10-25 20:49：用当前 Computer Use 工具重新检查真实输入窗口，可访问性读取成功，但窗口截图仍 `FrameArrived timed out`、按钮点击 `coordinate input geometry is unavailable`。未完成任何鼠标事件，已关闭本次窗口并核对专用进程残留为 0。隐藏桌面 WebView 已扩展到 15 项生命周期/受控失效检查，仍不能替代鼠标或图标验收。
 
 2026-10-25 20:43：可选[双窗口桌面自测](../diagnostics/dual-window/README.md)已把真实只读 WebView 隐藏挂接现有 WorkerW，13 项消息/生命周期检查及三次挂接撤回通过，零专用残留；未显示可见壁纸，也未验证图标、真实鼠标、多屏或 Explorer 重启。没有现有层时拒绝，失效时整个诊断退出；仍需完成实际输入与产品宿主策略。

@@ -58,6 +58,10 @@
 
 挂起依据：[TrySuspendAsync](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2.trysuspendasync)、[Resume](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2.resume)。调用前需要控件不可见；挂起是尽力而为，拒绝和仍在执行的脚本必须分别处理。显示或部分 API 可自动恢复，因此需要复核状态。
 
+## 会话/电源通知补充
+
+新增[通知处理](NATIVE_SIGNALS.md)：独立隐藏顶层窗口注册当前会话，锁定、断开和注销分别锁存，电源恢复先阻止活动再查询新环境；不清除手动暂停，也不恢复旧输入授权。200 ms 轮询继续工作。`test-signals.ps1` 的12项固定检查、`test-notification-window.ps1` 的5项真实隐藏 HWND 注册/解注册及受控解码检查通过；没有实际改变系统会话或电源。默认普通窗口模式不启用原生通知，仅原生/完整联合自测模式启用。
+
 ## 官方依据
 
 08:29，`test-webviews.ps1 -WallpaperPolicy` 已把原生全屏、唯一 owner、可见桌面、静帧与 SDK 挂起联合，25项通过；341个连续确认全屏样本、四次挂接/撤回、一次捕获、零专用残留。显示/隐藏操作周围6次前台核对通过，测试全屏窗主动激活属于预期前台变化。资源收益、桌面最终合成、真实输入、锁屏/休眠与多屏仍未验收。

@@ -166,7 +166,9 @@ API 依据：[Form.ShowWithoutActivation](https://learn.microsoft.com/en-us/dotn
 
 ### 有时限的桌面循环
 
-显式传入 `-SoakSeconds 900` 会先运行完整联合模式，再按30秒暂停/恢复、180秒重建只读视图的顺序循环15分钟。可选范围120至7200秒；最终要求26项检查及按实际重建次数计算的挂接/撤回一致。资源读取和阶段汇总见[循环测试说明](../../docs/P0_DESKTOP_SOAK.md)，纯汇总检查可运行 `node --test diagnostics/dual-window/summarize-soak.test.mjs`。心跳和进程原始数据留在仓库外。
+显式传入 `-SoakSeconds 900` 会先运行完整联合模式，再按30秒暂停/恢复、180秒重建只读视图的顺序循环15分钟。可选范围120至7200秒；通知接入版最终要求29项检查及按实际重建次数计算的挂接/撤回一致（08:53的通知接入前版本为26项）。资源读取和阶段汇总见[循环测试说明](../../docs/P0_DESKTOP_SOAK.md)，纯汇总检查可运行 `node --test diagnostics/dual-window/summarize-soak.test.mjs`。心跳和进程原始数据留在仓库外。
+
+原生模式同时注册[本会话/电源通知](../host-policy/NATIVE_SIGNALS.md)，在原有检查后直接调用宿主回调进行受控锁定、挂起与恢复检查。普通原生模式现在预期21项、完整可见联合28项；含循环29项。受控信号不改变真实系统会话/电源，报告明确保留 `actualLockOrPowerTransition=false`。通知接收窗口由 owner 持有，在只读视图重建时持续存在，退出时先解注册再销毁。心跳从异步绘制读取返回后复核策略代次，跨代次标记未分类；手动原因应用次数字段改为 `manualPolicyApplications`，避免把初次设置也误称一次状态转换。
 
 ### 普通窗口
 

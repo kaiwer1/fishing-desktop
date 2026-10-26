@@ -18,13 +18,16 @@ sealed partial class DualWindowContext
     void StartNativePolicy()
     {
         nativeEnvironment=new NativeEnvironment();
+        StartNativeSignals();
         nativePolicyTimer.Tick+=delegate{try{SampleNativePolicy();}catch(Exception error){Fail(error);}};
         SampleNativePolicy();nativePolicyTimer.Start();
     }
     void SampleNativePolicy()
     {
+        if(stopping)return;
         nativeSample=nativeEnvironment.Capture(Screen.PrimaryScreen.Bounds);
-        ApplyPolicy(owner.ReplacePause(NativeEnvironment.EnvironmentMask,nativeSample.BlockingReasons));
+        nativeSignals.Observe(nativeSample);
+        ApplyPolicy(owner.ReplacePause(NativeSignalState.Mask,nativeSignals.BlockingReasons));
     }
     void StopNativePolicy()
     {
@@ -36,14 +39,17 @@ sealed partial class DualWindowContext
     void DisposeNativePolicy()
     {
         nativePolicyTimer.Dispose();
-        if(nativeFixture==null)return;
-        try{
-            if(!nativeFixture.HasExited && !nativeFixture.WaitForExit(3000)){
-                string path=Path.Combine(root,"NativeEnvironmentFixture.exe");
-                if(nativeFixture.StartTime.ToUniversalTime().Ticks==nativeFixtureStart && nativeFixture.MainModule.FileName.Equals(path,StringComparison.OrdinalIgnoreCase))nativeFixture.Kill();
-                nativeFixture.WaitForExit(3000);ExitCode=4;
+        try{DisposeNativeSignals();}finally{
+            if(nativeFixture!=null){
+                try{
+                    if(!nativeFixture.HasExited && !nativeFixture.WaitForExit(3000)){
+                        string path=Path.Combine(root,"NativeEnvironmentFixture.exe");
+                        if(nativeFixture.StartTime.ToUniversalTime().Ticks==nativeFixtureStart && nativeFixture.MainModule.FileName.Equals(path,StringComparison.OrdinalIgnoreCase))nativeFixture.Kill();
+                        nativeFixture.WaitForExit(3000);ExitCode=4;
+                    }
+                }finally{nativeFixture.Dispose();nativeFixture=null;}
             }
-        }finally{nativeFixture.Dispose();nativeFixture=null;}
+        }
     }
     async Task RunNativePolicyProbe(ProbeWindow read,ProbeWindow control,string ownerId,string originalRequest)
     {

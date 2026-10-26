@@ -48,7 +48,7 @@ sealed partial class DualWindowContext
             };
         }
         var bounds=Screen.PrimaryScreen.Bounds;
-        var found=desktopController.Discover(new DesktopRect(bounds.Left,bounds.Top,bounds.Right,bounds.Bottom));
+        var found=DiscoverForHost(new DesktopRect(bounds.Left,bounds.Top,bounds.Right,bounds.Bottom));
         if(!found.Available)throw new InvalidOperationException("Desktop layer unavailable: "+found.Reason);
         // Create only the native Form HWND here. Browser creation happens after
         // Attach; no Show()/ShowWindow() call is made for the desktop view.
@@ -118,7 +118,7 @@ sealed partial class DualWindowContext
             validations=desktopValidations,remainingLeases=desktopLeases.Count,foregroundUnchanged=foregroundUnchanged,
             recoveredViewLosses=desktopLosses,lastLossReason=desktopLastLossReason,
             hiddenOnly=!visibleDesktopTest,realDesktopAttachment=desktopAttachments>0,nativeInputTested=false,multipleMonitorsTested=false,
-            visual=visualResult,presentationChecks=presentationChecks,presentationChecksPassed=!presentationFailed,
+            visual=visualResult,presentationChecks=presentationChecks,presentationChecksPassed=!presentationFailed,startup=StartupSummary(),
             foregroundScope=ManualMode || wallpaperPolicySelfTest?"own-presentation-actions":"entire-test"
         }),Encoding.UTF8);
     }

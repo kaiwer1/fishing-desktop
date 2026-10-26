@@ -96,9 +96,9 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false)
     {
-        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;
+        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         this.nativePolicySelfTest=nativePolicySelfTest;
         this.rendererSelfTest=rendererSelfTest;
@@ -364,14 +364,15 @@ sealed partial class DualWindowContext : ApplicationContext
         bool nativePolicy=manual || wallpaperPolicy || (args.Length==1 && args[0]=="--native-policy-self-test");
         bool renderer=args.Length==1 && args[0]=="--renderer-self-test";
         bool policy=renderer || nativePolicy || (args.Length==1 && args[0]=="--policy-self-test");
-        bool desktop=visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
+        bool startup=args.Length==1 && args[0]=="--desktop-startup-self-test";
+        bool desktop=startup || visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
         bool automated=!manual && (desktop || policy || (args.Length==1 && args[0]=="--self-test"));
         if(args.Length>0 && !automated && !manual)return 5;
         try{
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

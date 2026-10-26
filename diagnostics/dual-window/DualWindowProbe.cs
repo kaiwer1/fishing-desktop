@@ -69,6 +69,10 @@ sealed partial class DualWindowContext
             var read=windows[false];var control=windows[true];
             var a=await Ready(read);var b=await Ready(control);
             if(desktopMode){CheckDesktop(read);checks.Add("real read-only WebView initializes inside a hidden existing desktop layer without activation");}
+            if(startupPreparation){
+                Require(startupCalls==1 && startupRequestCalls<=1 && shellLayerRequest.MessageAttempts<=1,"Startup preparation violated its bounded initial path.");
+                checks.Add("explicit startup preparation precedes native attachment and retains one request budget across view lifetime");
+            }
             if(visibleDesktopTest)await VerifyVisibleDesktop(read);
             string ownerId=owner.Snapshot().OwnerId;
             Require(owner.Snapshot().Sequence==0,"Self-test requires a new private journal.");

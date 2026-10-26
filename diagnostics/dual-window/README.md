@@ -1,5 +1,11 @@
 # P0：单一 owner 与两个独立窗口
 
+2026-10-26 11:35：显式[启动准备](../desktop-startup/README.md)模式16项通过；四次准备复用现有层，Shell消息0，四次挂接/撤回后零lease/专用进程残留。仅以 `-StartupPreparation` 独立自测，不与可见/暂停/长轮模式混合，不代表首次登录的缺层准备成功；默认及人工模式保持原路线。
+
+```powershell
+./diagnostics/dual-window/test-webviews.ps1 -SdkDirectory <SDK目录> -OutputDirectory <已有仓库外目录> -StartupPreparation
+```
+
 2026-10-26 10:37：新增[有时限桌面输入候选](MANUAL_INPUT.md)，现有层上的只读页和普通交互窗口共用owner。两轮无人60秒正常收尾、无残留，11项普通回归与28项独立显示回归通过；不包含人工输入、图标、原生全屏或新的桌面层创建验收。
 
 本诊断默认把一个只读页面和一个交互页面放在两个普通 WinForms 窗口中。可选桌面自测会把只读窗口隐藏挂接到已有 WorkerW；共享状态仍是独立计数器，不加载游戏或原存档。

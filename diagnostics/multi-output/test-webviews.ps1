@@ -16,9 +16,11 @@ try{
     $taskExit=$taskProcess.ExitCode
     if($taskExit -ne 0){throw ('Logical multi-output host exited '+$taskExit+'. Private output: '+$taskRun)}
     $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'multi-output-summary.json') -Raw | ConvertFrom-Json
-    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 10 -or $taskReport.logicalOutputCount -ne 2 -or $taskReport.simultaneousWebViews -ne 3 -or
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 15 -or $taskReport.logicalOutputCount -ne 2 -or $taskReport.simultaneousWebViews -ne 3 -or
        $taskReport.loadedDocuments -ne 6 -or $taskReport.sequence -ne 2 -or $taskReport.value -ne 10 -or -not $taskReport.singleOwner -or
        -not $taskReport.realWebViewMessages -or -not $taskReport.explicitNativeTestGrant -or -not $taskReport.logicalOutputsOnly -or
+       -not $taskReport.outputPolicyIntegrated -or -not $taskReport.syntheticObservationsOnly -or $taskReport.semanticGlobalMappingsVerified -ne 7 -or $taskReport.hostViewGeneration -ne 5 -or
+       $taskReport.topologyGeneration -ne 1 -or $taskReport.inputEpoch -le 0 -or $taskReport.controlTarget -ne 'right' -or -not $taskReport.policyCanRun -or $taskReport.controlEligible -or
        $taskReport.nativeInputTested -or $taskReport.desktopAttachmentTested -or $taskReport.physicalMonitorsTested -or $taskReport.dpiChanged -or $taskReport.gameLoaded){throw 'Logical multi-output evidence mismatch.'}
 }catch{$taskFailure=$_}
 finally{

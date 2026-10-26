@@ -1,6 +1,6 @@
 # P0：多输出可用性与全局暂停纯模型
 
-2026-10-26。`OutputPolicy`是独立owner线程模型，尚未接入实际DualWindowHost或本目录的WebView探针。它不枚举屏幕、不读取EDID、不挂接桌面、不推进游戏时钟，也不发输入lease。
+2026-10-26。`OutputPolicy`是独立owner线程模型，已在本目录隐藏WebView探针中做适配验证，尚未接入实际DualWindowHost。它不枚举屏幕、不读取EDID、不挂接桌面、不推进游戏时钟，也不发输入lease。
 
 ## 模型与API
 
@@ -34,4 +34,6 @@ Startup、Manual、SessionUnavailable、PowerSuspended、EnvironmentUnknown、To
 
 30项纯检查通过：单屏全屏与其他健康输出、全部不可用、全局位部分清除与原子替换、目标切换/移除/恢复、退役空档与代数高水位、旧拓扑/view回调、重复观察、非法/重复/中断配置原子拒绝、快照不可变、跨线程拒绝和激活查询无授权副作用。
 
-没有运行native或UI测试，没有接入每输出SDK挂起/watchdog、真实屏幕矩形或输入握手。现有DualWindowHost仍是PrimaryScreen与单只读输出。后续需要控制器将完整拓扑、可信观察与当前view绑定送入本模型，再独立应用每输出渲染和共享owner资格；不能只为多个输出反复设置/清除同一个全局Fullscreen位。
+19:07补充：隐藏三WebView适配15项通过，六次文档/五个跨窗口view代数，最终2/10、正常退出、零残留。源/文档/当前票据与实际页面policy确认已验证；全局位逐项语义映射、epoch变化撤销控制、目标新授权和局部/全局阻塞隔离经过真实页面消息。拓扑generation固定1、遮挡观察合成；拓扑替换仍只有纯检查。
+
+没有接入每输出SDK挂起/watchdog、真实屏幕矩形或产品输入握手，也没有模拟活动时钟。现有DualWindowHost仍是PrimaryScreen与单只读输出。后续需将真实拓扑和可信观测送入控制器，再独立应用每输出渲染与共享资格；不能只对多个输出反复设置/清除同一个全局Fullscreen位。

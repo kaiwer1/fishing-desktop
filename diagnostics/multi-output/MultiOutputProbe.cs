@@ -10,6 +10,7 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using FishingDesktop.Diagnostics.HostPolicy;
+using FishingDesktop.Diagnostics.MultiOutput;
 
 sealed class LogicalPane : Form
 {
@@ -19,6 +20,8 @@ sealed class LogicalPane : Form
     internal bool Ready;
     internal ulong Navigation;
     internal int Generation;
+    internal long PolicyView,PolicyTopology;
+    internal bool SyntheticFullscreen;
     readonly MultiOutputContext context;
     internal LogicalPane(MultiOutputContext context,string key,DualWindowOwner.Ticket ticket)
     {
@@ -42,6 +45,8 @@ sealed class MultiOutputContext : ApplicationContext
     readonly Dictionary<string,LogicalPane> panes=new Dictionary<string,LogicalPane>();
     readonly List<string> checks=new List<string>();
     readonly DualWindowOwner owner;
+    readonly OutputPolicy outputPolicy=new OutputPolicy();
+    long nextViewGeneration,lastAppliedInputEpoch=-1;
     CoreWebView2Environment environment;
     List<LogicalPane> closing;
     bool stopping,finished;
@@ -50,6 +55,8 @@ sealed class MultiOutputContext : ApplicationContext
     internal MultiOutputContext()
     {
         owner=new DualWindowOwner(Path.Combine(root,"counter.journal.jsonl"));
+        outputPolicy.ReplaceTopology(1,new[]{new OutputDefinition("left",-1920,0,1920,1080,96,96),new OutputDefinition("right",0,0,2560,1440,144,144)});
+        outputPolicy.SelectControlTarget("right");ApplyOutputPolicy();
         if(dispatcher.Handle==IntPtr.Zero)throw new InvalidOperationException("Dispatcher unavailable.");
         deadline.Tick+=delegate{Fail(new InvalidOperationException("Logical multi-output deadline exceeded."));};deadline.Start();
         dispatcher.BeginInvoke(new Action(Start));
@@ -79,10 +86,15 @@ sealed class MultiOutputContext : ApplicationContext
             var core=pane.View.CoreWebView2;core.Settings.AreBrowserAcceleratorKeysEnabled=false;core.Settings.AreDefaultContextMenusEnabled=false;core.Settings.AreDevToolsEnabled=false;
             core.SetVirtualHostNameToFolderMapping("fishing-multi.localhost",Path.Combine(root,"page"),CoreWebView2HostResourceAccessKind.DenyCors);
             core.NavigationStarting+=delegate(object sender,CoreWebView2NavigationStartingEventArgs e){
-                if(!Live(pane)||e.Uri!=PageUrl){e.Cancel=true;if(Live(pane))owner.Revoke(pane.Ticket);return;}owner.Navigating(pane.Ticket);pane.Ready=false;pane.Generation=checked(pane.Generation+1);pane.Navigation=e.NavigationId;
+                if(!Live(pane)||e.Uri!=PageUrl){e.Cancel=true;if(Live(pane))owner.Revoke(pane.Ticket);return;}
+                try{
+                    owner.Navigating(pane.Ticket);pane.Ready=false;pane.Generation=checked(pane.Generation+1);pane.Navigation=e.NavigationId;
+                    if(!pane.Ticket.CanControl){pane.PolicyTopology=outputPolicy.Snapshot().TopologyGeneration;pane.PolicyView=checked(++nextViewGeneration);
+                        Need(outputPolicy.BindView(pane.Key,pane.PolicyTopology,pane.PolicyView),"Current output view did not bind.");ApplyOutputPolicy();}
+                }catch(Exception error){Fail(error);}
             };
             core.NavigationCompleted+=async delegate(object sender,CoreWebView2NavigationCompletedEventArgs e){
-                if(!Live(pane)||e.NavigationId!=pane.Navigation)return;ulong navigation=pane.Navigation;int generation=pane.Generation;
+                if(!Live(pane)||e.NavigationId!=pane.Navigation)return;ulong navigation=pane.Navigation;int generation=pane.Generation;long policyView=pane.PolicyView,policyTopology=pane.PolicyTopology;
                 try{
                     if(!e.IsSuccess)throw new InvalidOperationException("Logical output navigation failed.");
                     string document=null;
@@ -91,7 +103,9 @@ sealed class MultiOutputContext : ApplicationContext
                         if(!Live(pane)||pane.Navigation!=navigation||pane.Generation!=generation)return;
                         document=json.Deserialize<string>(raw);if(document!=null)break;await Task.Delay(25);
                     }
-                    Need(document!=null,"Page module did not become ready.");owner.Attach(pane.Ticket,document);pane.Ready=true;loadedDocuments++;
+                    Need(document!=null,"Page module did not become ready.");
+                    if(!control)Need(pane.PolicyView==policyView&&pane.PolicyTopology==policyTopology&&outputPolicy.Observe(pane.Key,policyTopology,policyView,true,true,pane.SyntheticFullscreen,true),"Ready observation belongs to an old output view.");
+                    owner.Attach(pane.Ticket,document);pane.Ready=true;loadedDocuments++;ApplyOutputPolicy();
                     Send(pane,new{kind="role",documentId=document,role=control?"control":pane.Ticket.OutputKey});Broadcast();
                 }catch(Exception error){if(Live(pane)&&pane.Navigation==navigation&&pane.Generation==generation)Fail(error);}
             };
@@ -106,9 +120,48 @@ sealed class MultiOutputContext : ApplicationContext
     internal void Retire(LogicalPane pane)
     {
         if(!Live(pane))return;owner.Close(pane.Ticket);panes.Remove(pane.Key);pane.Ready=false;
+        if(!pane.Ticket.CanControl){outputPolicy.RetireView(pane.Key,pane.PolicyTopology,pane.PolicyView);ApplyOutputPolicy();}
     }
     void Send(LogicalPane pane,object message){if(Live(pane)&&pane.Ready)pane.View.CoreWebView2.PostWebMessageAsJson(json.Serialize(message));}
-    void Broadcast(){var snapshot=owner.Snapshot();foreach(var pane in panes.Values)Send(pane,new{kind="snapshot",documentId=pane.Ticket.DocumentId,snapshot=snapshot});}
+    void Broadcast(){var snapshot=owner.Snapshot();foreach(var pane in panes.Values){Send(pane,new{kind="snapshot",documentId=pane.Ticket.DocumentId,snapshot=snapshot});SendPolicy(pane);}}
+    void SendPolicy(LogicalPane pane)
+    {
+        var state=outputPolicy.Snapshot();var rows=new List<object>();foreach(var output in state.Outputs)rows.Add(new{key=output.Definition.Key,view=output.ViewGeneration,ready=output.Ready,
+            fullscreen=output.Fullscreen,localCanDraw=output.LocalCanDraw,canDraw=output.CanDraw});
+        Send(pane,new{kind="policy",documentId=pane.Ticket.DocumentId,revision=state.Revision,topology=state.TopologyGeneration,inputEpoch=state.InputEpoch,
+            canRun=state.CanRun,controlTarget=state.ControlTarget,controlEligible=state.ControlEligible,globalBlocks=state.GlobalBlocks.ToString(),outputs=rows.ToArray()});
+    }
+    void ApplyOutputPolicy()
+    {
+        var state=outputPolicy.Snapshot();PauseReason blocked=PauseReason.None;
+        // These are separate enums. Keep the bridge explicit rather than casting.
+        if((state.GlobalBlocks&OutputGlobalBlock.Startup)!=0)blocked|=PauseReason.Startup;
+        if((state.GlobalBlocks&OutputGlobalBlock.Manual)!=0)blocked|=PauseReason.Manual;
+        if((state.GlobalBlocks&OutputGlobalBlock.SessionUnavailable)!=0)blocked|=PauseReason.SessionUnavailable;
+        if((state.GlobalBlocks&OutputGlobalBlock.PowerSuspended)!=0)blocked|=PauseReason.PowerSuspended;
+        if((state.GlobalBlocks&OutputGlobalBlock.EnvironmentUnknown)!=0)blocked|=PauseReason.EnvironmentUnknown;
+        if((state.GlobalBlocks&OutputGlobalBlock.TopologyChanging)!=0)blocked|=PauseReason.DisplayChanging;
+        if((state.GlobalBlocks&OutputGlobalBlock.SceneFault)!=0)blocked|=PauseReason.SceneFault;
+        bool anyLocal=false;foreach(var output in state.Outputs)anyLocal|=output.LocalCanDraw;
+        if(state.Outputs.Count==0)blocked|=PauseReason.NoViews;else if(!anyLocal)blocked|=PauseReason.RendererUnavailable;
+        const PauseReason mask=PauseReason.Startup|PauseReason.Manual|PauseReason.SessionUnavailable|PauseReason.PowerSuspended|
+            PauseReason.EnvironmentUnknown|PauseReason.DisplayChanging|PauseReason.SceneFault|PauseReason.NoViews|PauseReason.RendererUnavailable;
+        owner.ReplacePause(mask,blocked);
+        if(lastAppliedInputEpoch!=state.InputEpoch){LogicalPane control;if(panes.TryGetValue("control",out control))owner.Revoke(control.Ticket);lastAppliedInputEpoch=state.InputEpoch;}
+        Need(owner.ActivityState().CanRun==state.CanRun,"Output aggregation and owner eligibility differ.");
+        foreach(var pane in panes.Values)SendPolicy(pane);
+    }
+    string GrantForTest(LogicalPane control)
+    {
+        var state=outputPolicy.Snapshot();LogicalPane target;
+        if(!Live(control)||!control.Ready||!control.Ticket.CanControl||state.ControlTarget==null||!panes.TryGetValue(state.ControlTarget,out target)||!Live(target)||!target.Ready)return null;
+        return outputPolicy.CanActivate(target.Key,state.TopologyGeneration,target.PolicyView,state.InputEpoch)?owner.Grant(control.Ticket):null;
+    }
+    void FullscreenForTest(LogicalPane pane,bool fullscreen)
+    {
+        pane.SyntheticFullscreen=fullscreen;
+        Need(outputPolicy.Observe(pane.Key,pane.PolicyTopology,pane.PolicyView,pane.Ready,true,fullscreen,true),"Synthetic observation targeted a stale view.");ApplyOutputPolicy();
+    }
     static bool Text(Dictionary<string,object> data,string key,out string value){object field;value=null;if(!data.TryGetValue(key,out field)||!(field is string))return false;value=(string)field;return true;}
     void Receive(LogicalPane pane,string source,string payload)
     {
@@ -141,29 +194,91 @@ sealed class MultiOutputContext : ApplicationContext
     }
     static void Reply(Dictionary<string,object> state,bool ok,string error){var r=Field(state,"lastReply");Need(r!=null&&(bool)r["Ok"]==ok&&(string)r["Error"]==error,"Unexpected logical command reply.");}
     async Task Same(LogicalPane pane,string id,long sequence,long value){await Wait(pane,s=>{var x=Field(s,"snapshot");return x!=null&&(string)x["OwnerId"]==id&&Number(x,"Sequence")==sequence&&Number(x,"Value")==value;});}
+    async Task PolicyOnPage(LogicalPane pane,bool canRun,string target,bool leftDraw,bool rightDraw)
+    {
+        long revision=outputPolicy.Snapshot().Revision;
+        Dictionary<string,object> lastPolicy=null;
+        try{
+            await Wait(pane,s=>{var p=Field(s,"policy");lastPolicy=p;if(p==null||Number(p,"revision")!=revision||(bool)p["canRun"]!=canRun||(string)p["controlTarget"]!=target)return false;
+                // JavaScriptSerializer may materialize nested JSON arrays as an
+                // ArrayList rather than object[]. Both implement IList.
+                var rows=p["outputs"] as System.Collections.IList;if(rows==null)return false;bool left=false,right=false;
+                foreach(var row in rows){var value=row as Dictionary<string,object>;if(value==null)return false;
+                    if((string)value["key"]=="left")left=(bool)value["canDraw"]==leftDraw;if((string)value["key"]=="right")right=(bool)value["canDraw"]==rightDraw;}
+                return left&&right;});
+        }catch{
+            try{
+                object actualRevision=null,rows=null,actualCanRun=null,actualTarget=null;
+                if(lastPolicy!=null){lastPolicy.TryGetValue("revision",out actualRevision);lastPolicy.TryGetValue("outputs",out rows);
+                    lastPolicy.TryGetValue("canRun",out actualCanRun);lastPolicy.TryGetValue("controlTarget",out actualTarget);}
+                File.WriteAllText(Path.Combine(root,"policy-ack-error.json"),json.Serialize(new{role=pane.Key,expectedRevision=revision,
+                    actualRevision=actualRevision is int||actualRevision is long?(long?)Convert.ToInt64(actualRevision):null,
+                    revisionType=actualRevision==null?null:actualRevision.GetType().FullName,
+                    outputsType=rows==null?null:rows.GetType().FullName,
+                    canRunType=actualCanRun==null?null:actualCanRun.GetType().FullName,
+                    targetType=actualTarget==null?null:actualTarget.GetType().FullName}),Encoding.UTF8);
+            }catch(Exception){}
+            throw;
+        }
+    }
     void Locked(){bool locked=false;try{using(var other=new DurableCounterStore(Path.Combine(root,"counter.journal.jsonl"))) { }}catch(IOException){locked=true;}Need(locked,"Views released the owner journal lock.");}
     async Task Probe(LogicalPane left,LogicalPane right,LogicalPane control)
     {
         await Ready(left);await Ready(right);await Ready(control);string id=owner.Snapshot().OwnerId;
+        Need(!owner.ActivityState().CanRun&&outputPolicy.Snapshot().GlobalBlocks==OutputGlobalBlock.Startup,"Startup output policy was bypassed.");
+        outputPolicy.SetGlobal(OutputGlobalBlock.Startup,false);ApplyOutputPolicy();await PolicyOnPage(control,true,"right",true,true);
         Need(left.Ticket.OutputKey=="left"&&right.Ticket.OutputKey=="right"&&!left.Ticket.CanControl&&!right.Ticket.CanControl&&control.Ticket.CanControl,"Logical roles differ from native tickets.");
         Need(owner.Grant(left.Ticket)==null&&owner.Grant(right.Ticket)==null,"Readonly output granted authority.");Locked();checks.Add("three real hidden pages have separate logical tickets and one owner without readonly authority");
-        string lease=owner.Grant(control.Ticket),request=Id();Need(lease!=null,"Explicit test authority missing.");
+        string lease=GrantForTest(control),request=Id();Need(lease!=null,"Explicit policy-eligible test authority missing.");
         Reply(await Command(left,lease,Id(),1,0),false,"read-only-view");Reply(await Command(right,lease,Id(),1,0),false,"read-only-view");checks.Add("both readonly pages reject real commands even when supplied the current control lease");
         Reply(await Command(control,lease,request,7,0),true,null);await Same(left,id,1,7);await Same(right,id,1,7);await Same(control,id,1,7);checks.Add("one real control command commits plus seven and broadcasts the same owner sequence to both outputs");
-        string oldLeft=left.Ticket.DocumentId;var oldTicket=left.Ticket;left.Close();left.Dispose();Locked();
+        string oldLeft=left.Ticket.DocumentId;var oldTicket=left.Ticket;long oldLeftView=left.PolicyView,topology=left.PolicyTopology,epoch=outputPolicy.Snapshot().InputEpoch;left.Close();left.Dispose();Locked();
         Need(Live(right)&&Live(control),"Closing one output retired another view.");left=await Open("left",false);await Same(left,id,1,7);
         Need(!owner.Attach(oldTicket,Id())&&owner.Grant(oldTicket)==null,"Retired output ticket affected its replacement.");owner.Close(oldTicket);Need(Live(left)&&Live(right)&&Live(control),"Old close retired a replacement.");
-        Reply(await Command(left,lease,Id(),1,1,oldLeft),false,"stale-document");checks.Add("single output replacement preserves the writer other output and control while old identity is rejected");
-        string oldRight=right.Ticket.DocumentId;right.View.CoreWebView2.Reload();await Wait(right,s=>(string)s["documentId"]!=oldRight);
-        Reply(await Command(right,lease,Id(),1,1,oldRight),false,"stale-document");await Same(left,id,1,7);checks.Add("readonly reload adopts a new document without changing the other output or owner");
-        var duplicate=await Command(control,lease,request,7,0);Reply(duplicate,true,null);Need((bool)Field(Field(duplicate,"lastReply"),"Receipt")["Duplicate"],"Repeated request was not a receipt replay.");checks.Add("control authority survives readonly replacement and replay returns the original receipt");
-        owner.SetPause(PauseReason.Manual,true);Reply(await Command(control,lease,Id(),1,1),false,"host-paused");Locked();checks.Add("global owner pause rejects real page writes while retaining its journal");
-        owner.SetPause(PauseReason.Manual,false);Reply(await Command(control,lease,Id(),1,1),false,"inactive-lease");lease=owner.Grant(control.Ticket);Need(lease!=null,"Explicit fresh test grant failed.");checks.Add("pause recovery does not restore the old control lease");
-        Reply(await Command(control,lease,Id(),3,1),true,null);await Same(left,id,2,10);await Same(right,id,2,10);await Same(control,id,2,10);checks.Add("fresh explicit control reaches two ten and both outputs acknowledge the same snapshot");
+        Need(left.PolicyView>oldLeftView&&!outputPolicy.Observe("left",topology,oldLeftView,true,true,false,true)&&!outputPolicy.RetireView("left",topology,oldLeftView),"Old output callbacks revived or retired a replacement.");
+        Need(outputPolicy.Snapshot().InputEpoch==epoch,"Non-target replacement invalidated healthy target input.");
+        Reply(await Command(left,lease,Id(),1,1,oldLeft),false,"stale-document");Reply(await Command(control,lease,request,7,0),true,null);
+        checks.Add("non-target replacement preserves control and rejects old document ticket and policy callbacks");
+        string oldRight=right.Ticket.DocumentId;long oldRightView=right.PolicyView;var cached=outputPolicy.Snapshot();right.View.CoreWebView2.Reload();await Wait(right,s=>(string)s["documentId"]!=oldRight);
+        Need(right.PolicyView>oldRightView&&!outputPolicy.CanActivate("right",cached.TopologyGeneration,oldRightView,cached.InputEpoch),"Target reload accepted old activation tokens.");
+        Reply(await Command(right,lease,Id(),1,1,oldRight),false,"stale-document");Reply(await Command(control,lease,Id(),1,1),false,"inactive-lease");
+        lease=GrantForTest(control);Need(lease!=null,"Reload did not allow a fresh explicit target grant.");checks.Add("target reload revokes old control and old activation tokens without replacing the owner");
+        cached=outputPolicy.Snapshot();Need(outputPolicy.SelectControlTarget("left"),"Target did not switch.");ApplyOutputPolicy();
+        Need(!outputPolicy.CanActivate("right",cached.TopologyGeneration,right.PolicyView,cached.InputEpoch),"Old target tokens survived selection.");
+        Reply(await Command(control,lease,Id(),1,1),false,"inactive-lease");lease=GrantForTest(control);Need(lease!=null,"Selected healthy output could not explicitly activate.");
+        checks.Add("target selection changes input epoch and requires fresh explicit policy-bound authority");
+        var duplicate=await Command(control,lease,request,7,0);Reply(duplicate,true,null);Need((bool)Field(Field(duplicate,"lastReply"),"Receipt")["Duplicate"],"Repeated request was not a receipt replay.");checks.Add("receipt replay after policy and view changes does not duplicate the confirmed counter");
+        var globals=new[]{OutputGlobalBlock.Startup,OutputGlobalBlock.Manual,OutputGlobalBlock.SessionUnavailable,OutputGlobalBlock.PowerSuspended,OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.TopologyChanging,OutputGlobalBlock.SceneFault};
+        var reasons=new[]{PauseReason.Startup,PauseReason.Manual,PauseReason.SessionUnavailable,PauseReason.PowerSuspended,PauseReason.EnvironmentUnknown,PauseReason.DisplayChanging,PauseReason.SceneFault};
+        for(int i=0;i<globals.Length;i++){
+            lease=GrantForTest(control);Need(lease!=null,"Global mapping case lacked healthy input.");outputPolicy.SetGlobal(globals[i],true);ApplyOutputPolicy();
+            Need(owner.ActivityState().Reasons==reasons[i],"Independent policy enums were mapped incorrectly.");Reply(await Command(control,lease,Id(),1,1),false,"host-paused");
+            outputPolicy.SetGlobal(globals[i],false);ApplyOutputPolicy();Reply(await Command(control,lease,Id(),1,1),false,"inactive-lease");
+        }
+        lease=GrantForTest(control);Need(lease!=null,"Mapping checks did not restore explicit eligibility.");checks.Add("seven global reasons map by semantics and clearing never restores an old lease");
+        FullscreenForTest(left,true);await PolicyOnPage(left,true,"left",false,true);await PolicyOnPage(right,true,"left",false,true);
+        Need(owner.ActivityState().CanRun&&GrantForTest(control)==null,"A covered target granted authority or stopped a healthy other output.");
+        Reply(await Command(control,lease,Id(),1,1),false,"inactive-lease");checks.Add("one synthetic covered output blocks target input while the other keeps owner activity eligible");
+        outputPolicy.SelectControlTarget("right");ApplyOutputPolicy();Reply(await Command(control,lease,Id(),1,1),false,"inactive-lease");lease=GrantForTest(control);Need(lease!=null,"Healthy other target could not explicitly activate.");
+        checks.Add("switching from a blocked target to the healthy output still requires a fresh grant");
+        FullscreenForTest(right,true);await PolicyOnPage(control,false,"right",false,false);Need(owner.ActivityState().Reasons==PauseReason.RendererUnavailable,"No drawable output did not block owner.");
+        Reply(await Command(control,lease,Id(),1,1),false,"host-paused");checks.Add("covering both synthetic outputs blocks owner commands without conflating local fullscreen with a global flag");
+        outputPolicy.SetGlobal(OutputGlobalBlock.Manual,true);ApplyOutputPolicy();FullscreenForTest(left,false);
+        await PolicyOnPage(control,false,"right",false,false);Need(owner.ActivityState().Reasons==PauseReason.Manual,"Local recovery cleared global manual pause.");
+        Reply(await Command(control,lease,Id(),1,1),false,"host-paused");checks.Add("recovering a local output cannot clear independent global manual pause");
+        outputPolicy.SetGlobal(OutputGlobalBlock.Manual,false);ApplyOutputPolicy();await PolicyOnPage(control,true,"right",true,false);
+        Need(GrantForTest(control)==null,"Still-covered target received input after manual recovery.");Reply(await Command(control,lease,Id(),1,1),false,"inactive-lease");
+        checks.Add("manual recovery permits the healthy output but does not activate a still-covered control target");
+        FullscreenForTest(right,false);Reply(await Command(control,lease,Id(),1,1),false,"inactive-lease");lease=GrantForTest(control);Need(lease!=null,"Recovered target did not permit fresh activation.");
+        Reply(await Command(control,lease,Id(),3,1),true,null);await Same(left,id,2,10);await Same(right,id,2,10);await Same(control,id,2,10);checks.Add("target recovery requires fresh authority and final two ten reaches every page");
         left.Close();left.Dispose();right.Close();right.Dispose();control.Close();control.Dispose();Locked();
-        Need(panes.Count==0&&owner.Snapshot().OwnerId==id,"Zero views replaced the owner.");left=await Open("left",false);await Same(left,id,2,10);Locked();checks.Add("closing all logical views retains state and storage until explicit host shutdown");
+        Need(panes.Count==0&&owner.Snapshot().OwnerId==id&&!owner.ActivityState().CanRun,"Zero views replaced the owner or kept activity eligible.");left=await Open("left",false);await Same(left,id,2,10);Locked();checks.Add("closing all views blocks activity but preserves storage and restored output snapshots");
+        var finalPolicy=outputPolicy.Snapshot();
         File.WriteAllText(Path.Combine(root,"multi-output-summary.json"),json.Serialize(new{passed=true,checks=checks.ToArray(),logicalOutputCount=2,
             simultaneousWebViews=3,loadedDocuments=loadedDocuments,runtimeVersion=environment.BrowserVersionString,sequence=2,value=10,singleOwner=true,realWebViewMessages=true,
+            outputPolicyIntegrated=true,syntheticObservationsOnly=true,semanticGlobalMappingsVerified=7,hostViewGeneration=nextViewGeneration,
+            topologyGeneration=finalPolicy.TopologyGeneration,policyRevision=finalPolicy.Revision,inputEpoch=finalPolicy.InputEpoch,
+            controlTarget=finalPolicy.ControlTarget,policyCanRun=finalPolicy.CanRun,controlEligible=finalPolicy.ControlEligible,
             explicitNativeTestGrant=true,nativeInputTested=false,logicalOutputsOnly=true,desktopAttachmentTested=false,
             physicalMonitorsTested=false,dpiChanged=false,gameLoaded=false}),Encoding.UTF8);
     }

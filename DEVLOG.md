@@ -2,6 +2,12 @@
 
 按日期倒序记录，时间以北京时间（Asia/Shanghai）为准。
 
+## 2026-10-26 19:07 · 多输出策略接入隐藏页面
+
+- 独立探针接入OutputPolicy，host跨窗口维护单调view代数，导航/Ready/退役绑定模型；全局位按语义映射owner门禁，input epoch变化撤销控制，明确新授权需当前目标/拓扑/view/epoch资格。
+- 15项真实消息通过：非目标重建保留控制、目标重载/切换撤旧权、七个全局位、单/双输出合成遮挡、Manual部分恢复隔离、终态2/10广播；六次文档、view高水位5、正常退出/清理、零残留。最终只恢复left、target=right不可用，owner资格可运行而control不可授权，区分两者。
+- 首轮因确认端只认object[]而实际为ArrayList，超时Exit4但正常清理；用IList接收真实容器并做纯JSON核对后复验通过，没有放宽策略检查。[边界](diagnostics/multi-output/OUTPUT_POLICY.md)：拓扑固定1、观察合成，无时钟/每输出SDK或真实全屏验收，实际Host仍单主屏，UI/玩法暂停。
+
 ## 2026-10-26 18:45 · 多输出暂停与目标资格模型
 
 - 新增独立OutputPolicy：拓扑整组原子替换、规范化逻辑输出、视图绑定/退役高水位、只读不可变快照；旧拓扑/view观察拒绝，退役空档的迟到ready不能复活。

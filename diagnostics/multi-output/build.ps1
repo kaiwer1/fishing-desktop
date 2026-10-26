@@ -16,7 +16,7 @@ $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platfor
     '/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll',
     ('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.Core.dll')),('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.WinForms.dll')),
     ('/win32manifest:'+(Join-Path $PSScriptRoot '../dual-window/desktop.manifest')),('/out:'+$taskExecutable),
-    (Join-Path $PSScriptRoot 'MultiOutputProbe.cs'),(Join-Path $PSScriptRoot '../dual-window/DualWindowOwner.cs'),
+    (Join-Path $PSScriptRoot 'MultiOutputProbe.cs'),(Join-Path $PSScriptRoot 'OutputPolicy.cs'),(Join-Path $PSScriptRoot '../dual-window/DualWindowOwner.cs'),
     (Join-Path $PSScriptRoot '../state-owner/DurableCounterStore.cs'),(Join-Path $PSScriptRoot '../state-owner/ViewAuthority.cs'),
     (Join-Path $PSScriptRoot '../host-policy/RunGate.cs'),(Join-Path $PSScriptRoot '../input-window/HostInstanceGuard.cs'))
 $taskCompile=@(& $taskCompiler @taskArgs);$taskExit=$LASTEXITCODE

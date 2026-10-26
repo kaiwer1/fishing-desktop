@@ -76,3 +76,15 @@ test('incremental evidence owns counter snapshots when a caller reuses objects',
   lower.presses=0;lower.buttonTotals[0].down=0;
   assert.throws(()=>evidence.add(lower),/backwards/);
 });
+
+test('native host deactivation before page blur preserves the held-return chain',()=>{
+  const rows=fixture();rows.at(-2).data.kind='mode';rows.at(-2).data.lastReason='host-deactivate';
+  const blur=structuredClone(rows.at(-2));blur.data.kind='cancel';blur.data.lastReason='blur';blur.data.cancellations++;blur.data.cancellationEpoch++;
+  rows.at(-1).data.cancellations++;rows.at(-1).data.cancellationEpoch++;rows.splice(-1,0,blur);
+  const result=summarizeManual(rows);assert.equal(result.heldLeftCancelObserved,true);assert.equal(result.returnedDisabledObserved,true);
+});
+
+test('ordinary host revocation cannot be relabeled later as a held focus cancellation',()=>{
+  const rows=fixture();rows.at(-2).data.kind='mode';rows.at(-2).data.lastReason='host-revoke';
+  assert.equal(summarizeManual(rows).heldLeftCancelObserved,false);
+});

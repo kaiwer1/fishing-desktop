@@ -111,7 +111,7 @@ sealed partial class DualWindowContext
         if(!desktopMode)return;
         bool foregroundUnchanged=GetForegroundWindow()==desktopInitialForeground;
         bool cleaned=desktopLeases.Count==0 && desktopAttachments==desktopDetachments && !desktopCleanupFailed;
-        bool foregroundSafe=wallpaperPolicySelfTest?!presentationFailed && presentationChecks>=3:foregroundUnchanged;
+        bool foregroundSafe=ManualMode?!presentationFailed:wallpaperPolicySelfTest?!presentationFailed && presentationChecks>=3:foregroundUnchanged;
         if(!cleaned || !foregroundSafe)ExitCode=4;
         File.WriteAllText(Path.Combine(root,"desktop-summary.json"),json.Serialize(new{
             passed=cleaned && foregroundSafe && ExitCode==0,attachments=desktopAttachments,detachments=desktopDetachments,
@@ -119,7 +119,7 @@ sealed partial class DualWindowContext
             recoveredViewLosses=desktopLosses,lastLossReason=desktopLastLossReason,
             hiddenOnly=!visibleDesktopTest,realDesktopAttachment=desktopAttachments>0,nativeInputTested=false,multipleMonitorsTested=false,
             visual=visualResult,presentationChecks=presentationChecks,presentationChecksPassed=!presentationFailed,
-            foregroundScope=wallpaperPolicySelfTest?"own-presentation-actions":"entire-test"
+            foregroundScope=ManualMode || wallpaperPolicySelfTest?"own-presentation-actions":"entire-test"
         }),Encoding.UTF8);
     }
 }

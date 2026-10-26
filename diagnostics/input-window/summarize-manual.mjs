@@ -29,12 +29,22 @@ async function readDirect(file) {
 async function main(args) {
   if(args.length<1 || args.length>2 || (args[1] && args[1]!=='--operator-confirmed'))throw new Error('Usage: node summarize-manual.mjs <private run> [--operator-confirmed]');
   const directory=await directDirectory(args[0]),session=JSON.parse(await readDirect(path.join(directory,'manual-session.json'))),runtime=JSON.parse(await readDirect(path.join(directory,'session-result.json')));
-  if(session.mode!=='bounded-manual-input' || runtime.mode!==session.mode || !count(session.requestedSeconds) || session.requestedSeconds<60 || session.requestedSeconds>600)throw new Error('Unexpected manual session metadata.');
+  if(!['bounded-manual-input','bounded-desktop-input'].includes(session.mode) || runtime.mode!==session.mode || !count(session.requestedSeconds) || session.requestedSeconds<60 || session.requestedSeconds>600)throw new Error('Unexpected manual session metadata.');
   if((session.unattended===true || runtime.unattended===true) && args[1])throw new Error('Unattended evidence cannot carry manual operator confirmation.');
   const normalize=value=>typeof value==='string'?path.win32.normalize(value).replace(/[\\/]+$/,'').toLowerCase():null;
-  if(normalize(runtime.outputDirectory)!==normalize(directory))throw new Error('Runtime evidence belongs to another private directory.');
-  const normalExit=runtime.normalExit===true && runtime.exitCode===0 && runtime.forcedCleanup===false && runtime.remainingDedicatedProcesses===0 && session.exitCode===0;
+  if(typeof runtime.outputDirectory!=='string' || normalize(await directDirectory(runtime.outputDirectory))!==normalize(directory))throw new Error('Runtime evidence belongs to another private directory.');
+  let normalExit=runtime.normalExit===true && runtime.exitCode===0 && runtime.forcedCleanup===false && runtime.remainingDedicatedProcesses===0 && session.exitCode===0;
+  if(session.mode==='bounded-desktop-input'){
+    const desktop=JSON.parse(await readDirect(path.join(directory,'desktop-summary.json')));
+    normalExit &&=desktop.passed===true && desktop.remainingLeases===0 && count(desktop.attachments) && desktop.attachments>0 && desktop.attachments===desktop.detachments &&
+      session.presentationShown===true && session.inputPanelReady===true;
+  }
   const summary=summarizeManual(parseManualLog(await readDirect(path.join(directory,'input-events.jsonl'))),{operatorConfirmed:args[1]==='--operator-confirmed',normalExit});
+  summary.hostMode=session.mode;
+  if(session.mode==='bounded-desktop-input'){
+    summary.evidenceKind='ordinary interaction window within a desktop diagnostic only';
+    summary.limits.push('Host-ineligible down/up/wheel/key records are downgraded before aggregation; live page hints do not replace this host check. Desktop icons, system menus and composition require separate acceptance.');
+  }
   const output=path.join(directory,`manual-aggregate-${Date.now()}.json`);await fs.writeFile(output,JSON.stringify(summary,null,2)+'\n',{flag:'wx'});
   console.log(JSON.stringify({output,summary},null,2));
 }

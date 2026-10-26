@@ -13,6 +13,7 @@ Copy-Item -LiteralPath (Join-Path $taskSdk 'LICENSE.txt') -Destination (Join-Pat
 $taskPage=Join-Path $taskRun 'page'
 New-Item -ItemType Directory -Path $taskPage | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'view.html'),(Join-Path $PSScriptRoot 'visual-probe.mjs'),(Join-Path $PSScriptRoot '../state-owner/lease-session.mjs') -Destination $taskPage
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'manual-input-panel.mjs'),(Join-Path $PSScriptRoot '../input-window/input-session.mjs'),(Join-Path $PSScriptRoot '../input-window/manual-evidence.mjs') -Destination $taskPage
 $taskExecutable=Join-Path $taskRun 'DualWindowHost.exe'
 $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platform:x64','/warnaserror+',
   '/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll',
@@ -26,6 +27,8 @@ $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/NativeSignalWindow.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/DisplayBarrier.cs')
 $taskArgs+=(Join-Path $PSScriptRoot 'DualWindowDisplay.cs')
 $taskArgs+=(Join-Path $PSScriptRoot 'DualWindowAvailability.cs')
+$taskArgs+=(Join-Path $PSScriptRoot 'DualWindowManual.cs')
+$taskArgs+=(Join-Path $PSScriptRoot 'ManualInputRecord.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/RendererSuspender.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/BoundedFrameStream.cs')
 foreach($taskName in @('DesktopLayer.cs','Win32DesktopApi.cs')){$taskArgs+=(Join-Path $PSScriptRoot "../desktop-layer/$taskName")}

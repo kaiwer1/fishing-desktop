@@ -12,7 +12,7 @@ sealed partial class DualWindowContext
     [DllImport("user32.dll",SetLastError=true)]static extern uint GetGuiResources(IntPtr process,uint flags);
     [DllImport("kernel32.dll")]static extern void SetLastError(uint error);
     static uint? GuiCount(IntPtr process,uint flags){SetLastError(0);uint count=GetGuiResources(process,flags);return count==0 && Marshal.GetLastWin32Error()!=0?(uint?)null:count;}
-    async Task RunSoak(ProbeWindow read,ProbeWindow control,string ownerId,string originalRequest)
+    async Task<ProbeWindow> RunSoak(ProbeWindow read,ProbeWindow control,string ownerId,string originalRequest)
     {
         var clock=Stopwatch.StartNew();int samples=0,rebuilds=0,transitions=0;double rebuildAt=180;
         bool? lastManual=null;long pausedRevision=-1;double pausedClock=-1;
@@ -72,5 +72,6 @@ sealed partial class DualWindowContext
         soakResult=new{passed=true,requestedSeconds=soakSeconds,elapsedSeconds=clock.Elapsed.TotalSeconds,heartbeatCount=samples,
             viewRebuilds=rebuilds,manualPolicyApplications=transitions,diagnosticSceneOnly=true,resourceTrendAccepted=false};
         File.WriteAllText(Path.Combine(root,"soak-summary.json"),json.Serialize(soakResult),Encoding.UTF8);
+        return read;
     }
 }

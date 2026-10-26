@@ -358,10 +358,11 @@ sealed partial class DualWindowContext : ApplicationContext
         int manualSeconds=0;bool manualUnattended=args.Length>0 && args[0]=="--manual-desktop-timeout-probe";
         bool manual=manualUnattended || (args.Length>0 && args[0]=="--manual-desktop-probe");
         if(manual && (args.Length!=2 || !Int32.TryParse(args[1],out manualSeconds) || manualSeconds<60 || manualSeconds>600))return 5;
+        bool threeSceneSoak=args.Length>0 && args[0]=="--three-scene-soak-self-test";
         bool displaySoak=args.Length>0 && args[0]=="--display-soak-self-test";
-        int soak=0;bool soakRequested=displaySoak || (args.Length>0 && args[0]=="--wallpaper-soak-self-test");
+        int soak=0;bool soakRequested=threeSceneSoak || displaySoak || (args.Length>0 && args[0]=="--wallpaper-soak-self-test");
         if(soakRequested && (args.Length!=2 || !Int32.TryParse(args[1],out soak) || soak<120 || soak>7200))return 5;
-        bool threeScene=args.Length==1 && args[0]=="--three-scene-self-test";
+        bool threeScene=threeSceneSoak || (args.Length==1 && args[0]=="--three-scene-self-test");
         bool displayOnly=threeScene || displaySoak || (args.Length==1 && args[0]=="--display-policy-self-test");
         bool operatorStart=args.Length==1 && args[0]=="--wallpaper-operator-self-test";
         bool wallpaperPolicy=operatorStart || displayOnly || soakRequested || (args.Length==1 && args[0]=="--wallpaper-policy-self-test");

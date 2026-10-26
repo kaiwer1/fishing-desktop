@@ -10,7 +10,7 @@ function stats(values, divisor = 1) {
     minimum: present.length ? Math.min(...present) : null, peak: present.length ? Math.max(...present) : null };
 }
 export function effectivePhase(row) {
-  if (row.policyConsistent === false || row.rendererPending) return null;
+  if (row.policyConsistent === false || row.viewConsistent === false || row.drawLoopRunning === false || row.rendererPending) return null;
   if (row.canRun === true && row.reasons === 'None' && row.isSuspended === false && row.rendererOutcome === 'active' && row.frozenShown === false) return 'active';
   if (row.manualPause === true && row.canRun === false && row.reasons === 'Manual' && row.isSuspended === true && row.rendererOutcome === 'suspended' && row.frozenShown === true) return 'paused';
   return null;
@@ -44,14 +44,18 @@ export function summarizeSoak(heartbeats, resourceSamples = []) {
   if (typeof owner !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(owner)) throw new Error('Invalid owner identity.');
   if(!Number.isSafeInteger(sequence) || sequence<0 || !Number.isSafeInteger(value))throw new Error('Invalid committed sequence/value.');
   let lastElapsed = -1, lastUtc = -Infinity, pausedClockViolations = 0;
+  const navigationSchema=heartbeats[0].viewNavigationGeneration!==undefined;
   for (let i=0;i<heartbeats.length;i++) {
     const row=heartbeats[i], utc=Date.parse(row.atUtc);
     if (row.kind !== 'soak-heartbeat' || row.ownerId !== owner || row.sequence !== sequence || row.value !== value) throw new Error('Mixed owner identities or committed state changes.');
     if (!valid(row.elapsedSeconds) || row.elapsedSeconds <= lastElapsed || !Number.isFinite(utc) || utc <= lastUtc) throw new Error('Non-monotonic or invalid heartbeat time.');
     if (!valid(row.activeSeconds)) throw new Error('Invalid activity clock.');
     if(!Number.isSafeInteger(row.policyRevision) || row.policyRevision<0 || !Number.isSafeInteger(row.rebuilds) || row.rebuilds<0)throw new Error('Invalid policy/view generation.');
+    if(navigationSchema && (!Number.isSafeInteger(row.viewNavigationGeneration) || row.viewNavigationGeneration<0 || typeof row.viewConsistent!=='boolean' || !(row.drawLoopRunning===null || typeof row.drawLoopRunning==='boolean')))throw new Error('Invalid navigation/renderer sample.');
+    if(!navigationSchema && row.viewNavigationGeneration!==undefined)throw new Error('Mixed navigation schemas.');
     const previous=heartbeats[i-1];
     if(previous && (row.policyRevision<previous.policyRevision || row.rebuilds<previous.rebuilds || row.activeSeconds<previous.activeSeconds))throw new Error('Policy/view generation or activity clock went backwards.');
+    if(navigationSchema && previous && row.rebuilds===previous.rebuilds && row.viewNavigationGeneration<previous.viewNavigationGeneration)throw new Error('Navigation generation went backwards.');
     if (previous && effectivePhase(previous)==='paused' && effectivePhase(row)==='paused' && row.policyRevision===previous.policyRevision && Math.abs(row.activeSeconds-previous.activeSeconds)>1e-6) pausedClockViolations++;
     lastElapsed=row.elapsedSeconds;lastUtc=utc;
   }
@@ -69,18 +73,20 @@ export function summarizeSoak(heartbeats, resourceSamples = []) {
     if(!left || !right || leftTarget-left.time>2500 || right.time-rightTarget>2500){excludedResourceIntervals++;continue;}
     const interval=timed.filter(item=>item.time>=left.time && item.time<=right.time).map(item=>item.row);
     const phase=effectivePhase(left.row);
-    if(!phase || interval.some(row=>effectivePhase(row)!==phase || row.policyRevision!==left.row.policyRevision || row.rebuilds!==left.row.rebuilds)){excludedResourceIntervals++;continue;}
+    if(!phase || interval.some(row=>effectivePhase(row)!==phase || row.policyRevision!==left.row.policyRevision || row.rebuilds!==left.row.rebuilds || row.viewNavigationGeneration!==left.row.viewNavigationGeneration)){excludedResourceIntervals++;continue;}
     resourceGroups[phase].push(sample);
   }
-  const drawRates=[];
+  const drawRates=[];let activeDrawStalls=0;
   for(let i=1;i<heartbeats.length;i++) {
     const a=heartbeats[i-1],b=heartbeats[i];
-    if(effectivePhase(a)==='active' && effectivePhase(b)==='active' && a.rebuilds===b.rebuilds && a.policyRevision===b.policyRevision && valid(a.frames) && valid(b.frames) && b.frames>=a.frames)
-      drawRates.push((b.frames-a.frames)/(b.elapsedSeconds-a.elapsedSeconds));
+    if(effectivePhase(a)==='active' && effectivePhase(b)==='active' && a.rebuilds===b.rebuilds && a.viewNavigationGeneration===b.viewNavigationGeneration && a.policyRevision===b.policyRevision && valid(a.frames) && valid(b.frames)){
+      if(b.frames<=a.frames)activeDrawStalls++;
+      if(b.frames>=a.frames)drawRates.push((b.frames-a.frames)/(b.elapsedSeconds-a.elapsedSeconds));
+    }
   }
   const result={evidenceKind:'P0 2D diagnostic scene only',heartbeatCount:heartbeats.length,
     observedSeconds:heartbeats.at(-1).elapsedSeconds-heartbeats[0].elapsedSeconds,requestedSeconds:heartbeats[0].requestedSeconds,
-    ownerIdentityStable:true,committedSequence:sequence,committedValue:value,pausedClockViolations,
+    ownerIdentityStable:true,committedSequence:sequence,committedValue:value,pausedClockViolations,activeDrawStalls,
     maximumViewRebuilds:Math.max(...heartbeats.map(row=>row.rebuilds)),runtimeVersions:[...new Set(heartbeats.map(row=>row.runtimeVersion).filter(item=>typeof item==='string'))],
     activeDrawCallbacksPerSecond:stats(drawRates),unclassifiedHeartbeats:heartbeats.length-phases.active.length-phases.paused.length,
     resourceIntervalsAccepted:resourceGroups.active.length+resourceGroups.paused.length,resourceIntervalsExcluded:excludedResourceIntervals,

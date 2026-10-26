@@ -71,3 +71,19 @@ test('policy view generations and activity clocks cannot go backwards',()=>{
   assert.throws(()=>summarizeSoak([beat(0,'active',{rebuilds:1}),beat(2)]),/backwards/);
   assert.throws(()=>summarizeSoak([beat(0,'active',{activeSeconds:4}),beat(2)]),/backwards/);
 });
+
+test('cross-navigation telemetry and stopped loops are not effective phases',()=>{
+  assert.equal(effectivePhase(beat(0,'active',{viewConsistent:false})),null);
+  assert.equal(effectivePhase(beat(0,'active',{drawLoopRunning:false})),null);
+});
+
+test('navigation boundaries exclude resource and draw comparisons even when rebuild count is unchanged',()=>{
+  const rows=[0,2,4,6,8,10].map(x=>beat(x,'active',{viewNavigationGeneration:x>=4?2:1,viewConsistent:true,drawLoopRunning:true}));
+  assert.equal(summarizeSoak(rows,[sample(2),sample(5)]).resourceIntervalsAccepted,0);
+  assert.equal(summarizeSoak(rows).activeDrawCallbacksPerSecond.samples,4);
+  assert.throws(()=>summarizeSoak([rows[0],beat(2)]),/navigation/);
+});
+
+test('stable active frame stalls are recorded without hiding the failed progress invariant',()=>{
+  const result=summarizeSoak([beat(0,'active',{frames:4}),beat(2,'active',{frames:4})]);assert.equal(result.activeDrawStalls,1);
+});

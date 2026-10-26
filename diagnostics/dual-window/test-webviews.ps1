@@ -105,7 +105,7 @@ try{
   $taskDesktopReport=$null
   $taskRebuilds=0
   if($SoakSeconds -gt 0){
-    if(-not $taskReport.soak.passed -or $taskReport.soak.requestedSeconds -ne $SoakSeconds -or $taskReport.soak.elapsedSeconds -lt $SoakSeconds){throw 'Soak report mismatch.'}
+    if(-not $taskReport.soak.passed -or $taskReport.soak.requestedSeconds -ne $SoakSeconds -or $taskReport.soak.elapsedSeconds -lt $SoakSeconds -or $taskReport.soak.drawProgressChecks -lt 3){throw 'Soak report mismatch.'}
     $taskRebuilds=[int]$taskReport.soak.viewRebuilds
   }
   if($HostPolicy -and (-not $taskReport.hostPolicy.passed -or -not $taskReport.hostPolicy.pausedClockStable -or -not $taskReport.hostPolicy.noAutomaticLeaseRestore)){throw 'Host policy report mismatch.'}

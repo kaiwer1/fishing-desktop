@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -16,6 +17,7 @@ sealed partial class DualWindowContext
     {
         var clock=Stopwatch.StartNew();int samples=0,rebuilds=0,transitions=0;double rebuildAt=180;
         bool? lastManual=null;long pausedRevision=-1;double pausedClock=-1;
+        var progress=new DrawProgressGuard();
         string path=Path.Combine(root,"soak-heartbeats.jsonl");
         using(var writer=new StreamWriter(new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.Read),new UTF8Encoding(false))){
             writer.AutoFlush=true;
@@ -41,17 +43,24 @@ sealed partial class DualWindowContext
                 bool suspended=read.View.CoreWebView2.IsSuspended;
                 if(!policy.CanRun && !renderer.Pending)Require(suspended && backend.Surface.IsShown,"Soak pause lost suspension or frozen frame.");
                 long? frames=null;
-                if(policy.CanRun && !suspended && !renderer.Pending)frames=Number(await VisualState(read),"frames");
+                string currentDocument=read.Ticket.DocumentId;int navigation=read.NavigationGeneration;
+                Dictionary<string,object> visual=null;
+                if(policy.CanRun && !suspended && !renderer.Pending){visual=await VisualState(read);frames=Number(visual,"frames");}
                 // Awaiting page telemetry permits owner-thread notifications to
                 // run. Mark such a crossed revision unclassified for resources.
                 bool policyConsistent=owner.ActivityState().Revision==policy.Revision;
+                bool viewConsistent=Live(read) && read.Ready && read.Ticket.DocumentId==currentDocument && read.NavigationGeneration==navigation;
                 suspended=read.View.CoreWebView2.IsSuspended;
+                bool comparable=policyConsistent && viewConsistent && policy.CanRun && !renderer.Pending && !suspended && visual!=null;
+                if(comparable && threeScene)Require((string)visual["kind"]=="webgl3d" && visual["error"]==null,"Active three-dimensional draw view lost its renderer.");
+                progress.Observe(comparable,currentDocument,policy.Revision,frames??0,visual!=null && (bool)visual["running"]);
                 object row;
                 using(var process=Process.GetCurrentProcess()){
                     process.Refresh();row=new{kind="soak-heartbeat",atUtc=DateTime.UtcNow.ToString("o"),elapsedSeconds=clock.Elapsed.TotalSeconds,
                         requestedSeconds=soakSeconds,ownerId=ownerId,sequence=snapshot.Sequence,value=snapshot.Value,
                         manualPause=manual,canRun=policy.CanRun,reasons=policy.Reasons.ToString(),policyRevision=policy.Revision,
-                        policyConsistent=policyConsistent,
+                        policyConsistent=policyConsistent,viewConsistent=viewConsistent,viewNavigationGeneration=navigation,
+                        drawLoopRunning=visual==null?(bool?)null:(bool)visual["running"],drawProgressChecks=progress.Checks,
                         activeSeconds=activityClock.ActiveSeconds,droppedActiveSeconds=activityClock.DroppedActiveSeconds,
                         rendererOutcome=renderer.Outcome,rendererPending=renderer.Pending,isSuspended=suspended,frozenShown=backend.Surface.IsShown,
                         frozenWidth=backend.Surface.ImageSize.Width,frozenHeight=backend.Surface.ImageSize.Height,captures=backend.Captures,
@@ -65,12 +74,13 @@ sealed partial class DualWindowContext
             }
         }
         Require(!stopping && samples>=soakSeconds/4,"Soak ended early or heartbeat coverage was insufficient.");
+        Require(progress.Checks>=3,"Soak active draw progress coverage was insufficient.");
         SetHostPause(PauseReason.Manual,false);
         if(owner.ActivityState().CanRun){string lease=await Activate(control);Reply(await Command(control,lease,originalRequest,7,0),true,null);}
         LockHeld();Require(owner.Snapshot().OwnerId==ownerId && owner.Snapshot().Sequence==2,"Soak lost owner or deduplication.");
         checks.Add("bounded desktop soak cycles preserve owner state clock suspension frozen frame and view reconstruction");
         soakResult=new{passed=true,requestedSeconds=soakSeconds,elapsedSeconds=clock.Elapsed.TotalSeconds,heartbeatCount=samples,
-            viewRebuilds=rebuilds,manualPolicyApplications=transitions,diagnosticSceneOnly=true,resourceTrendAccepted=false};
+            viewRebuilds=rebuilds,manualPolicyApplications=transitions,drawProgressChecks=progress.Checks,diagnosticSceneOnly=true,resourceTrendAccepted=false};
         File.WriteAllText(Path.Combine(root,"soak-summary.json"),json.Serialize(soakResult),Encoding.UTF8);
         return read;
     }

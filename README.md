@@ -14,6 +14,8 @@
 
 [运行时监测](diagnostics/host-policy/DRAW_WATCHDOG.md)另覆盖无通知停画、页面不响应和恢复过渡超时，五种故障边界及正常循环已验证；检测绘制回调，不把它当作物理显示帧率。
 
+[多只读输出基础](diagnostics/dual-window/MULTI_OUTPUT_OWNER.md)已通过状态与隐藏三页协议验证，多个只读页共用唯一owner；实际桌面控制器仍为单只读/主屏，物理多屏尚未完成。
+
 [单屏输入候选](docs/P0_INPUT_ACCEPTANCE.md)已在同轮取得左/右/中键、滚轮、键盘及按住鼠标左键切窗返回的完整记录，人工确认、正常退出、零专用残留后通过；用户另确认图标可选中、系统右键菜单正常。该结果属于独立诊断窗口，还没有接入游戏操作。
 
 [双窗口宿主](diagnostics/dual-window/README.md)已有唯一状态持有者、重建/重载与去重、可见桌面挂接、选择性挂起和自有静帧、会话/电源通知及显示变化屏障的分层证据。[启动准备](diagnostics/desktop-startup/README.md)24项规则与16项真实宿主检查通过，但实机均复用已有层、Shell准备消息0；首次登录缺层、Explorer重启、多屏和真实系统转换仍待验证。历史完整全屏和长轮各保留版本边界；最新[点击开始的完整全屏入口](diagnostics/host-policy/OPERATOR_FULLSCREEN.md)尚缺完成记录，不把独立显示结果当作全屏通过。

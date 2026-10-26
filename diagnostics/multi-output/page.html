@@ -1,0 +1,13 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Logical output counter probe</title>
+<style>body{font:18px system-ui;background:#183035;color:#eff5e7}pre{white-space:pre-wrap}</style>
+<h1>独立逻辑输出计数器</h1><pre id="state">等待状态持有者</pre>
+<script>
+const documentId=crypto.randomUUID();let snapshot=null,role=null,lastReply=null;
+window.multiProbe={documentId,state:()=>({documentId,snapshot,role,lastReply}),send:message=>chrome.webview.postMessage(message)};
+chrome.webview.addEventListener('message',event=>{const m=event.data;if(!m||m.documentId!==documentId)return;
+ if(m.kind==='snapshot'||m.kind==='reply'){if(snapshot&&snapshot.OwnerId===m.snapshot.OwnerId&&m.snapshot.Sequence<snapshot.Sequence)return;snapshot=m.snapshot;}
+ if(m.kind==='role')role=m.role;
+ if(m.kind==='reply')lastReply={transportId:m.transportId,...m.reply};
+ document.querySelector('#state').textContent=JSON.stringify({role,snapshot},null,2);
+});
+</script></html>

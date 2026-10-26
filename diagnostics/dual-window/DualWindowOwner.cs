@@ -5,15 +5,17 @@ using FishingDesktop.Diagnostics.HostPolicy;
 // The application controller owns this object; no Form owns the journal lifetime.
 sealed class DualWindowOwner : IDisposable
 {
+    internal const string DefaultOutputKey="default";
     internal sealed class Ticket
     {
         internal readonly string Role;
         internal readonly string ViewId = Guid.NewGuid().ToString("D");
         internal readonly bool CanControl;
+        internal readonly string OutputKey;
         internal string DocumentId;
         internal int Epoch;
         internal int Revision;
-        internal Ticket(string role, bool canControl) { Role=role; CanControl=canControl; }
+        internal Ticket(string role, bool canControl,string outputKey=null) { Role=role; CanControl=canControl;OutputKey=outputKey; }
     }
     readonly DurableCounterStore store;
     readonly ViewAuthority authority;
@@ -25,10 +27,31 @@ sealed class DualWindowOwner : IDisposable
     public OwnerSnapshot Snapshot() { Check(); return authority.Snapshot(); }
     public Ticket Open(bool canControl)
     {
+        if(!canControl)return OpenOutput(DefaultOutputKey);
         Check();
-        string role=canControl?"interaction":"observer";
+        return OpenRole("interaction",true,null);
+    }
+    // Host-only output identity. No page message creates or selects outputs.
+    // The default output aliases the existing Open(false) observer singleton.
+    public Ticket OpenOutput(string outputId)
+    {
+        Check();
+        string key=CanonicalOutputKey(outputId);
+        return OpenRole(key==DefaultOutputKey?"observer":"output:"+key,false,key);
+    }
+    static string CanonicalOutputKey(string value)
+    {
+        if(String.IsNullOrEmpty(value) || value.Length>64)throw new ArgumentException("Invalid output identity.","outputId");
+        for(int index=0;index<value.Length;index++){
+            char c=value[index];bool alphaNumeric=(c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9');
+            if(!alphaNumeric && (index==0 || (c!='-' && c!='_' && c!='.')))throw new ArgumentException("Invalid output identity.","outputId");
+        }
+        return value.ToLowerInvariant();
+    }
+    Ticket OpenRole(string role,bool canControl,string outputKey)
+    {
         if(views.ContainsKey(role))throw new InvalidOperationException("Close the existing role before creating another view.");
-        var ticket=new Ticket(role,canControl); views.Add(role,ticket); return ticket;
+        var ticket=new Ticket(role,canControl,outputKey); views.Add(role,ticket); return ticket;
     }
     public bool IsCurrent(Ticket ticket)
     {

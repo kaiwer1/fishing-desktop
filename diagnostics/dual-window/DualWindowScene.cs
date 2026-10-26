@@ -10,6 +10,29 @@ sealed partial class DualWindowContext
     int sceneLoads;
     double sceneDrawRate;
     object sceneResult;
+    void ReceiveSceneFault(ProbeWindow pane,Dictionary<string,object> message,string document)
+    {
+        // Standalone context/viewport probes deliberately test page-local faults
+        // without a running owner clock. Only the host's policy mode closes it.
+        string reason=null;
+        if(!threeScene || !policySelfTest || pane.Ticket.CanControl || !Live(pane) || !pane.Ready ||
+            pane.AwaitingNavigationStart || document!=pane.Ticket.DocumentId || !SceneFaultRecord.TryRead(message,pane.Ticket.DocumentId,out reason)){
+            Send(pane,new{kind="scene-fault-reply",documentId=pane.Ticket.DocumentId,transportId=(string)message["transportId"],ignored=true});return;
+        }
+        SetHostPause(FishingDesktop.Diagnostics.HostPolicy.PauseReason.SceneFault,true);
+        var snapshot=owner.Snapshot();var policy=owner.ActivityState();
+        bool? oldCommandRejectedByPause=null;
+        ProbeWindow control;
+        if(sceneFaultSelfTest && windows.TryGetValue(true,out control)){
+            var rejected=owner.Execute(control.Ticket,control.Ticket.DocumentId,faultProbeLease,Guid.NewGuid().ToString("D"),1,snapshot.Sequence);
+            oldCommandRejectedByPause=!rejected.Ok && rejected.Error=="host-paused" && rejected.Snapshot.Sequence==snapshot.Sequence;
+        }
+        System.IO.File.WriteAllText(System.IO.Path.Combine(root,"scene-fault.json"),json.Serialize(new{schema=1,reason=reason,
+            currentReadOnlyDocument=true,ownerId=snapshot.OwnerId,sequence=snapshot.Sequence,value=snapshot.Value,
+            canRun=policy.CanRun,reasons=policy.Reasons.ToString(),activeSeconds=activityClock.ActiveSeconds,
+            oldCommandRejectedByPause=oldCommandRejectedByPause,explicitRestartRequired=true,gameLoaded=false}),System.Text.Encoding.UTF8);
+        Fail(new InvalidOperationException("Current three-dimensional draw view failed: "+reason+"; explicit host restart required."));
+    }
     async Task RunContextProbe(ProbeWindow read,ProbeWindow control)
     {
         string ownerId=owner.Snapshot().OwnerId,oldDocument=read.Ticket.DocumentId;

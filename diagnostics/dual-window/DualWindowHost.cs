@@ -96,9 +96,9 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false,bool sceneViewport=false,bool sceneContext=false)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false,bool sceneViewport=false,bool sceneContext=false,bool sceneFaultSelfTest=false)
     {
-        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;this.threeScene=threeScene;this.sceneViewport=sceneViewport;this.sceneContext=sceneContext;
+        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;this.threeScene=threeScene;this.sceneViewport=sceneViewport;this.sceneContext=sceneContext;this.sceneFaultSelfTest=sceneFaultSelfTest;
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         this.nativePolicySelfTest=nativePolicySelfTest;
         this.rendererSelfTest=rendererSelfTest;
@@ -287,6 +287,7 @@ sealed partial class DualWindowContext : ApplicationContext
         if(m==null || !StringField(m,"kind",out kind) || !StringField(m,"documentId",out document) ||
             !StringField(m,"lease",out lease) || !StringField(m,"transportId",out transport) || transport.Length>64)return;
         try{
+            if(kind=="scene-fault"){ReceiveSceneFault(pane,m,document);return;}
             if(kind=="input-evidence"){ReceiveManualInput(pane,m,document);return;}
             if(kind=="activation-ready"){
                 string requestId;object epoch;
@@ -362,26 +363,32 @@ sealed partial class DualWindowContext : ApplicationContext
         bool displaySoak=args.Length>0 && args[0]=="--display-soak-self-test";
         int soak=0;bool soakRequested=threeSceneSoak || displaySoak || (args.Length>0 && args[0]=="--wallpaper-soak-self-test");
         if(soakRequested && (args.Length!=2 || !Int32.TryParse(args[1],out soak) || soak<120 || soak>7200))return 5;
+        bool sceneFaultSelfTest=args.Length==1 && args[0]=="--three-fault-policy-self-test";
+        bool restartCheck=args.Length==1 && args[0]=="--scene-fault-restart-check";
         bool sceneContext=args.Length==1 && args[0]=="--three-context-self-test";
         bool sceneViewport=sceneContext || (args.Length==1 && args[0]=="--three-viewport-self-test");
-        bool threeScene=sceneViewport || threeSceneSoak || (args.Length==1 && args[0]=="--three-scene-self-test");
-        bool displayOnly=(threeScene && !sceneViewport) || displaySoak || (args.Length==1 && args[0]=="--display-policy-self-test");
+        bool threeScene=sceneFaultSelfTest || sceneViewport || threeSceneSoak || (args.Length==1 && args[0]=="--three-scene-self-test");
+        bool displayOnly=(threeScene && !sceneViewport && !sceneFaultSelfTest) || displaySoak || (args.Length==1 && args[0]=="--display-policy-self-test");
         bool operatorStart=args.Length==1 && args[0]=="--wallpaper-operator-self-test";
         bool wallpaperPolicy=operatorStart || displayOnly || soakRequested || (args.Length==1 && args[0]=="--wallpaper-policy-self-test");
         bool visibleDesktop=manual || wallpaperPolicy || (args.Length==1 && args[0]=="--desktop-visible-self-test");
         bool nativePolicy=manual || wallpaperPolicy || (args.Length==1 && args[0]=="--native-policy-self-test");
         bool renderer=args.Length==1 && args[0]=="--renderer-self-test";
-        bool policy=renderer || nativePolicy || (args.Length==1 && args[0]=="--policy-self-test");
+        bool policy=sceneFaultSelfTest || renderer || nativePolicy || (args.Length==1 && args[0]=="--policy-self-test");
         bool startup=args.Length==1 && args[0]=="--desktop-startup-self-test";
         bool desktop=startup || visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
         bool automated=!manual && (sceneViewport || desktop || policy || (args.Length==1 && args[0]=="--self-test"));
-        if(args.Length>0 && !automated && !manual)return 5;
+        if(args.Length>0 && !automated && !manual && !restartCheck)return 5;
         try{
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
+                if(restartCheck)return DualWindowContext.VerifySceneFaultRestart();
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene,sceneViewport,sceneContext)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene,sceneViewport,sceneContext,sceneFaultSelfTest)){Application.Run(context);return context.ExitCode;}
             }
-        }catch(Exception){return 3;}
+        }catch(Exception error){
+            if(restartCheck)try{File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"scene-fault-restart-error.txt"),error.ToString(),Encoding.UTF8);}catch(Exception){}
+            return 3;
+        }
     }
 }

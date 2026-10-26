@@ -3,7 +3,7 @@ import {createLakeEnvironment} from './lake-environment.mjs';
 import {createFrameScheduler} from '../../src/frame-scheduler.js';
 import {renderSize} from '../../src/display.js';
 
-export function createLakeVisualProbe(document) {
+export function createLakeVisualProbe(document,{onFault=()=>{}}={}) {
   const previousOverflow=document.documentElement.style.overflow;document.documentElement.style.overflow='hidden';
   let canvas,overlay,renderer,environment,scheduler,running=false,resumeWanted=false,frames=0,time=0,disposed=false;
   let proof=null,error=null,controlledDraws=0;
@@ -41,10 +41,16 @@ export function createLakeVisualProbe(document) {
       if(frames>=3 && proof===null)inspectFrame();
     },onError:failure=>fail(failure.message||'webgl-render-failed')});
   }
-  function fail(reason){error=reason;proof=null;resumeWanted=false;stop();}
+  function fail(reason){
+    if(error)return;
+    error=reason;proof=null;resumeWanted=false;stop();
+    // Send a fixed category, never a driver message or stack. Notification can
+    // only request a conservative host failure; it cannot restore authority.
+    try{onFault(reason==='webgl-context-lost'?'webgl-context-lost':'webgl-render-failed');}catch{}
+  }
   function stop(){running=false;scheduler?.stop();return state();}
   const api={state,
-    start(){if(disposed)throw Error('Disposed lake probe');if(error || running)return state();try{initialize();running=true;scheduler.wake(30);}catch(failure){error=failure.message;api.dispose();}return state();},
+    start(){if(disposed)throw Error('Disposed lake probe');if(error || running)return state();try{initialize();running=true;scheduler.wake(30);}catch(failure){fail(failure.message||'webgl-initialization-failed');api.dispose();}return state();},
     stop(){resumeWanted=false;return stop();},
     pause(){resumeWanted ||= running;return stop();},
     resume(){const wanted=resumeWanted;resumeWanted=false;return wanted?api.start():state();},

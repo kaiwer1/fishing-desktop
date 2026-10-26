@@ -16,6 +16,7 @@ const session=new LeaseSession(documentId);
 let snapshot=null,lastReply=null,lastRevoke=null,lastActivation=null,lastActivationReply=null,hostPolicy=null,received=0;
 let manualInput=null;
 let sceneLoading=false,sceneLoadError=null;
+let lastSceneFaultReply=null;
 function render(){
   document.querySelector('#state').textContent=JSON.stringify({snapshot,hostPolicy,可操作:Boolean(session.state().lease),lastReply},null,2);
   document.querySelector('#add').disabled=!session.state().lease || !snapshot || snapshot.Faulted;
@@ -27,10 +28,10 @@ function revoke(reason){
   send({kind:'revoke',reason,...canceled,activationRequestId:lastActivation?.requestId??'',transportId:crypto.randomUUID()});
 }
 window.dualProbe={documentId,state:()=>({documentId,...session.state(),snapshot,lastReply,lastRevoke,lastActivation,lastActivationReply,hostPolicy,received,manualInput:manualInput?.state()??null,
-  sceneKind:window.dualProbe.visual.state().kind??'canvas2d',sceneLoadError}),
+  sceneKind:window.dualProbe.visual.state().kind??'canvas2d',sceneLoadError,lastSceneFaultReply}),
   async installLakeScene(){
     if(sceneLoading)return;sceneLoading=true;
-    try{const {createLakeVisualProbe}=await import('./lake-view.mjs');window.dualProbe.visual.stop();window.dualProbe.visual=createLakeVisualProbe(document);}
+    try{const {createLakeVisualProbe}=await import('./lake-view.mjs');window.dualProbe.visual.stop();window.dualProbe.visual=createLakeVisualProbe(document,{onFault:reason=>send({kind:'scene-fault',lease:'',transportId:crypto.randomUUID(),scene:'webgl3d',reason})});}
     catch(error){sceneLoadError=error.message;}
   },
   send,sendRaw:command=>window.chrome.webview.postMessage(command),cancel:()=>revoke('diagnostic-cancel'),visual:createVisualProbe(document)};
@@ -57,6 +58,7 @@ window.chrome.webview.addEventListener('message',e=>{
     if(accepted)manualInput?.setEnabled(Boolean(session.state().lease),m.reason);
   }
   if(m.kind==='revoke-reply')lastRevoke=m;
+  if(m.kind==='scene-fault-reply')lastSceneFaultReply=m;
   if(m.kind==='activation-reply')lastActivationReply=m;
   if(m.kind==='host-policy' && (!hostPolicy || m.revision>=hostPolicy.revision)){
     hostPolicy=m;

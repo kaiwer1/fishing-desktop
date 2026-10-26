@@ -12,6 +12,6 @@ $taskLines=@(& $taskExecutable);$taskExit=$LASTEXITCODE
 $taskLines | Set-Content -LiteralPath (Join-Path $taskRun 'test-output.txt') -Encoding utf8
 $taskPassed=@($taskLines | Where-Object {$_ -like 'PASS *'})
 $taskFailed=@($taskLines | Where-Object {$_ -like 'FAIL *'})
-$taskReport=[pscustomobject]@{passed=($taskExit -eq 0 -and $taskPassed.Count -eq 16 -and $taskFailed.Count -eq 0);passedCount=$taskPassed.Count;checks=$taskPassed;failures=$taskFailed;nativeSignalsTested=$false;outputDirectory=$taskRun}
+$taskReport=[pscustomobject]@{passed=($taskExit -eq 0 -and $taskPassed.Count -eq 17 -and $taskFailed.Count -eq 0);passedCount=$taskPassed.Count;checks=$taskPassed;failures=$taskFailed;nativeSignalsTested=$false;outputDirectory=$taskRun}
 $taskReport | ConvertTo-Json -Depth 4 | Tee-Object -FilePath (Join-Path $taskRun 'summary.json')
 if(-not $taskReport.passed){throw 'Host policy tests failed.'}

@@ -8,7 +8,7 @@ namespace FishingDesktop.Diagnostics.HostPolicy
     {
         None=0, Startup=1, Manual=2, NoViews=4, RendererUnavailable=8,
         EnvironmentUnknown=16, Fullscreen=32, SessionUnavailable=64,
-        PowerSuspended=128, DisplayChanging=256, Portrait=512
+        PowerSuspended=128, DisplayChanging=256, Portrait=512, SceneFault=1024
     }
     public sealed class RunState
     {
@@ -23,10 +23,11 @@ namespace FishingDesktop.Diagnostics.HostPolicy
         public readonly bool Changed,RevokeInput;
         internal RunTransition(RunState state,bool changed,bool revoke){State=state;Changed=changed;RevokeInput=revoke;}
     }
-    // C# owner-thread policy only. Browser messages cannot set these signals.
+    // C# owner-thread policy only. Pages cannot assign arbitrary signals; the
+    // host may close conservatively after a validated current scene fault.
     public sealed class RunGate
     {
-        const PauseReason All=(PauseReason)1023;
+        const PauseReason All=(PauseReason)2047;
         readonly int thread=Thread.CurrentThread.ManagedThreadId;
         PauseReason reasons=PauseReason.Startup;
         long revision,epoch;

@@ -10,6 +10,8 @@
 
 2026-10-26：按[整体开发计划](docs/DEVELOPMENT_PLAN.md)推进 P0 宿主、输入与性能路线，游戏界面和钓鱼流程仍暂停。本机三份界面草稿未发布；P1 尚未开始。
 
+[画布故障处理](diagnostics/three-scene/FAULT_POLICY.md)已接通独立owner暂停、输入拒绝和安全退出，真实故障/计数状态恢复检查通过；[原生环境查询](diagnostics/host-policy/NATIVE_QUERIES.md)25项纯检查通过。这些仍是独立诊断，不是游戏已接通或真实全屏/多屏验收。
+
 [单屏输入候选](docs/P0_INPUT_ACCEPTANCE.md)已在同轮取得左/右/中键、滚轮、键盘及按住鼠标左键切窗返回的完整记录，人工确认、正常退出、零专用残留后通过；用户另确认图标可选中、系统右键菜单正常。该结果属于独立诊断窗口，还没有接入游戏操作。
 
 [双窗口宿主](diagnostics/dual-window/README.md)已有唯一状态持有者、重建/重载与去重、可见桌面挂接、选择性挂起和自有静帧、会话/电源通知及显示变化屏障的分层证据。[启动准备](diagnostics/desktop-startup/README.md)24项规则与16项真实宿主检查通过，但实机均复用已有层、Shell准备消息0；首次登录缺层、Explorer重启、多屏和真实系统转换仍待验证。历史完整全屏和长轮各保留版本边界；最新[点击开始的完整全屏入口](diagnostics/host-policy/OPERATOR_FULLSCREEN.md)尚缺完成记录，不把独立显示结果当作全屏通过。

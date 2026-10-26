@@ -2,6 +2,8 @@
 
 2026-10-26。`measure-presents.ps1`新增Owner参数集，作用域、离线检查与采集实测分别记录。结果边界见[首次采集](OWNER_PRESENTS_RESULTS.md)。
 
+17:21：最终显式角色格式另取10秒活动/10秒暂停记录，阶段心跳完整包围、版本稳定；活动297条单交换链，暂停无事件且率不可用。300.60秒31项正常退出、零残留，详见结果首节。
+
 ```powershell
 ./diagnostics/lively-host/measure-presents.ps1 `
   -OwnerExecutable '<确切的私有构建目录>\DualWindowHost.exe' `

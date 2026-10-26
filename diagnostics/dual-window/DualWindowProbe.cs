@@ -169,14 +169,18 @@ sealed partial class DualWindowContext
                 checks.Add("explicit desktop view reopen after controlled loss retains committed state and deduplication");
             }
             if(policySelfTest)await RunPolicyProbe(read,control,ownerId,request);
-            if(nativePolicySelfTest)await RunNativePolicyProbe(read,control,ownerId,request);
+            if(nativePolicySelfTest){
+                if(displayOnlySelfTest){await PrepareNativePresentation(read);StartNativePolicy();}
+                else await RunNativePolicyProbe(read,control,ownerId,request);
+            }
             if(nativePolicySelfTest)await RunControlledSignals(read,control,ownerId,request);
+            if(nativePolicySelfTest)read=await RunControlledDisplay(read,control,ownerId,request);
             if(rendererSelfTest)await RunRendererProbe(read,control,ownerId,request);
             if(soakSeconds>0)await RunSoak(read,control,ownerId,request);
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),ownerId=ownerId,value=owner.Snapshot().Value,sequence=owner.Snapshot().Sequence,
                 realWebViewMessages=true,independentWindows=true,nativeInputTested=false,gameLoaded=false,
-                invisibleNoActivateMode=!visibleDesktopTest,browserCrashTested=false,desktopLayer=desktopMode,hostPolicy=policyResult,nativePolicy=nativePolicyResult,nativeSignals=nativeSignalsResult,renderer=rendererResult,soak=soakResult
+                invisibleNoActivateMode=!visibleDesktopTest,browserCrashTested=false,desktopLayer=desktopMode,hostPolicy=policyResult,nativePolicy=nativePolicyResult,nativeSignals=nativeSignalsResult,display=displayResult,renderer=rendererResult,soak=soakResult,nativeForegroundTestSkipped=displayOnlySelfTest
             }),Encoding.UTF8);
             Shutdown();
         }catch(Exception e){Fail(e);}

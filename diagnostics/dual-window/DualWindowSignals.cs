@@ -14,7 +14,7 @@ sealed partial class DualWindowContext
         if(nativeSignalWindow!=null)throw new InvalidOperationException("Native signal receiver already started.");
         using(var process=Process.GetCurrentProcess())nativeSession=process.SessionId;
         nativeSignals=new NativeSignalState(nativeSession);
-        nativeSignalWindow=new NativeSignalWindow(OnNativePower,OnNativeSession,Fail);
+        nativeSignalWindow=new NativeSignalWindow(OnNativePower,OnNativeSession,OnNativeDisplay,Fail);
     }
     void OnNativePower(int code,long unused)
     {

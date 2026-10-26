@@ -13,12 +13,13 @@ namespace FishingDesktop.Diagnostics.HostPolicy
     {
         readonly int thread=Thread.CurrentThread.ManagedThreadId;
         readonly Action<int,long> power,session;
+        readonly Action display;
         readonly Action<Exception> failure;
         bool registered,closed;
-        public NativeSignalWindow(Action<int,long> onPower,Action<int,long> onSession,Action<Exception> onFailure)
+        public NativeSignalWindow(Action<int,long> onPower,Action<int,long> onSession,Action onDisplay,Action<Exception> onFailure)
         {
-            if(onPower==null || onSession==null || onFailure==null)throw new ArgumentNullException("callback");
-            power=onPower;session=onSession;failure=onFailure;
+            if(onPower==null || onSession==null || onDisplay==null || onFailure==null)throw new ArgumentNullException("callback");
+            power=onPower;session=onSession;display=onDisplay;failure=onFailure;
             try{
                 CreateHandle(new CreateParams{Caption="Fishing policy notifications",Style=unchecked((int)0x80000000),ExStyle=0x08000080,Width=0,Height=0});
                 if(!WTSRegisterSessionNotification(Handle,0))throw new Win32Exception(Marshal.GetLastWin32Error(),"Current-session notification registration failed.");
@@ -30,6 +31,9 @@ namespace FishingDesktop.Diagnostics.HostPolicy
             Check();if(closed)return false;
             if(message==0x218 && (code==4 || code==7 || code==18)){power((int)code,data);return true;}
             if(message==0x2B1 && code>=1 && code<=15){session((int)code,data);return true;}
+            // Do not dereference a WM_DPICHANGED suggested RECT. The hidden
+            // receiver has no visible geometry; the owner retires its view.
+            if(message==0x7E || message==0x2E0){display();return true;}
             return false;
         }
         protected override void WndProc(ref Message message)

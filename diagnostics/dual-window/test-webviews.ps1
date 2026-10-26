@@ -1,5 +1,6 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0)
 $ErrorActionPreference='Stop'
+if($DisplayPolicy){if($SoakSeconds -gt 0 -or $NativePolicy -or $WallpaperPolicy){throw 'Choose independent display checks or the full native/soak mode.'};$WallpaperPolicy=$true}
 if($SoakSeconds -gt 0){if($SoakSeconds -lt 120){throw 'SoakSeconds must be zero or at least 120.'};$WallpaperPolicy=$true}
 if($WallpaperPolicy){$VisibleDesktop=$true;$NativePolicy=$true}
 if($VisibleDesktop){$DesktopLayer=$true}
@@ -12,6 +13,7 @@ $taskRun=$taskBuild.outputDirectory
 $taskProfile=Join-Path $taskRun 'private-profile'
 $taskKnown=@{}
 $taskProcess=$null;$taskRootIdentity=$null;$taskFailure=$null;$taskForcedCleanup=$false
+$taskCleanupConfirmed=$false;$taskObservedExit=$null
 
 function Read-DualIdentity($Metadata) {
   $taskCandidate=$null
@@ -67,7 +69,7 @@ function Stop-DualOwned($Identity) {
   finally{if($null -ne $taskOwned){$taskOwned.Dispose()}}
 }
 try{
-  $taskMode=if($SoakSeconds -gt 0){'--wallpaper-soak-self-test '+$SoakSeconds}elseif($WallpaperPolicy){'--wallpaper-policy-self-test'}elseif($RendererPolicy){'--renderer-self-test'}elseif($NativePolicy){'--native-policy-self-test'}elseif($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
+  $taskMode=if($DisplayPolicy){'--display-policy-self-test'}elseif($SoakSeconds -gt 0){'--wallpaper-soak-self-test '+$SoakSeconds}elseif($WallpaperPolicy){'--wallpaper-policy-self-test'}elseif($RendererPolicy){'--renderer-self-test'}elseif($NativePolicy){'--native-policy-self-test'}elseif($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
   $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList $taskMode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
   $taskRootIdentity=[pscustomobject]@{id=$taskProcess.Id;startTicks=$taskProcess.StartTime.ToUniversalTime().Ticks;path=$taskBuild.executable}
   $taskKnown[$taskRootIdentity.id]=$taskRootIdentity
@@ -77,9 +79,10 @@ try{
     $taskTimeout=if($NativePolicy){105+$SoakSeconds}else{75}
     if($taskTimer.Elapsed.TotalSeconds -gt $taskTimeout){throw 'Dual-window self-test timed out.'}
   }
-  if($taskProcess.ExitCode -ne 0){throw ('Dual-window self-test exited '+$taskProcess.ExitCode+'.')}
+  $taskObservedExit=$taskProcess.ExitCode
+  if($taskObservedExit -ne 0){throw ('Dual-window self-test exited '+$taskObservedExit+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  $taskExpectedChecks=if($SoakSeconds -gt 0){29}elseif($WallpaperPolicy){28}elseif($RendererPolicy){19}elseif($NativePolicy){21}elseif($HostPolicy){15}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
+  $taskExpectedChecks=if($DisplayPolicy){26}elseif($SoakSeconds -gt 0){32}elseif($WallpaperPolicy){31}elseif($RendererPolicy){19}elseif($NativePolicy){24}elseif($HostPolicy){15}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
   $taskDesktopReport=$null
   $taskRebuilds=0
@@ -88,16 +91,20 @@ try{
     $taskRebuilds=[int]$taskReport.soak.viewRebuilds
   }
   if($HostPolicy -and (-not $taskReport.hostPolicy.passed -or -not $taskReport.hostPolicy.pausedClockStable -or -not $taskReport.hostPolicy.noAutomaticLeaseRestore)){throw 'Host policy report mismatch.'}
-  if($NativePolicy -and (-not $taskReport.nativePolicy.passed -or -not $taskReport.nativePolicy.fixtureNormalExit -or $taskReport.nativePolicy.maximumConsecutiveFullSamples -lt 10)){throw 'Native joint policy report mismatch.'}
+  if($NativePolicy -and -not $DisplayPolicy -and (-not $taskReport.nativePolicy.passed -or -not $taskReport.nativePolicy.fixtureNormalExit -or $taskReport.nativePolicy.maximumConsecutiveFullSamples -lt 10)){throw 'Native joint policy report mismatch.'}
+  if($DisplayPolicy -and (-not $taskReport.nativeForegroundTestSkipped -or $null -ne $taskReport.nativePolicy)){throw 'Display mode must explicitly omit native foreground evidence.'}
   if($NativePolicy -and (-not $taskReport.nativeSignals.passed -or -not $taskReport.nativeSignals.notificationWindowRegistered -or -not $taskReport.nativeSignals.controlledCallbacks -or $taskReport.nativeSignals.actualLockOrPowerTransition)){throw 'Controlled native signal report mismatch.'}
+  if($NativePolicy -and (-not $taskReport.display.passed -or -not $taskReport.display.controlledCallbacks -or $taskReport.display.actualDisplayOrDpiChange -or -not $taskReport.display.receiverPreserved)){throw 'Controlled display report mismatch.'}
   if($RendererPolicy -and (-not $taskReport.renderer.passed -or -not $taskReport.renderer.realWebViewSuspended -or -not $taskReport.renderer.suspendedDisposeRebuilt)){throw 'Real renderer policy report mismatch.'}
   if($DesktopLayer){
     $taskDesktopReport=Get-Content -LiteralPath (Join-Path $taskRun 'desktop-summary.json') -Raw | ConvertFrom-Json
-    if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne (4+$taskRebuilds) -or $taskDesktopReport.detachments -ne (4+$taskRebuilds) -or
+    $taskExpectedAttachments=if($WallpaperPolicy){5+$taskRebuilds}else{4+$taskRebuilds}
+    if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne $taskExpectedAttachments -or $taskDesktopReport.detachments -ne $taskExpectedAttachments -or
       $taskDesktopReport.remainingLeases -ne 0 -or (-not $WallpaperPolicy -and -not $taskDesktopReport.foregroundUnchanged) -or
       $taskDesktopReport.recoveredViewLosses -ne 1 -or $taskDesktopReport.lastLossReason -ne 'attached-window-changed'){throw 'Desktop shutdown report mismatch.'}
     if($VisibleDesktop -and (-not $taskDesktopReport.visual.passed -or -not $taskDesktopReport.visual.markersVerified -or $taskDesktopReport.visual.renderedFrames -lt 3)){throw 'Visible rendering report mismatch.'}
-    if($WallpaperPolicy -and (-not $taskDesktopReport.presentationChecksPassed -or $taskDesktopReport.presentationChecks -lt 3 -or -not $taskReport.renderer.nativeFullscreenCombined -or -not $taskReport.renderer.ownFrozenFrameVerified)){throw 'Combined wallpaper report mismatch.'}
+    $taskRendererCombined=if($DisplayPolicy){$taskReport.renderer.controlledSignalsCombined -and -not $taskReport.renderer.nativeFullscreenCombined}else{$taskReport.renderer.nativeFullscreenCombined}
+    if($WallpaperPolicy -and (-not $taskDesktopReport.presentationChecksPassed -or $taskDesktopReport.presentationChecks -lt 3 -or -not $taskRendererCombined -or -not $taskReport.renderer.ownFrozenFrameVerified)){throw 'Combined wallpaper report mismatch.'}
   }
 }catch{$taskFailure=$_}
 finally{
@@ -117,6 +124,7 @@ finally{
     # Unknown processes with this private profile are reported, never adopted or killed.
     $taskUnknown=@(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" -OperationTimeoutSec 5 | Where-Object {$_.CommandLine -and $_.CommandLine.Contains($taskProfile)})
     if($taskUnknown.Count -gt 0){throw 'Dedicated-profile processes remain; refusing broad cleanup.'}
+    $taskCleanupConfirmed=$true
     if($taskForcedCleanup -and -not $taskFailure){throw 'Test required forced cleanup; normal lifecycle was not verified.'}
   }catch{
     $_.Exception.Message | Set-Content -LiteralPath (Join-Path $taskRun 'cleanup-error.txt') -Encoding utf8
@@ -124,7 +132,13 @@ finally{
   }
   if($null -ne $taskProcess){$taskProcess.Dispose()}
 }
-if($taskFailure){throw $taskFailure}
+if($taskFailure){
+  [pscustomobject]@{passed=$false;mode=$taskMode;exitCode=$taskObservedExit;errorType=$taskFailure.Exception.GetType().FullName;
+    message=$taskFailure.Exception.Message;nativeForegroundTestSkipped=[bool]$DisplayPolicy;forcedCleanup=$taskForcedCleanup;
+    cleanupConfirmed=$taskCleanupConfirmed;remainingDedicatedProcesses=$(if($taskCleanupConfirmed){0}else{$null})} |
+    ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $taskRun 'failure-summary.json') -Encoding utf8
+  throw $taskFailure
+}
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;
-  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;nativePolicy=$taskReport.nativePolicy;nativeSignals=$taskReport.nativeSignals;renderer=$taskReport.renderer;soak=$taskReport.soak;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
+  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;nativePolicy=$taskReport.nativePolicy;nativeForegroundTestSkipped=$taskReport.nativeForegroundTestSkipped;nativeSignals=$taskReport.nativeSignals;display=$taskReport.display;renderer=$taskReport.renderer;soak=$taskReport.soak;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
   ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $taskRun 'summary.json')

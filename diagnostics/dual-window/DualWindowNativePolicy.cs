@@ -25,9 +25,12 @@ sealed partial class DualWindowContext
     void SampleNativePolicy()
     {
         if(stopping)return;
-        nativeSample=nativeEnvironment.Capture(Screen.PrimaryScreen.Bounds);
+        var screen=Screen.PrimaryScreen;
+        nativeSample=screen==null?new EnvironmentSample(false,false,false,"target-screen-unavailable"):nativeEnvironment.Capture(screen.Bounds);
         nativeSignals.Observe(nativeSample);
-        ApplyPolicy(owner.ReplacePause(NativeSignalState.Mask,nativeSignals.BlockingReasons));
+        bool portrait=screen==null || !DisplayBarrier.Landscape(screen.Bounds.Width,screen.Bounds.Height);
+        ApplyPolicy(owner.ReplacePause(NativeSignalState.Mask|PauseReason.Portrait,nativeSignals.BlockingReasons|(portrait?PauseReason.Portrait:PauseReason.None)));
+        TryCompleteDisplayFromSample();
     }
     void StopNativePolicy()
     {
@@ -51,17 +54,21 @@ sealed partial class DualWindowContext
             }
         }
     }
-    async Task RunNativePolicyProbe(ProbeWindow read,ProbeWindow control,string ownerId,string originalRequest)
+    async Task PrepareNativePresentation(ProbeWindow read)
     {
-        string oldLease=(string)(await Ready(control))["lease"];
         if(wallpaperPolicySelfTest){
             desktopShown.Add(read);GuardPresentation(()=>read.Show());CheckDesktop(read);
             await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
             rendererEnabled=true;RendererPageReady(read);await WaitRenderer(read,"active");
             // Foreground changes by the owned fixture are intentional. Verify
             // foreground around our own show/hide actions instead of globally.
-            desktopAllowForegroundChanges=true;
+            desktopAllowForegroundChanges=!displayOnlySelfTest;
         }
+    }
+    async Task RunNativePolicyProbe(ProbeWindow read,ProbeWindow control,string ownerId,string originalRequest)
+    {
+        string oldLease=(string)(await Ready(control))["lease"];
+        await PrepareNativePresentation(read);
         StartNativePolicy();
         string path=Path.Combine(root,"NativeEnvironmentFixture.exe");
         if(!File.Exists(path))throw new InvalidOperationException("Build with NativePolicy to include the owned fixture.");
@@ -111,6 +118,10 @@ sealed partial class DualWindowContext
             await Task.Delay(100);
         }
         Require(!stopping && nativeFixture.HasExited && nativeFixture.ExitCode==0,"Owned native fixture failed or timed out.");
+        File.WriteAllText(Path.Combine(root,"native-observation.json"),json.Serialize(new{
+            normalSamples=normal,fullSamples=full,maximumConsecutiveFullSamples=maxConsecutive,restoredSamples=restored,
+            checkedPaused=checkedPaused,checkedRestored=checkedRestored,lastSampleKnown=nativeSample!=null && nativeSample.Known,
+            lastSampleReason=nativeSample==null?"none":nativeSample.Reason,actualDisplayOrDpiChange=false}));
         Require(normal>=1 && maxConsecutive>=10 && restored>=3 && checkedPaused && checkedRestored,"Native/WebView joint result inconclusive; foreground samples missing.");
         Require(owner.Snapshot().OwnerId==ownerId && owner.Snapshot().Sequence==2,"Native policy changed owner or committed sequence.");
         checks.Add("native owned fullscreen observations automatically pause the real WebView owner and revoke page commands");

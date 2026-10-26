@@ -96,9 +96,9 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false)
     {
-        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;
+        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;this.threeScene=threeScene;
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         this.nativePolicySelfTest=nativePolicySelfTest;
         this.rendererSelfTest=rendererSelfTest;
@@ -187,6 +187,8 @@ sealed partial class DualWindowContext : ApplicationContext
                         await Task.Delay(25);
                     }
                     if(document==null)throw new InvalidOperationException("Diagnostic page module did not initialize.");
+                    if(!Live(pane) || pane.Navigation!=navigation || pane.NavigationGeneration!=generation)return;
+                    if(threeScene && !canControl && !await LoadScenePage(pane,navigation,generation))return;
                     if(!Live(pane) || pane.Navigation!=navigation || pane.NavigationGeneration!=generation)return;
                     owner.Attach(pane.Ticket,document);pane.Ready=true;
                     UpdateViewAvailability();
@@ -359,7 +361,8 @@ sealed partial class DualWindowContext : ApplicationContext
         bool displaySoak=args.Length>0 && args[0]=="--display-soak-self-test";
         int soak=0;bool soakRequested=displaySoak || (args.Length>0 && args[0]=="--wallpaper-soak-self-test");
         if(soakRequested && (args.Length!=2 || !Int32.TryParse(args[1],out soak) || soak<120 || soak>7200))return 5;
-        bool displayOnly=displaySoak || (args.Length==1 && args[0]=="--display-policy-self-test");
+        bool threeScene=args.Length==1 && args[0]=="--three-scene-self-test";
+        bool displayOnly=threeScene || displaySoak || (args.Length==1 && args[0]=="--display-policy-self-test");
         bool operatorStart=args.Length==1 && args[0]=="--wallpaper-operator-self-test";
         bool wallpaperPolicy=operatorStart || displayOnly || soakRequested || (args.Length==1 && args[0]=="--wallpaper-policy-self-test");
         bool visibleDesktop=manual || wallpaperPolicy || (args.Length==1 && args[0]=="--desktop-visible-self-test");
@@ -374,7 +377,7 @@ sealed partial class DualWindowContext : ApplicationContext
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

@@ -1,5 +1,9 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene)
 $ErrorActionPreference='Stop'
+if($ThreeScene){
+  if($DisplaySoak -or $OperatorFullscreen -or $StartupPreparation -or $DisplayPolicy -or $NativePolicy -or $WallpaperPolicy -or $VisibleDesktop -or $HostPolicy -or $RendererPolicy -or $SoakSeconds -gt 0){throw 'Choose the independent three-dimensional scene mode without other switches.'}
+  $DisplayPolicy=$true
+}
 if($DisplaySoak){
   if($OperatorFullscreen -or $StartupPreparation -or $DisplayPolicy -or $NativePolicy -or $WallpaperPolicy -or $VisibleDesktop -or $HostPolicy -or $RendererPolicy -or $SoakSeconds -lt 120){throw 'Choose independent display soak with at least 120 seconds and no other mode switches.'}
   $DisplayPolicy=$true
@@ -20,7 +24,7 @@ if($NativePolicy){$HostPolicy=$true}
 if($RendererPolicy){$HostPolicy=$true}
 if($RendererPolicy -and $NativePolicy){throw 'Run native foreground and renderer lifecycle tests separately.'}
 if($HostPolicy -and $DesktopLayer -and -not $WallpaperPolicy){throw 'Use WallpaperPolicy for the combined test.'}
-$taskBuild=& (Join-Path $PSScriptRoot 'build.ps1') -SdkDirectory $SdkDirectory -OutputDirectory $OutputDirectory -DesktopLayer:$DesktopLayer -NativePolicy:$NativePolicy
+$taskBuild=& (Join-Path $PSScriptRoot 'build.ps1') -SdkDirectory $SdkDirectory -OutputDirectory $OutputDirectory -DesktopLayer:$DesktopLayer -NativePolicy:$NativePolicy -ThreeScene:$ThreeScene
 $taskRun=$taskBuild.outputDirectory
 $taskProfile=Join-Path $taskRun 'private-profile'
 $taskKnown=@{}
@@ -81,7 +85,7 @@ function Stop-DualOwned($Identity) {
   finally{if($null -ne $taskOwned){$taskOwned.Dispose()}}
 }
 try{
-  $taskMode=if($DisplaySoak){'--display-soak-self-test '+$SoakSeconds}elseif($OperatorFullscreen){'--wallpaper-operator-self-test'}elseif($StartupPreparation){'--desktop-startup-self-test'}elseif($DisplayPolicy){'--display-policy-self-test'}elseif($SoakSeconds -gt 0){'--wallpaper-soak-self-test '+$SoakSeconds}elseif($WallpaperPolicy){'--wallpaper-policy-self-test'}elseif($RendererPolicy){'--renderer-self-test'}elseif($NativePolicy){'--native-policy-self-test'}elseif($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
+  $taskMode=if($ThreeScene){'--three-scene-self-test'}elseif($DisplaySoak){'--display-soak-self-test '+$SoakSeconds}elseif($OperatorFullscreen){'--wallpaper-operator-self-test'}elseif($StartupPreparation){'--desktop-startup-self-test'}elseif($DisplayPolicy){'--display-policy-self-test'}elseif($SoakSeconds -gt 0){'--wallpaper-soak-self-test '+$SoakSeconds}elseif($WallpaperPolicy){'--wallpaper-policy-self-test'}elseif($RendererPolicy){'--renderer-self-test'}elseif($NativePolicy){'--native-policy-self-test'}elseif($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
   $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList $taskMode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
   $taskRootIdentity=[pscustomobject]@{id=$taskProcess.Id;startTicks=$taskProcess.StartTime.ToUniversalTime().Ticks;path=$taskBuild.executable}
   $taskKnown[$taskRootIdentity.id]=$taskRootIdentity
@@ -94,8 +98,10 @@ try{
   $taskObservedExit=$taskProcess.ExitCode
   if($taskObservedExit -ne 0){throw ('Dual-window self-test exited '+$taskObservedExit+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  $taskExpectedChecks=if($DisplaySoak){29}elseif($OperatorFullscreen){34}elseif($StartupPreparation){16}elseif($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
+  $taskExpectedChecks=if($ThreeScene){30}elseif($DisplaySoak){29}elseif($OperatorFullscreen){34}elseif($StartupPreparation){16}elseif($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
+  if($ThreeScene -and (-not $taskReport.scene.passed -or -not $taskReport.scene.finalRecreatedViewVerified -or $taskReport.scene.sceneLoads -lt 5 -or
+    $taskReport.scene.gameLoaded -or $taskReport.scene.nativeFullscreenTested -or $taskReport.scene.presentedFpsMeasured)){throw 'Three-dimensional scene report mismatch.'}
   $taskDesktopReport=$null
   $taskRebuilds=0
   if($SoakSeconds -gt 0){
@@ -157,5 +163,5 @@ if($taskFailure){
   throw $taskFailure
 }
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;
-  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;availability=$taskReport.availability;nativePolicy=$taskReport.nativePolicy;nativeForegroundTestSkipped=$taskReport.nativeForegroundTestSkipped;nativeSignals=$taskReport.nativeSignals;display=$taskReport.display;renderer=$taskReport.renderer;soak=$taskReport.soak;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
+  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;availability=$taskReport.availability;nativePolicy=$taskReport.nativePolicy;nativeForegroundTestSkipped=$taskReport.nativeForegroundTestSkipped;nativeSignals=$taskReport.nativeSignals;display=$taskReport.display;renderer=$taskReport.renderer;soak=$taskReport.soak;scene=$taskReport.scene;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
   ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $taskRun 'summary.json')

@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$NativePolicy)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$NativePolicy,[switch]$ThreeScene)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'private-path.ps1')
 $taskRoot=Get-DualWindowPrivateRoot $OutputDirectory
@@ -14,6 +14,7 @@ $taskPage=Join-Path $taskRun 'page'
 New-Item -ItemType Directory -Path $taskPage | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'view.html'),(Join-Path $PSScriptRoot 'visual-probe.mjs'),(Join-Path $PSScriptRoot '../state-owner/lease-session.mjs') -Destination $taskPage
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'manual-input-panel.mjs'),(Join-Path $PSScriptRoot '../input-window/input-session.mjs'),(Join-Path $PSScriptRoot '../input-window/manual-evidence.mjs') -Destination $taskPage
+if($ThreeScene){& node (Join-Path $PSScriptRoot '../three-scene/build.mjs') $taskPage;if($LASTEXITCODE -ne 0){throw 'Lake scene bundle did not build.'}}
 $taskExecutable=Join-Path $taskRun 'DualWindowHost.exe'
 $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platform:x64','/warnaserror+',
   '/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll',
@@ -28,6 +29,7 @@ $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/DisplayBarrier.cs')
 $taskArgs+=(Join-Path $PSScriptRoot 'DualWindowDisplay.cs')
 $taskArgs+=(Join-Path $PSScriptRoot 'DualWindowAvailability.cs')
 $taskArgs+=(Join-Path $PSScriptRoot 'DualWindowStartup.cs')
+$taskArgs+=(Join-Path $PSScriptRoot 'DualWindowScene.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../desktop-startup/DesktopStartup.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../desktop-startup/Win32ShellLayerRequest.cs')
 $taskArgs+=(Join-Path $PSScriptRoot 'DualWindowManual.cs')

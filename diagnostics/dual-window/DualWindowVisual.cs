@@ -40,6 +40,7 @@ sealed partial class DualWindowContext
             Require(Math.Abs(green.R-113)<=12 && Math.Abs(green.G-217)<=12 && Math.Abs(green.B-165)<=12 &&
                 Math.Abs(blue.R-71)<=12 && Math.Abs(blue.G-125)<=12 && Math.Abs(blue.B-183)<=12,"Own WebView image did not contain expected rendering markers.");
         }
+        if(threeScene)await VerifyThreeScene(pane,true);
         await pane.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.stop()");
         long stopped=Number(await VisualState(pane),"frames");await Task.Delay(150);
         Require(Number(await VisualState(pane),"frames")==stopped,"Stopped visual kept rendering.");

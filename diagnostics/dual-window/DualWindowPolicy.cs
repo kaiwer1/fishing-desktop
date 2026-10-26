@@ -45,8 +45,8 @@ sealed partial class DualWindowContext
         Send(pane,new{kind="host-policy",documentId=pane.Ticket.DocumentId,canRun=state.CanRun,reasons=state.Reasons.ToString(),
             revision=state.Revision,controlEpoch=state.ControlEpoch,activeSeconds=activityClock.ActiveSeconds});
     }
-    void StopActivityPolicy(){activityTimer.Stop();}
-    void DisposeActivityPolicy(){activityTimer.Dispose();}
+    void StopActivityPolicy(){activityTimer.Stop();StopNativePolicy();}
+    void DisposeActivityPolicy(){activityTimer.Dispose();DisposeNativePolicy();}
     async Task RunPolicyProbe(ProbeWindow read,ProbeWindow control,string ownerId,string originalRequest)
     {
         string lease=await Activate(control);

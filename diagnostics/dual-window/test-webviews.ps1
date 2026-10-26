@@ -1,8 +1,9 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy)
 $ErrorActionPreference='Stop'
 if($VisibleDesktop){$DesktopLayer=$true}
+if($NativePolicy){$HostPolicy=$true}
 if($HostPolicy -and $DesktopLayer){throw 'Run controlled policy and desktop tests separately.'}
-$taskBuild=& (Join-Path $PSScriptRoot 'build.ps1') -SdkDirectory $SdkDirectory -OutputDirectory $OutputDirectory -DesktopLayer:$DesktopLayer
+$taskBuild=& (Join-Path $PSScriptRoot 'build.ps1') -SdkDirectory $SdkDirectory -OutputDirectory $OutputDirectory -DesktopLayer:$DesktopLayer -NativePolicy:$NativePolicy
 $taskRun=$taskBuild.outputDirectory
 $taskProfile=Join-Path $taskRun 'private-profile'
 $taskKnown=@{}
@@ -28,7 +29,7 @@ function Test-DualIdentity($Identity) {
   }catch{return $false}finally{if($null -ne $taskCandidate){$taskCandidate.Dispose()}}
 }
 function Update-DualOwned {
-  $taskRows=@(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe' OR Name='DualWindowHost.exe'" -OperationTimeoutSec 5)
+  $taskRows=@(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe' OR Name='DualWindowHost.exe' OR Name='NativeEnvironmentFixture.exe'" -OperationTimeoutSec 5)
   $taskCurrent=@{}
   foreach($taskRow in $taskRows){$taskIdentity=Read-DualIdentity $taskRow;if($null -ne $taskIdentity){$taskCurrent[$taskIdentity.id]=$taskIdentity}}
   $taskLive=@{}
@@ -40,11 +41,12 @@ function Update-DualOwned {
     foreach($taskIdentity in $taskCurrent.Values){
       if($taskLive.ContainsKey($taskIdentity.id) -or -not $taskLive.ContainsKey($taskIdentity.parentId)){continue}
       $taskParent=$taskLive[$taskIdentity.parentId]
-      if($taskIdentity.startTicks -lt $taskParent.startTicks -or [IO.Path]::GetFileName($taskIdentity.path) -ine 'msedgewebview2.exe'){continue}
+      $taskIsFixture=$NativePolicy -and $taskParent.id -eq $taskRootIdentity.id -and $taskIdentity.path.Equals((Join-Path $taskRun 'NativeEnvironmentFixture.exe'),[StringComparison]::OrdinalIgnoreCase) -and $taskIdentity.command -and $taskIdentity.command.Contains($taskRun)
+      if($taskIdentity.startTicks -lt $taskParent.startTicks -or (-not $taskIsFixture -and [IO.Path]::GetFileName($taskIdentity.path) -ine 'msedgewebview2.exe')){continue}
       if(-not (Test-DualIdentity $taskParent) -or -not (Test-DualIdentity $taskIdentity)){continue}
       # First browser child must name our unique profile; grandchildren need the
       # still-live, start-time-matched parent already proven to belong to us.
-      if($taskParent.id -eq $taskRootIdentity.id -and (-not $taskIdentity.command -or -not $taskIdentity.command.Contains($taskProfile))){continue}
+      if(-not $taskIsFixture -and $taskParent.id -eq $taskRootIdentity.id -and (-not $taskIdentity.command -or -not $taskIdentity.command.Contains($taskProfile))){continue}
       $taskKnown[$taskIdentity.id]=$taskIdentity;$taskLive[$taskIdentity.id]=$taskIdentity;$taskAdded=$true
     }
   }while($taskAdded)
@@ -61,21 +63,23 @@ function Stop-DualOwned($Identity) {
   finally{if($null -ne $taskOwned){$taskOwned.Dispose()}}
 }
 try{
-  $taskMode=if($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
+  $taskMode=if($NativePolicy){'--native-policy-self-test'}elseif($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
   $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList $taskMode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
   $taskRootIdentity=[pscustomobject]@{id=$taskProcess.Id;startTicks=$taskProcess.StartTime.ToUniversalTime().Ticks;path=$taskBuild.executable}
   $taskKnown[$taskRootIdentity.id]=$taskRootIdentity
   $taskTimer=[Diagnostics.Stopwatch]::StartNew()
   while(-not $taskProcess.WaitForExit(100)){
     Update-DualOwned | Out-Null
-    if($taskTimer.Elapsed.TotalSeconds -gt 75){throw 'Dual-window self-test timed out.'}
+    $taskTimeout=if($NativePolicy){105}else{75}
+    if($taskTimer.Elapsed.TotalSeconds -gt $taskTimeout){throw 'Dual-window self-test timed out.'}
   }
   if($taskProcess.ExitCode -ne 0){throw ('Dual-window self-test exited '+$taskProcess.ExitCode+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  $taskExpectedChecks=if($HostPolicy){15}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
+  $taskExpectedChecks=if($NativePolicy){18}elseif($HostPolicy){15}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
   $taskDesktopReport=$null
   if($HostPolicy -and (-not $taskReport.hostPolicy.passed -or -not $taskReport.hostPolicy.pausedClockStable -or -not $taskReport.hostPolicy.noAutomaticLeaseRestore)){throw 'Host policy report mismatch.'}
+  if($NativePolicy -and (-not $taskReport.nativePolicy.passed -or -not $taskReport.nativePolicy.fixtureNormalExit -or $taskReport.nativePolicy.maximumConsecutiveFullSamples -lt 10)){throw 'Native joint policy report mismatch.'}
   if($DesktopLayer){
     $taskDesktopReport=Get-Content -LiteralPath (Join-Path $taskRun 'desktop-summary.json') -Raw | ConvertFrom-Json
     if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne 4 -or $taskDesktopReport.detachments -ne 4 -or
@@ -110,5 +114,5 @@ finally{
 }
 if($taskFailure){throw $taskFailure}
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;
-  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
+  realWebViewMessages=$true;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;nativePolicy=$taskReport.nativePolicy;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
   ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $taskRun 'summary.json')

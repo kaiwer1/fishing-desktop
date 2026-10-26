@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$NativePolicy)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'private-path.ps1')
 $taskRoot=Get-DualWindowPrivateRoot $OutputDirectory
@@ -17,9 +17,10 @@ $taskExecutable=Join-Path $taskRun 'DualWindowHost.exe'
 $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platform:x64','/warnaserror+',
   '/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll',
   ('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.Core.dll')),('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.WinForms.dll')),('/out:'+$taskExecutable))
-if($DesktopLayer){$taskArgs+=('/win32manifest:'+(Join-Path $PSScriptRoot 'desktop.manifest'))}
-foreach($taskName in @('ActivationHandshake.cs','DualWindowOwner.cs','DualWindowHost.cs','DualWindowProbe.cs','DualWindowDesktop.cs','DualWindowVisual.cs','DualWindowPolicy.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+if($DesktopLayer -or $NativePolicy){$taskArgs+=('/win32manifest:'+(Join-Path $PSScriptRoot 'desktop.manifest'))}
+foreach($taskName in @('ActivationHandshake.cs','DualWindowOwner.cs','DualWindowHost.cs','DualWindowProbe.cs','DualWindowDesktop.cs','DualWindowVisual.cs','DualWindowPolicy.cs','DualWindowNativePolicy.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/RunGate.cs')
+$taskArgs+=(Join-Path $PSScriptRoot '../host-policy/NativeEnvironment.cs')
 foreach($taskName in @('DesktopLayer.cs','Win32DesktopApi.cs')){$taskArgs+=(Join-Path $PSScriptRoot "../desktop-layer/$taskName")}
 foreach($taskName in @('DurableCounterStore.cs','ViewAuthority.cs')){$taskArgs+=(Join-Path $PSScriptRoot "../state-owner/$taskName")}
 $taskArgs+=(Join-Path $PSScriptRoot '../input-window/HostInstanceGuard.cs')
@@ -27,4 +28,8 @@ $taskCompilerOutput=@(& $taskCompiler @taskArgs)
 $taskCompilerExit=$LASTEXITCODE
 $taskCompilerOutput | Set-Content -LiteralPath (Join-Path $taskRun 'build-output.txt') -Encoding utf8
 if($taskCompilerExit -ne 0){$taskCompilerOutput | Out-Host;throw 'Dual-window host did not compile.'}
+if($NativePolicy){
+  & $taskCompiler /nologo /utf8output /target:winexe /platform:x64 /warnaserror+ /r:System.Windows.Forms.dll /r:System.Drawing.dll ('/win32manifest:'+(Join-Path $PSScriptRoot 'desktop.manifest')) ('/out:'+(Join-Path $taskRun 'NativeEnvironmentFixture.exe')) (Join-Path $PSScriptRoot '../host-policy/NativeEnvironmentFixture.cs')
+  if($LASTEXITCODE -ne 0){throw 'Native policy fixture did not compile.'}
+}
 [pscustomobject]@{outputDirectory=$taskRun;executable=$taskExecutable;compiled=$true;started=$false}

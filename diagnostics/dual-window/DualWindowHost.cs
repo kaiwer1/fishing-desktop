@@ -74,6 +74,7 @@ sealed partial class DualWindowContext : ApplicationContext
     readonly bool desktopMode;
     readonly bool visibleDesktopTest;
     readonly bool policySelfTest;
+    readonly bool nativePolicySelfTest;
     readonly NotifyIcon tray;
     CoreWebView2Environment environment;
     bool stopping;
@@ -82,9 +83,10 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest)
     {
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
+        this.nativePolicySelfTest=nativePolicySelfTest;
         owner=new DualWindowOwner(Path.Combine(root,"counter.journal.jsonl"));
         if(dispatcher.Handle==IntPtr.Zero)throw new InvalidOperationException("Owner dispatcher handle unavailable.");
         InitializeActivityPolicy();
@@ -101,7 +103,7 @@ sealed partial class DualWindowContext : ApplicationContext
     async void Start()
     {
         try{
-            if(automated){deadline.Tick+=delegate{Fail(new InvalidOperationException("Dual-window self-test deadline exceeded."));};deadline.Start();}
+            if(automated){if(nativePolicySelfTest)deadline.Interval=85000;deadline.Tick+=delegate{Fail(new InvalidOperationException("Dual-window self-test deadline exceeded."));};deadline.Start();}
             environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(root,"private-profile"));
             if(stopping)return;
             environment.BrowserProcessExited+=delegate(object sender,CoreWebView2BrowserProcessExitedEventArgs e){
@@ -316,7 +318,8 @@ sealed partial class DualWindowContext : ApplicationContext
     [STAThread] static int Main(string[] args)
     {
         bool visibleDesktop=args.Length==1 && args[0]=="--desktop-visible-self-test";
-        bool policy=args.Length==1 && args[0]=="--policy-self-test";
+        bool nativePolicy=args.Length==1 && args[0]=="--native-policy-self-test";
+        bool policy=nativePolicy || (args.Length==1 && args[0]=="--policy-self-test");
         bool desktop=visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
         bool automated=desktop || policy || (args.Length==1 && args[0]=="--self-test");
         if(args.Length>0 && !automated)return 5;
@@ -324,7 +327,7 @@ sealed partial class DualWindowContext : ApplicationContext
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

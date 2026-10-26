@@ -37,6 +37,7 @@ sealed partial class DualWindowContext
             foreach(var pane in windows.Values)if(pane.Ticket.CanControl){activation.Cancel(pane.Ticket.ViewId);SendLease(pane,null);}
         }
         if(transition.Changed)foreach(var pane in windows.Values)SendPolicy(pane);
+        if(transition.Changed)ApplyRendererPolicy();
     }
     void SendPolicy(ProbeWindow pane)
     {

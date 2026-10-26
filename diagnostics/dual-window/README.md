@@ -22,6 +22,7 @@
 | `DualWindowVisual.cs` / `visual-probe.mjs` | 显式可见自测、单个可取消动画排程与仅本 WebView 的像素检查 |
 | `DualWindowPolicy.cs` / `../host-policy/RunGate.cs` | 多原因暂停、单调活动时钟、owner 命令门禁及受控真实消息测试 |
 | `DualWindowNativePolicy.cs` | 200 ms 原生采样接入 owner、独立自有全屏窗口及联合消息检查 |
+| `DualWindowRenderer.cs` / `../host-policy/RendererSuspender.cs` | 只读页选择性挂起、最新意图协调、暂停重载及释放重建 |
 | `view.html` | 只呈现快照的页面和计数器提交按钮；`sendRaw` 仅用于重放过期诊断消息 |
 | `DualWindowOwnerTests.cs` | 无浏览器的生命周期、写锁和旧身份回归测试 |
 
@@ -120,6 +121,16 @@ $taskBuild
 2026-10-26 08:05 联合自测 **18 项通过**：346 个确认自有窗口处于前台的全屏样本期间，owner 活动时钟不变，真实页面旧命令返回 `host-paused`，状态及写锁保留；恢复后旧 lease 仍拒绝，显式启用后原请求仍去重。最终 value 10 / sequence 2，自有全屏窗正常退出，无强制清理，专用浏览器及全屏测试进程残留为 0。前台激活使用原生工具，不依赖失败的截图或鼠标坐标。
 
 该模式运行在不可见的两个普通 WebView 窗口中，未同时显示桌面子层；没有测试渲染器挂起、锁屏、实际电源挂起、独占游戏或多屏。原生全屏检测与唯一 owner/真实消息通道已经联合，尚不能称为全部桌面输入与低占用通过。原始报告和 profile 留仓库外。
+
+### 选择性 WebView 挂起自测
+
+```powershell
+& ./diagnostics/dual-window/test-webviews.ps1 -SdkDirectory $taskSdk -OutputDirectory $taskOutput -RendererPolicy
+```
+
+与原生前台/桌面模式分开运行。先完成受控暂停检查，再为只读页启用异步渲染协调；暂停停止绘制、隐藏控件并请求 SDK 挂起，交互页继续响应但 owner 拒绝修改。挂起期间不再发送只读快照，恢复时补发最新呈现状态，不自动恢复输入。
+
+2026-10-26 08:15，**19 项真实检查通过**，包含暂停重载后再次挂起、恢复绘制、释放挂起视图及重建保持去重。协调器固定检查 14 项、页面启停 5 项通过；普通 11 项和可见桌面 16 项回归通过。全部正常退出、专用残留为 0。固定异常时序不等于实际制造了 SDK 的所有迟到故障；此模式也未测 CPU/内存收益，隐藏控件所需的产品冻结背景仍待接入，见[挂起说明](../host-policy/README.md)。
 
 ### 可见桌面渲染自测
 

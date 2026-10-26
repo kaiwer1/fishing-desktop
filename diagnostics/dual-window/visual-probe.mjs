@@ -1,7 +1,7 @@
 // Small rendering fixture, not game content. It allocates only while explicitly
 // started and has one cancellable RAF. CapturePreview covers this WebView only.
 export function createVisualProbe(document, requestFrame = requestAnimationFrame, cancelFrame = cancelAnimationFrame) {
-  let canvas = null, context = null, pending = null, running = false, frames = 0, generation = 0;
+  let canvas = null, context = null, pending = null, running = false, frames = 0, generation = 0, resumeWanted = false;
   const state = () => ({ running, frames });
   const schedule = () => {
     const current = generation;
@@ -21,7 +21,12 @@ export function createVisualProbe(document, requestFrame = requestAnimationFrame
     context.fillStyle = '#71d9a5';context.fillRect(32 + (frames % 180), 260, 28, 28);
     schedule();
   };
-  return {
+  const stop = () => {
+    running = false;generation++;
+    if (pending !== null) cancelFrame(pending);
+    pending = null;return state();
+  };
+  const api = {
     state,
     start() {
       if (running) return state();
@@ -35,9 +40,10 @@ export function createVisualProbe(document, requestFrame = requestAnimationFrame
       running = true;generation++;schedule();return state();
     },
     stop() {
-      running = false;generation++;
-      if (pending !== null) cancelFrame(pending);
-      pending = null;return state();
+      resumeWanted = false;return stop();
     },
+    pause() { resumeWanted ||= running;return stop(); },
+    resume() { const wanted = resumeWanted;resumeWanted = false;return wanted ? api.start() : state(); },
   };
+  return api;
 }

@@ -43,6 +43,21 @@
 
 锁屏、实际休眠/唤醒、断开会话、独占全屏、HDR、不同缩放组合和实际多屏切换未验证。几何的负坐标/其他屏案例是固定输入，不能作为多显示器实测。
 
+## 渲染器异步挂起
+
+`RendererSuspender` 对每个 Core 串行执行“停止绘制→隐藏控件→TrySuspend”，恢复时 Resume 后显示。运行意图带代次；旧准备或挂起回执到达时必须服从最新请求。关闭后不再触碰原视图；挂起被拒绝时明确保留“已隐藏、未挂起”，不会忙循环或宣称低占用。当前恢复失败会进入终止失败状态，由宿主关闭诊断；不能带着未知渲染状态继续。
+
+```powershell
+./diagnostics/host-policy/test-renderer.ps1 -OutputDirectory <已存在的仓库外目录>
+./diagnostics/dual-window/test-webviews.ps1 -SdkDirectory <WebView2 SDK目录> -OutputDirectory <已存在的仓库外目录> -RendererPolicy
+```
+
+2026-10-26 08:15 实测：14 项异步协调器固定检查通过，覆盖迟到准备/挂起、暂停恢复再暂停、关闭、Core 失效、拒绝、当前/旧异常及线程限制；页面启停 5 项通过。真实 WebView 模式 **19 项通过**：只读页的 `IsSuspended` 为 true，交互页仍能返回暂停拒绝；暂停时重载会先恢复导航、新页面就绪后再次挂起；恢复不还原旧授权；直接释放挂起窗口并重建仍保留唯一 owner、写锁和去重。无强制清理或专用残留。普通 11 项、可见桌面 16 项回归通过。
+
+宿主在渲染页挂起时不继续向它发送快照等消息，恢复后补发最新角色/状态/策略，避免额外 API 意外唤醒；计数 owner 不依赖页面运行。这里检查的是 SDK 状态与实际消息行为，没有测出 CPU/显存节省量，也没有与原生全屏/可见桌面同时联合。隐藏 WebView 会露出宿主背景；产品所需的冻结画面尚未接入，不能把此诊断当作最终壁纸暂停效果。
+
+挂起依据：[TrySuspendAsync](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2.trysuspendasync)、[Resume](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2.resume)。调用前需要控件不可见；挂起是尽力而为，拒绝和仍在执行的脚本必须分别处理。显示或部分 API 可自动恢复，因此需要复核状态。
+
 ## 官方依据
 
 - [OpenInputDesktop](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-openinputdesktop)：返回接收输入的桌面，必须 CloseDesktop；断开会话时可返回将来重连时使用的桌面，因此同时检查 WTS 连接状态。

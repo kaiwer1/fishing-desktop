@@ -75,6 +75,7 @@ sealed partial class DualWindowContext : ApplicationContext
     readonly bool visibleDesktopTest;
     readonly bool policySelfTest;
     readonly bool nativePolicySelfTest;
+    readonly bool rendererSelfTest;
     readonly NotifyIcon tray;
     CoreWebView2Environment environment;
     bool stopping;
@@ -83,10 +84,11 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest)
     {
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         this.nativePolicySelfTest=nativePolicySelfTest;
+        this.rendererSelfTest=rendererSelfTest;
         owner=new DualWindowOwner(Path.Combine(root,"counter.journal.jsonl"));
         if(dispatcher.Handle==IntPtr.Zero)throw new InvalidOperationException("Owner dispatcher handle unavailable.");
         InitializeActivityPolicy();
@@ -145,6 +147,7 @@ sealed partial class DualWindowContext : ApplicationContext
                 if(!Live(pane)){e.Cancel=true;return;}
                 if(e.Uri!=PageUrl){e.Cancel=true;Revoke(pane);return;}
                 activation.Cancel(pane.Ticket.ViewId);
+                RendererNavigating(pane);
                 owner.Navigating(pane.Ticket);pane.Navigation=e.NavigationId;pane.Ready=false;
                 pane.NavigationGeneration=checked(pane.NavigationGeneration+1);pane.AwaitingNavigationStart=false;
             };
@@ -166,7 +169,7 @@ sealed partial class DualWindowContext : ApplicationContext
                     owner.Attach(pane.Ticket,document);pane.Ready=true;
                     PolicyPageReady();
                     Send(pane,new {kind="role",documentId=document,role=canControl?"独立交互窗口":"独立只读窗口"});
-                    SendLease(pane,null);Broadcast();SendPolicy(pane);
+                    SendLease(pane,null);Broadcast();SendPolicy(pane);RendererPageReady(pane);
                 }catch(Exception error){NavigationError(pane,navigation,generation,error);}
             };
             core.WebMessageReceived+=delegate(object sender,CoreWebView2WebMessageReceivedEventArgs e){
@@ -181,6 +184,7 @@ sealed partial class DualWindowContext : ApplicationContext
     }
     internal void Retire(ProbeWindow pane)
     {
+        RetireRenderer(pane);
         if(Live(pane)){
             // Remove identity before child controls dispose or their asynchronous events return.
             activation.Cancel(pane.Ticket.ViewId);owner.Close(pane.Ticket);windows.Remove(pane.Ticket.CanControl);pane.Ready=false;
@@ -190,6 +194,7 @@ sealed partial class DualWindowContext : ApplicationContext
     internal void Reload(ProbeWindow pane)
     {
         if(!Live(pane) || pane.View.CoreWebView2==null)return;
+        RendererNavigating(pane);
         Revoke(pane);owner.Navigating(pane.Ticket);pane.Ready=false;pane.AwaitingNavigationStart=true;
         pane.NavigationGeneration=checked(pane.NavigationGeneration+1);
         pane.View.CoreWebView2.Reload();
@@ -228,7 +233,7 @@ sealed partial class DualWindowContext : ApplicationContext
     }
     void Send(ProbeWindow pane,object value)
     {
-        if(Live(pane) && pane.Ticket.DocumentId!=null)pane.View.CoreWebView2.PostWebMessageAsJson(json.Serialize(value));
+        if(Live(pane) && pane.Ticket.DocumentId!=null && !RendererIsSuspended(pane))pane.View.CoreWebView2.PostWebMessageAsJson(json.Serialize(value));
     }
     void Broadcast()
     {
@@ -319,7 +324,8 @@ sealed partial class DualWindowContext : ApplicationContext
     {
         bool visibleDesktop=args.Length==1 && args[0]=="--desktop-visible-self-test";
         bool nativePolicy=args.Length==1 && args[0]=="--native-policy-self-test";
-        bool policy=nativePolicy || (args.Length==1 && args[0]=="--policy-self-test");
+        bool renderer=args.Length==1 && args[0]=="--renderer-self-test";
+        bool policy=renderer || nativePolicy || (args.Length==1 && args[0]=="--policy-self-test");
         bool desktop=visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
         bool automated=desktop || policy || (args.Length==1 && args[0]=="--self-test");
         if(args.Length>0 && !automated)return 5;
@@ -327,7 +333,7 @@ sealed partial class DualWindowContext : ApplicationContext
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

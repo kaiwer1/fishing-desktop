@@ -41,7 +41,10 @@ window.chrome.webview.addEventListener('message',e=>{
   }
   if(m.kind==='revoke-reply')lastRevoke=m;
   if(m.kind==='activation-reply')lastActivationReply=m;
-  if(m.kind==='host-policy' && (!hostPolicy || m.revision>=hostPolicy.revision))hostPolicy=m;
+  if(m.kind==='host-policy' && (!hostPolicy || m.revision>=hostPolicy.revision)){
+    hostPolicy=m;
+    if(m.canRun)window.dualProbe.visual.resume();else window.dualProbe.visual.pause();
+  }
   if(m.kind==='role')document.querySelector('#role').textContent=m.role;
   received++;render();
 });

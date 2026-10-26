@@ -1,25 +1,32 @@
 <#
 .SYNOPSIS
-Captures PresentMon 2.6.0 data for one proven Lively WebView2 GPU process.
+Captures PresentMon 2.6.0 data for one proven host WebView2 GPU process.
 .DESCRIPTION
-Requires an already running, unique exact Lively host and one matching wallpaper
-player/GPU child. Does not start a wallpaper, request elevation, use hotkeys, alter
+Requires an already running unique exact Lively or DualWindowHost owner and one
+proven GPU child. Owner capture also verifies its private browser profile.
+Does not start a wallpaper, request elevation, use hotkeys, alter
 services, or stop another trace. Empty/failed captures are unavailable, not 0 FPS.
 All executable paths, process identities, CSV and logs remain in a new private
 output directory outside the repository. PresentMon options follow its 2.6.0 help.
 #>
+[CmdletBinding(DefaultParameterSetName='Lively')]
 param(
-  [Parameter(Mandatory=$true)][string]$LivelyExecutable,
+  [Parameter(Mandatory=$true,ParameterSetName='Lively')][string]$LivelyExecutable,
+  [Parameter(Mandatory=$true,ParameterSetName='Owner')][string]$OwnerExecutable,
   [Parameter(Mandatory=$true)][string]$PresentMonExecutable,
   [Parameter(Mandatory=$true)][string]$OutputDirectory,
   [ValidateRange(5,60)][int]$Seconds=30
 )
 $ErrorActionPreference='Stop'
-$taskLively=(Resolve-Path -LiteralPath $LivelyExecutable).Path
+. (Join-Path $PSScriptRoot 'present-target.ps1')
+$taskKind=$PSCmdlet.ParameterSetName
+$taskRequested=if($taskKind -eq 'Owner'){$OwnerExecutable}else{$LivelyExecutable}
+$taskExpectedName=if($taskKind -eq 'Owner'){'DualWindowHost.exe'}else{'Lively.exe'}
+$taskExecutable=(Resolve-Path -LiteralPath $taskRequested).Path
 $taskPresentMon=(Resolve-Path -LiteralPath $PresentMonExecutable).Path
 $taskOutput=(Resolve-Path -LiteralPath $OutputDirectory).Path
 $taskRepository=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..')).TrimEnd([IO.Path]::DirectorySeparatorChar)
-if(-not (Test-Path -LiteralPath $taskLively -PathType Leaf) -or [IO.Path]::GetFileName($taskLively) -ine 'Lively.exe'){throw 'Specify the exact Lively.exe host.'}
+if(-not (Test-Path -LiteralPath $taskExecutable -PathType Leaf) -or [IO.Path]::GetFileName($taskExecutable) -ine $taskExpectedName){throw ('Specify the exact '+$taskExpectedName+' host.')}
 if(-not (Test-Path -LiteralPath $taskPresentMon -PathType Leaf)){throw 'PresentMonExecutable must be a file.'}
 if(-not (Test-Path -LiteralPath $taskOutput -PathType Container)){throw 'OutputDirectory must be an existing directory.'}
 if($taskOutput.Equals($taskRepository,[StringComparison]::OrdinalIgnoreCase) -or $taskOutput.StartsWith($taskRepository+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Capture output must remain outside the repository.'}
@@ -30,9 +37,25 @@ while($null -ne $taskAncestor){
   if(($taskAncestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'OutputDirectory must use a direct path without reparse-point ancestors.'}
   $taskAncestor=$taskAncestor.Parent
 }
-$taskPlayerPath=Join-Path (Split-Path -Parent $taskLively) 'Plugins/WebView2/Lively.Player.WebView2.exe'
-if(-not (Test-Path -LiteralPath $taskPlayerPath -PathType Leaf)){throw 'The expected Lively WebView2 player was not found beside this host.'}
-$taskPlayerPath=(Resolve-Path -LiteralPath $taskPlayerPath).Path
+$taskPlayerPath=$null;$taskOwnerProfile=$null
+if($taskKind -eq 'Lively'){
+  $taskPlayerPath=Join-Path (Split-Path -Parent $taskExecutable) 'Plugins/WebView2/Lively.Player.WebView2.exe'
+  if(-not (Test-Path -LiteralPath $taskPlayerPath -PathType Leaf)){throw 'The expected Lively WebView2 player was not found beside this host.'}
+  $taskPlayerPath=(Resolve-Path -LiteralPath $taskPlayerPath).Path
+}else{
+  $taskOwnerProfile=(Resolve-Path -LiteralPath (Join-Path (Split-Path -Parent $taskExecutable) 'private-profile')).Path
+  $taskProfileAncestor=Get-Item -LiteralPath $taskOwnerProfile
+  if(-not $taskProfileAncestor.PSIsContainer){throw 'Owner profile must be an existing private directory.'}
+  while($null -ne $taskProfileAncestor){
+    if(($taskProfileAncestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Owner profile must use a direct path without reparse points.'}
+    $taskProfileAncestor=$taskProfileAncestor.Parent
+  }
+  $taskRuntimeProfile=Join-Path $taskOwnerProfile 'EBWebView'
+  if(Test-Path -LiteralPath $taskRuntimeProfile){
+    $taskRuntimeItem=Get-Item -LiteralPath $taskRuntimeProfile
+    if(-not $taskRuntimeItem.PSIsContainer -or ($taskRuntimeItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'The owner runtime profile must be a direct directory.'}
+  }
+}
 $taskHash=(Get-FileHash -LiteralPath $taskPresentMon -Algorithm SHA256).Hash.ToLowerInvariant()
 $taskSignature=Get-AuthenticodeSignature -LiteralPath $taskPresentMon
 # Official v2.6.0 x64 release asset, independently verified before this script.
@@ -48,48 +71,21 @@ function Read-ProcessIdentity($taskMetadata){
     $taskStart=$taskProcess.StartTime.ToUniversalTime()
     if([Math]::Abs(($taskMetadata.CreationDate.ToUniversalTime()-$taskStart).TotalMilliseconds) -gt 2){return $null}
     if(-not $taskProcess.Path.Equals($taskMetadata.ExecutablePath,[StringComparison]::OrdinalIgnoreCase)){return $null}
+    if([IO.Path]::GetFileName([string]$taskMetadata.ExecutablePath) -ine [string]$taskMetadata.Name){return $null}
     $taskProcess.Refresh()
     if($taskProcess.HasExited -or $taskProcess.StartTime.ToUniversalTime().Ticks -ne $taskStart.Ticks){return $null}
     return [pscustomobject]@{id=[int]$taskMetadata.ProcessId;parentId=[int]$taskMetadata.ParentProcessId;
       startTicks=$taskStart.Ticks;startTimeUtc=$taskStart.ToString('o');path=$taskMetadata.ExecutablePath;
-      name=$taskMetadata.Name;playerAncestor=$null;gpuFlag=($taskMetadata.CommandLine -match '(?:^|\s)"?--type=gpu-process"?(?=\s|$)')}
+      name=$taskMetadata.Name;command=[string]$taskMetadata.CommandLine}
   }catch{return $null}
   finally{if($null -ne $taskProcess){$taskProcess.Dispose()}}
 }
-function Same-Identity($left,$right){return $null -ne $left -and $null -ne $right -and $left.id -eq $right.id -and $left.startTicks -eq $right.startTicks}
+function Same-Identity($left,$right){return Same-PresentIdentity $left $right}
 function Find-CaptureTarget {
   # Enumeration is internal only; no unrelated process or command-line data is saved.
   $taskMetadata=@(Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate,ExecutablePath,Name,CommandLine -OperationTimeoutSec 5)
-  $taskRoots=@($taskMetadata | Where-Object {$_.ExecutablePath -and $_.ExecutablePath.Equals($taskLively,[StringComparison]::OrdinalIgnoreCase)})
-  if($taskRoots.Count -ne 1){throw 'Expected exactly one running instance of the requested Lively host.'}
-  $taskRoot=Read-ProcessIdentity $taskRoots[0]
-  if($null -eq $taskRoot){throw 'Lively root identity could not be verified.'}
-  $taskById=@{};$taskByParent=@{}
-  foreach($taskRow in $taskMetadata){
-    $taskById[[int]$taskRow.ProcessId]=$taskRow
-    $taskParent=[int]$taskRow.ParentProcessId
-    if(-not $taskByParent.ContainsKey($taskParent)){$taskByParent[$taskParent]=[Collections.Generic.List[object]]::new()}
-    $taskByParent[$taskParent].Add($taskRow)
-  }
-  $taskQueue=[Collections.Generic.Queue[object]]::new();$taskQueue.Enqueue($taskRoot)
-  $taskAccepted=@{};$taskAccepted[$taskRoot.id]=$taskRoot
-  while($taskQueue.Count -gt 0){
-    $taskParent=$taskQueue.Dequeue()
-    foreach($taskChildMetadata in @($taskByParent[$taskParent.id])){
-      if($null -eq $taskChildMetadata -or $taskAccepted.ContainsKey([int]$taskChildMetadata.ProcessId)){continue}
-      $taskChild=Read-ProcessIdentity $taskChildMetadata
-      if($null -eq $taskChild -or $taskChild.startTicks -lt $taskParent.startTicks){continue}
-      if(-not (Same-Identity $taskParent (Read-ProcessIdentity $taskById[$taskParent.id]))){throw 'A parent changed during capture-target discovery.'}
-      $taskChild.playerAncestor=$taskParent.playerAncestor
-      if($taskChild.path.Equals($taskPlayerPath,[StringComparison]::OrdinalIgnoreCase)){$taskChild.playerAncestor=$taskChild.id}
-      $taskAccepted[$taskChild.id]=$taskChild;$taskQueue.Enqueue($taskChild)
-    }
-  }
-  $taskPlayers=@($taskAccepted.Values | Where-Object {$_.path.Equals($taskPlayerPath,[StringComparison]::OrdinalIgnoreCase)})
-  if($taskPlayers.Count -ne 1){throw 'Expected one proven wallpaper WebView2 player; no broad capture is allowed.'}
-  $taskTargets=@($taskAccepted.Values | Where-Object {$_.playerAncestor -eq $taskPlayers[0].id -and $_.name -ieq 'msedgewebview2.exe' -and $_.gpuFlag})
-  if($taskTargets.Count -ne 1){throw 'Expected one proven wallpaper GPU process; zero or ambiguous targets are refused.'}
-  return [pscustomobject]@{root=$taskRoot;player=$taskPlayers[0];gpu=$taskTargets[0]}
+  return Get-PresentCaptureTarget -Rows $taskMetadata -RootExecutable $taskExecutable -Kind $taskKind -PlayerExecutable $taskPlayerPath `
+    -OwnerProfileDirectory $taskOwnerProfile -ReadIdentity ${function:Read-ProcessIdentity}
 }
 
 # Query only the exact generated session. This helper exposes no start/stop API.
@@ -142,31 +138,72 @@ $taskArguments=@('--process_id',[string]$taskTarget.gpu.id,'--timed',[string]$Se
 $taskMetadata=[pscustomobject]@{createdAtUtc=[DateTime]::UtcNow.ToString('o');requestedSeconds=$Seconds;
   target=$taskTarget;sessionName=$taskSession;sessionAbsentBeforeCapture=$true;presentMonExecutable=$taskPresentMon;
   presentMonSha256=$taskHash;signatureStatus=[string]$taskSignature.Status;arguments=$taskArguments;
-  rawCsvFile=$taskCsv;scope='Only the one proven wallpaper WebView2 GPU PID; not the whole system.'}
+  hostKind=$taskKind;hostExecutable=$taskExecutable;ownerProfileVerified=$taskTarget.ownerProfileVerified;
+  rawCsvFile=$taskCsv;scope='Only the one proven host WebView2 GPU PID; not the whole system.'}
 $taskMetadata | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $taskRun 'metadata.json') -Encoding utf8
 $taskRechecked=Find-CaptureTarget
-foreach($taskPart in @('root','player','gpu')){
+$taskIdentityParts=if($taskKind -eq 'Owner'){@('root','browser','gpu')}else{@('root','player','gpu')}
+foreach($taskPart in $taskIdentityParts){
   if(-not (Same-Identity $taskTarget.$taskPart $taskRechecked.$taskPart)){throw 'Capture target changed before launch; capture was not started.'}
 }
 
+$script:taskCaptureStage='before-helper-launch'
+$script:taskHelperObservedPath=$null
+function Write-PrivateCaptureError($taskError,[string]$taskName='capture-error.json'){
+  # Private diagnostic only: no command lines, ETW payloads or exception message
+  # text. Paths here refer only to this verified PresentMon binary.
+  try{
+    [pscustomobject]@{stage=$script:taskCaptureStage;exceptionType=$taskError.Exception.GetType().FullName;
+      hresult=$taskError.Exception.HResult;expectedHelperPath=$taskPresentMon;observedHelperPath=$script:taskHelperObservedPath;
+      observedPathAvailable=([bool]$script:taskHelperObservedPath);
+      pathOrdinalIgnoreCaseEqual=($script:taskHelperObservedPath -and $script:taskHelperObservedPath.Equals($taskPresentMon,[StringComparison]::OrdinalIgnoreCase))} |
+      ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $taskRun $taskName) -Encoding utf8
+  }catch{}
+}
 function Stop-OwnedProcess($process,[long]$startTicks){
   if($null -eq $process -or $process.HasExited){return}
-  if($process.StartTime.ToUniversalTime().Ticks -ne $startTicks){throw 'Owned helper identity changed; refusing to stop it.'}
+  if($process.StartTime.ToUniversalTime().Ticks -ne $startTicks -or -not $process.Path.Equals($taskPresentMon,[StringComparison]::OrdinalIgnoreCase)){throw 'Owned helper identity changed; refusing to stop it.'}
   try{$process.Kill()}catch [InvalidOperationException]{if(-not $process.HasExited){throw}}
   if(-not $process.WaitForExit(5000)){throw 'Owned helper has not exited.'}
 }
+function Read-OwnedHelperStart($process){
+  try{
+    $script:taskCaptureStage='helper-read-path'
+    $script:taskHelperObservedPath=$process.Path
+    if(-not $script:taskHelperObservedPath -or -not $script:taskHelperObservedPath.Equals($taskPresentMon,[StringComparison]::OrdinalIgnoreCase)){throw 'The just-launched helper path could not be confirmed.'}
+    $script:taskCaptureStage='helper-read-start-time'
+    return $process.StartTime.ToUniversalTime().Ticks
+  }catch{
+    Write-PrivateCaptureError $_ 'helper-identity-error.json'
+    # Use only the Process object returned by this immediate launch, never a
+    # fresh PID/name lookup, if initial metadata cannot be collected.
+    if(-not $process.HasExited){$process.Kill();if(-not $process.WaitForExit(5000)){throw 'The just-launched helper did not close.'}}
+    throw
+  }
+}
 $taskProcess=$null;$taskProcessStart=0;$taskExit=$null;$taskReason=$null;$taskTimedOut=$false
+$taskGpuLease=$null
 $taskLaunched=$false;$taskCleanupExit=$null;$taskCleanupError=$null;$taskSessionAfter=$null
 $taskStarted=[DateTime]::UtcNow;$taskTimer=[Diagnostics.Stopwatch]::StartNew()
 try{
+  $script:taskCaptureStage='verify-target-gpu-handle'
+  # Retain the verified target's native process handle throughout the trace,
+  # after checking its start time and path immediately before helper launch.
+  $taskGpuLease=Get-Process -Id $taskTarget.gpu.id -ErrorAction Stop
+  if($taskGpuLease.StartTime.ToUniversalTime().Ticks -ne $taskTarget.gpu.startTicks -or
+     -not $taskGpuLease.Path.Equals($taskTarget.gpu.path,[StringComparison]::OrdinalIgnoreCase)){throw 'GPU identity changed before launch.'}
+  [void]$taskGpuLease.Handle
+  if($taskGpuLease.HasExited){throw 'GPU exited before capture launch.'}
+  $script:taskCaptureStage='launch-presentmon'
   $taskProcess=Start-Process -FilePath $taskPresentMon -ArgumentList $taskArguments -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput (Join-Path $taskRun 'presentmon.stdout.txt') -RedirectStandardError (Join-Path $taskRun 'presentmon.stderr.txt')
-  $taskLaunched=$true;$taskProcessStart=$taskProcess.StartTime.ToUniversalTime().Ticks
+  $taskLaunched=$true;$taskProcessStart=Read-OwnedHelperStart $taskProcess
+  $script:taskCaptureStage='wait-presentmon'
   while(-not $taskProcess.WaitForExit(250)){
     if($taskTimer.Elapsed.TotalSeconds -ge $Seconds+15){$taskTimedOut=$true;$taskReason='capture-timeout';break}
   }
   if(-not $taskTimedOut){$taskExit=$taskProcess.ExitCode;if($taskExit -ne 0){$taskReason='presentmon-nonzero-exit'}}
-}catch{$taskReason='capture-launch-or-wait-failed'}
+}catch{Write-PrivateCaptureError $_;$taskReason='capture-launch-or-wait-failed'}
 finally{
   try{Stop-OwnedProcess $taskProcess $taskProcessStart}catch{$taskCleanupError='owned-capture-process-exit-unconfirmed'}
   if($null -ne $taskProcess){
@@ -183,7 +220,7 @@ finally{
         try{
           $taskStopper=Start-Process -FilePath $taskPresentMon -ArgumentList @('--session_name',$taskSession,'--terminate_existing_session','--no_console_stats') `
             -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $taskRun 'cleanup.stdout.txt') -RedirectStandardError (Join-Path $taskRun 'cleanup.stderr.txt')
-          $taskStopperStart=$taskStopper.StartTime.ToUniversalTime().Ticks
+          $taskStopperStart=Read-OwnedHelperStart $taskStopper
           if($taskStopper.WaitForExit(10000)){$taskCleanupExit=$taskStopper.ExitCode}
         }finally{
           Stop-OwnedProcess $taskStopper $taskStopperStart
@@ -199,13 +236,15 @@ finally{
       if($taskSessionAfter -ne 4201){$taskCleanupError='owned-session-removal-unconfirmed'}
     }catch{$taskCleanupError='owned-session-cleanup-failed'}
   }
+  if($null -ne $taskGpuLease){$taskGpuLease.Dispose()}
   $taskTimer.Stop()
 }
 
 $taskRows=0;$taskCsvBytes=0;$taskIdentityAtEnd=$false
 try{
   $taskEndTarget=Find-CaptureTarget
-  $taskIdentityAtEnd=(Same-Identity $taskTarget.root $taskEndTarget.root) -and (Same-Identity $taskTarget.player $taskEndTarget.player) -and (Same-Identity $taskTarget.gpu $taskEndTarget.gpu)
+  $taskIdentityAtEnd=$true
+  foreach($taskPart in $taskIdentityParts){if(-not (Same-Identity $taskTarget.$taskPart $taskEndTarget.$taskPart)){$taskIdentityAtEnd=$false}}
 }catch{}
 if(-not $taskIdentityAtEnd -and -not $taskReason){$taskReason='target-exited-or-changed'}
 if(Test-Path -LiteralPath $taskCsv -PathType Leaf){
@@ -224,6 +263,7 @@ if($taskCleanupError -and -not $taskReason){$taskReason=$taskCleanupError}
 $taskReport=[pscustomobject]@{status=$(if($null -eq $taskReason){'captured'}else{'unavailable'});reason=$taskReason;
   startedAtUtc=$taskStarted.ToString('o');elapsedSeconds=$taskTimer.Elapsed.TotalSeconds;requestedSeconds=$Seconds;
   toolExitCode=$taskExit;timedOut=$taskTimedOut;targetIdentityStillMatched=$taskIdentityAtEnd;
+  hostKind=$taskKind;ownerProfileVerified=$taskTarget.ownerProfileVerified;
   csvRowCount=$taskRows;csvBytes=$taskCsvBytes;rawCsvFile=$taskCsv;metadataFile=(Join-Path $taskRun 'metadata.json');
   cleanup=[pscustomobject]@{ownedSessionName=$taskSession;queryReturnCode=$taskSessionAfter;sessionAbsent=($taskSessionAfter -eq 4201);helperExitCode=$taskCleanupExit;error=$taskCleanupError};
   fps=$null;limits=@('No FPS is calculated by this capture script. Empty CSV or tool failure is unavailable, not zero FPS.',

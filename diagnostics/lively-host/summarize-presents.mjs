@@ -202,23 +202,52 @@ function validateMetadata(summary, metadata, checkReference) {
     metadata.sessionAbsentBeforeCapture === true && summary.cleanup?.ownedSessionName === metadata.sessionName, 'invalid-owned-session');
   requireInput(metadata.presentMonSha256 === officialHash && metadata.signatureStatus === 'Valid', 'unverified-capture-tool');
   const target = metadata.target;
-  requireInput(target && ['root', 'player', 'gpu'].every(part => target[part] && pid(target[part].id) &&
+  const kinds = [summary.hostKind, metadata.hostKind, target?.scopeKind];
+  const legacyLively = kinds.every(value => value === undefined);
+  const hostKind = legacyLively ? 'Lively' : kinds[0];
+  const profileAssertions = [summary.ownerProfileVerified, metadata.ownerProfileVerified, target?.ownerProfileVerified];
+  requireInput(legacyLively ? profileAssertions.every(value => value === undefined) :
+    ['Lively', 'Owner'].includes(hostKind) && kinds.every(value => value === hostKind) &&
+      profileAssertions.every(value => value === (hostKind === 'Owner')), 'invalid-recorded-scope');
+  const parts = hostKind === 'Owner' ? ['root', 'browser', 'gpu'] : ['root', 'player', 'gpu'];
+  requireInput(target && parts.every(part => target[part] && pid(target[part].id) &&
     pid(target[part].parentId) && Number.isFinite(parseTime(target[part].startTimeUtc)) &&
-    typeof target[part].path === 'string' && path.win32.isAbsolute(target[part].path)), 'invalid-recorded-target');
-  requireInput(new Set([target.root.id, target.player.id, target.gpu.id]).size === 3 &&
-    target.root.name?.toLowerCase() === 'lively.exe' && target.player.name?.toLowerCase() === 'lively.player.webview2.exe' &&
-    target.gpu.name?.toLowerCase() === 'msedgewebview2.exe' && target.gpu.gpuFlag === true &&
-    target.player.playerAncestor === target.player.id && target.gpu.playerAncestor === target.player.id &&
-    ['root', 'player', 'gpu'].every(part => path.win32.basename(target[part].path).toLowerCase() === target[part].name.toLowerCase()) &&
-    path.win32.normalize(target.player.path).toLowerCase() === path.win32.join(path.win32.dirname(target.root.path),
-      'Plugins', 'WebView2', 'Lively.Player.WebView2.exe').toLowerCase() &&
-    parseTime(target.root.startTimeUtc) <= parseTime(target.player.startTimeUtc) &&
-    parseTime(target.player.startTimeUtc) <= parseTime(target.gpu.startTimeUtc), 'invalid-recorded-target');
+    typeof target[part].name === 'string' && safePath(target[part].path) && path.win32.isAbsolute(target[part].path)), 'invalid-recorded-target');
+  requireInput(new Set(parts.map(part => target[part].id)).size === 3 && parts.every(part =>
+    path.win32.basename(target[part].path).toLowerCase() === target[part].name.toLowerCase()), 'invalid-recorded-target');
+  const samePath = (left, right) => typeof left === 'string' && typeof right === 'string' &&
+    path.win32.normalize(left).toLowerCase() === path.win32.normalize(right).toLowerCase();
+  let gpuRoleEvidence;
+  if (hostKind === 'Owner') {
+    // Initial Owner records predate the explicit gpuFlag. Their selector-role
+    // assertion is accepted only with all three coherent scope/profile markers
+    // and this exact direct parent chain. Never infer Owner from a filename.
+    const initialOwnerRoles = parts.every(part => target[part].gpuFlag === undefined && target[part].playerAncestor === undefined);
+    const explicitOwnerRoles = target.gpu.gpuFlag === true && ['root', 'browser'].every(part => target[part].gpuFlag === false) &&
+      parts.every(part => target[part].playerAncestor === null);
+    requireInput(target.player === null && target.root.name.toLowerCase() === 'dualwindowhost.exe' &&
+      target.browser.name.toLowerCase() === 'msedgewebview2.exe' && target.gpu.name.toLowerCase() === 'msedgewebview2.exe' &&
+      target.browser.parentId === target.root.id && target.gpu.parentId === target.browser.id &&
+      samePath(target.browser.path, target.gpu.path) && safePath(metadata.hostExecutable) && samePath(metadata.hostExecutable, target.root.path) &&
+      (initialOwnerRoles || explicitOwnerRoles) &&
+      parseTime(target.root.startTimeUtc) <= parseTime(target.browser.startTimeUtc) &&
+      parseTime(target.browser.startTimeUtc) <= parseTime(target.gpu.startTimeUtc), 'invalid-recorded-target');
+    gpuRoleEvidence = initialOwnerRoles ? 'initial-owner-selector-role' : 'explicit-selector-flag';
+  } else {
+    requireInput(target.root.name.toLowerCase() === 'lively.exe' && target.player.name.toLowerCase() === 'lively.player.webview2.exe' &&
+      target.gpu.name.toLowerCase() === 'msedgewebview2.exe' && target.gpu.gpuFlag === true &&
+      target.player.playerAncestor === target.player.id && target.gpu.playerAncestor === target.player.id &&
+      samePath(target.player.path, path.win32.join(path.win32.dirname(target.root.path), 'Plugins', 'WebView2', 'Lively.Player.WebView2.exe')) &&
+      (legacyLively || (safePath(metadata.hostExecutable) && samePath(metadata.hostExecutable, target.root.path))) &&
+      parseTime(target.root.startTimeUtc) <= parseTime(target.player.startTimeUtc) &&
+      parseTime(target.player.startTimeUtc) <= parseTime(target.gpu.startTimeUtc), 'invalid-recorded-target');
+    gpuRoleEvidence = 'explicit-selector-flag';
+  }
   // Capture discovery precedes metadata creation, which precedes launch. Date.parse
   // deliberately compares milliseconds: sub-millisecond values in the same bucket
   // are equivalent at this precision, but a later millisecond cannot be accepted.
   const metadataTime = parseTime(metadata.createdAtUtc), captureTime = parseTime(summary.startedAtUtc);
-  requireInput(['root', 'player', 'gpu'].every(part => parseTime(target[part].startTimeUtc) <= metadataTime) &&
+  requireInput(parts.every(part => parseTime(target[part].startTimeUtc) <= metadataTime) &&
     metadataTime <= captureTime, 'invalid-capture-chronology');
   const args = metadata.arguments;
   requireInput(Array.isArray(args) && args.every(value => typeof value === 'string'), 'unexpected-capture-arguments');
@@ -228,7 +257,7 @@ function validateMetadata(summary, metadata, checkReference) {
   requireInput(args.length === expected.length + 1 && expected.every((value, index) => args[index] === value), 'unexpected-capture-arguments');
   const csvArgument = args.at(-1);
   checkReference(csvArgument.startsWith('"') && csvArgument.endsWith('"') ? csvArgument.slice(1, -1) : csvArgument, 'presents.csv');
-  return target.gpu.id;
+  return { targetId: target.gpu.id, hostKind, ownerProfileVerified: hostKind === 'Owner', gpuRoleEvidence };
 }
 
 export function summarizePresents(directory) {
@@ -259,12 +288,13 @@ export function summarizePresents(directory) {
     catch (error) { if (error instanceof SyntaxError) throw new InputError('invalid-json-input'); throw error; }
   }
   const summary = json('summary.json'), metadata = json('metadata.json');
-  const targetId = validateMetadata(summary, metadata, checkReference), reasons = [];
+  const { targetId, hostKind, ownerProfileVerified, gpuRoleEvidence } = validateMetadata(summary, metadata, checkReference), reasons = [];
   if (summary.status !== 'captured' || summary.reason !== null) reasons.push('capture-not-successful');
   if (summary.toolExitCode !== 0 || summary.timedOut !== false) reasons.push('capture-exit-not-confirmed');
   if (summary.targetIdentityStillMatched !== true) reasons.push('target-identity-not-confirmed');
   if (summary.cleanup.sessionAbsent !== true || summary.cleanup.queryReturnCode !== 4201 || summary.cleanup.error !== null) reasons.push('cleanup-not-confirmed');
   const report = { schema: 1, status: 'unavailable', reasons, requestedSeconds: summary.requestedSeconds,
+    hostKind, recordedScope: { ownerProfileVerified, gpuRoleEvidence },
     wrapperElapsedSeconds: summary.elapsedSeconds, quantileMethod: 'nearest-rank: sorted[ceil(p * N) - 1]',
     recordCount: null, groupCount: null, swapchainCount: null, singleSwapchain: null, singleGroup: null,
     aggregateEventsPerSecond: null, contentFramesPerSecond: null, groups: [], limits: [...limits] };

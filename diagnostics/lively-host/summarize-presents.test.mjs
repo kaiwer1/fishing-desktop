@@ -63,6 +63,94 @@ function fixture(t) {
   f.save(); return f;
 }
 
+function ownerFixture(t, explicitGpuFlag = false) {
+  const f = fixture(t);
+  const identity = (id, parentId, name, filename) => ({ id, parentId, name, path: filename, startTimeUtc: time });
+  f.metadata.target = {
+    root: identity(101001, 101002, 'DualWindowHost.exe', 'C:\\private-person\\DualWindowHost.exe'),
+    player: null,
+    browser: identity(101003, 101001, 'msedgewebview2.exe', 'C:\\private-person\\WebView\\msedgewebview2.exe'),
+    gpu: identity(targetId, 101003, 'msedgewebview2.exe', 'C:\\private-person\\WebView\\msedgewebview2.exe'),
+    scopeKind: 'Owner', ownerProfileVerified: true,
+  };
+  f.summary.hostKind = f.metadata.hostKind = 'Owner';
+  f.summary.ownerProfileVerified = f.metadata.ownerProfileVerified = true;
+  f.metadata.hostExecutable = f.metadata.target.root.path;
+  if (explicitGpuFlag) {
+    for (const part of ['root', 'browser', 'gpu']) {
+      f.metadata.target[part].gpuFlag = part === 'gpu'; f.metadata.target[part].playerAncestor = null;
+    }
+  }
+  f.save(); return f;
+}
+
+test('initial Owner selector records validate direct identity chain without rewriting absent derived flags', t => {
+  const f = ownerFixture(t), names = ['summary.json', 'metadata.json', 'presents.csv'];
+  const before = names.map(name => readFileSync(path.join(f.root, name)));
+  const report = summarizePresents(f.root);
+  assert.equal(report.status, 'summarized'); assert.equal(report.hostKind, 'Owner');
+  assert.deepEqual(report.recordedScope, { ownerProfileVerified: true, gpuRoleEvidence: 'initial-owner-selector-role' });
+  assert.equal(report.recordCount, 4); assert.equal(report.contentFramesPerSecond, null);
+  for (const value of [String(targetId), 'ABCDE987654', fakeSession, 'private-person', f.root]) assert.equal(JSON.stringify(report).includes(value), false);
+  names.forEach((name, index) => assert.deepEqual(readFileSync(path.join(f.root, name)), before[index]));
+});
+
+test('Owner records with newly preserved explicit GPU role fields retain the same scoped calculation', t => {
+  const f = ownerFixture(t, true), report = summarizePresents(f.root);
+  assert.equal(report.status, 'summarized'); assert.equal(report.recordedScope.gpuRoleEvidence, 'explicit-selector-flag');
+  closeTo(report.groups[0].present.eventsPerSecond, 3000 / 31);
+  delete f.metadata.target.gpu.gpuFlag; f.save();
+  assert.throws(() => summarizePresents(f.root), /invalid-recorded-target/, 'mixed partial role metadata must not silently downgrade to the initial format');
+});
+
+test('new Lively kind markers preserve original selector ancestor and GPU assertions', t => {
+  const f = fixture(t);
+  f.summary.hostKind = f.metadata.hostKind = f.metadata.target.scopeKind = 'Lively';
+  f.summary.ownerProfileVerified = f.metadata.ownerProfileVerified = f.metadata.target.ownerProfileVerified = false;
+  f.metadata.hostExecutable = f.metadata.target.root.path; f.save();
+  const report = summarizePresents(f.root);
+  assert.equal(report.status, 'summarized'); assert.equal(report.hostKind, 'Lively');
+  assert.deepEqual(report.recordedScope, { ownerProfileVerified: false, gpuRoleEvidence: 'explicit-selector-flag' });
+});
+
+test('Owner kind and profile assertions must agree in summary metadata and target rather than inferring from paths', t => {
+  const cases = [
+    f => { delete f.summary.hostKind; }, f => { f.metadata.hostKind = 'Lively'; }, f => { f.metadata.target.scopeKind = 'Unknown'; },
+    f => { delete f.metadata.target.ownerProfileVerified; }, f => { f.summary.ownerProfileVerified = false; },
+    f => { f.metadata.ownerProfileVerified = 'true'; },
+    f => { delete f.summary.hostKind; delete f.metadata.hostKind; delete f.metadata.target.scopeKind; },
+  ];
+  for (const change of cases) { const f = ownerFixture(t); change(f); f.save(); assert.throws(() => summarizePresents(f.root), /invalid-recorded-scope/); }
+});
+
+test('Owner accepts only one direct host browser GPU chain with matching names paths and recorded host', t => {
+  const cases = [
+    f => { f.metadata.target.root.name = 'Lively.exe'; },
+    f => { f.metadata.target.browser.parentId = 101004; },
+    f => { f.metadata.target.gpu.parentId = f.metadata.target.root.id; },
+    f => { f.metadata.target.browser.id = f.metadata.target.gpu.id; },
+    f => { f.metadata.target.gpu.path = 'C:\\other\\msedgewebview2.exe'; },
+    f => { f.metadata.hostExecutable = 'C:\\other\\DualWindowHost.exe'; },
+    f => { f.metadata.target.player = { ...f.metadata.target.browser }; },
+    f => { f.metadata.target.gpu.gpuFlag = false; },
+    f => { f.metadata.target.browser.gpuFlag = true; },
+    f => { f.metadata.target.gpu.playerAncestor = f.metadata.target.browser.id; },
+    f => { f.metadata.target.browser.path = 'WebView\\msedgewebview2.exe'; },
+    f => { f.metadata.target.gpu.name = 'unrelated.exe'; },
+  ];
+  for (const change of cases) { const f = ownerFixture(t); change(f); f.save(); assert.throws(() => summarizePresents(f.root), /invalid-recorded-target/); }
+});
+
+test('Owner chronology and CLI output preserve validation and identifier redaction', t => {
+  const f = ownerFixture(t);
+  f.metadata.target.browser.startTimeUtc = '2027-01-01T00:00:00.0000000Z'; f.save();
+  assert.throws(() => summarizePresents(f.root), /invalid-recorded-target/);
+  f.metadata.target.browser.startTimeUtc = time; f.save();
+  const child = spawnSync(process.execPath, [cli, f.root], { encoding: 'utf8', windowsHide: true });
+  assert.equal(child.status, 0); assert.equal(JSON.parse(child.stdout).hostKind, 'Owner'); assert.equal(child.stderr, '');
+  for (const value of [String(targetId), 'ABCDE987654', fakeSession, 'private-person', f.root]) assert.equal(child.stdout.includes(value), false);
+});
+
 test('derives Present and display intervals separately, preserves NA and leaves private inputs unchanged', t => {
   const f = fixture(t);
   const before = ['summary.json', 'metadata.json', 'presents.csv'].map(name => [name, readFileSync(path.join(f.root, name))]);

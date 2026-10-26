@@ -2,6 +2,8 @@
 
 用于分离页面脚本、Canvas/WebGL、宿主属性回调和暂停截图问题，不属于游戏界面。页面和 Node 收集器无需第三方包；Windows 性能采样依赖系统计数器，呈现采集另需指定版本的 PresentMon。不读取存档、账户、浏览器资料或其他应用画面。
 
+2026-10-26 17:09：呈现采集支持[确切独立Owner](OWNER_PRESENTS.md)，25项范围/20项离线检查通过；[首次15秒结果](OWNER_PRESENTS_RESULTS.md)有两个交换链且跨策略版本，内容FPS不可用，不合并为游戏帧率。原Lively接口和旧记录验证保留。
+
 ## 运行
 
 在仓库根目录运行 `node diagnostics/lively-host/server.mjs`，收集器仅绑定 `127.0.0.1:43817`。可选环境变量 `PROBE_RECORD` 指向仓库外的 JSONL 记录文件。`/status` 返回当前会话最近 600 条事件，重启会清空内存记录；Ctrl+C 关闭。不要将记录文件写进公开仓库。

@@ -71,6 +71,12 @@ sealed partial class InputProbeHost
                 Check(!(bool)state["enabled"] && (int)state["held"]==0,"reload-command-leaked");
                 probeChecks.Add("reload "+(attempt+1)+": fresh document rejects old command");
             }
+            string preparation=Guid.NewGuid().ToString("D");
+            view.CoreWebView2.PostWebMessageAsJson(json.Serialize(new{kind="prepare-input",documentId=lifecycle.DocumentId,requestId=preparation}));
+            state=await WaitState(s=>{var ack=s["lastInputPreparation"] as Dictionary<string,object>;return ack!=null && (string)ack["requestId"]==preparation;});
+            var prepared=state["lastInputPreparation"] as Dictionary<string,object>;
+            Check(!(bool)prepared["focused"] && !(bool)state["enabled"] && (int)state["held"]==0,"unfocused-preparation-was-authorized");
+            probeChecks.Add("real unfocused preparation reports current epoch without granting input");
             // A real host-to-page request must not enable an unfocused diagnostic page.
             int rejectedRevision=(int)state["revision"]+1;
             view.CoreWebView2.PostWebMessageAsJson(json.Serialize(new {kind="mode",documentId=lifecycle.DocumentId,

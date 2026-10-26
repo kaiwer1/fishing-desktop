@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Diagnostics;
 using System.Web.Script.Serialization;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -18,6 +19,8 @@ sealed partial class InputProbeHost : Form
     readonly Label status = new Label();
     readonly string root = AppDomain.CurrentDomain.BaseDirectory;
     readonly InputHostLifecycle lifecycle = new InputHostLifecycle();
+    readonly ActivationHandshake activation=new ActivationHandshake();
+    readonly string activationView=Guid.NewGuid().ToString("D");
     readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 16384 };
     readonly string probeMode;
     ulong navigationId;
@@ -25,13 +28,13 @@ sealed partial class InputProbeHost : Form
     bool capturing;
     public int ExitCode { get; private set; }
 
-    InputProbeHost(string mode)
+    InputProbeHost(string mode,int manualSeconds,bool unattendedManual)
     {
-        probeMode = mode;
+        probeMode = mode;this.manualSeconds=manualSeconds;this.unattendedManual=unattendedManual;
         Text = "Fishing Input Window Probe";
         Size = new Size(1100,760);
         StartPosition = FormStartPosition.CenterScreen;
-        if (probeMode != null) { ShowInTaskbar = false; Opacity = 0; }
+        if (probeMode != null || unattendedManual) { ShowInTaskbar = false; Opacity = 0; }
         var bar = new FlowLayoutPanel { Dock=DockStyle.Top, Height=70 };
         var interact = new Button { Text="Enable input (F8)", AutoSize=true };
         var observe = new Button { Text="Observe / cancel (F6)", AutoSize=true };
@@ -50,9 +53,10 @@ sealed partial class InputProbeHost : Form
         };
         Deactivate += delegate { SetMode(false,"host-deactivate"); };
         Resize += delegate { if(WindowState==FormWindowState.Minimized)SetMode(false,"host-minimized"); };
-        FormClosing += delegate { closing=true; lifecycle.Close(); };
-        FormClosed += delegate { view.Dispose(); };
+        FormClosing += delegate { closing=true;activation.Cancel(activationView); lifecycle.Close(); };
+        FormClosed += delegate { FinishManualProbe();view.Dispose(); };
         Shown += async delegate {
+            StartManualProbe();
             try
             {
                 var environment = await CoreWebView2Environment.CreateAsync(null,Path.Combine(root,"private-profile"));
@@ -66,7 +70,7 @@ sealed partial class InputProbeHost : Form
                 core.WebMessageReceived += ReceiveMessage;
                 core.NavigationStarting += delegate(object sender,CoreWebView2NavigationStartingEventArgs e) {
                     if(e.Uri != PageUrl) { e.Cancel=true; SetMode(false,"navigation-blocked"); return; }
-                    lifecycle.Invalidate(); navigationId=e.NavigationId;
+                    activation.Cancel(activationView);lifecycle.Invalidate(); navigationId=e.NavigationId;
                     status.Text="Loading; input disabled";
                 };
                 core.NavigationCompleted += async delegate(object sender,CoreWebView2NavigationCompletedEventArgs e) {
@@ -96,11 +100,11 @@ sealed partial class InputProbeHost : Form
             catch(Exception) { FailClosed("initialization-failed"); }
         };
     }
-    protected override bool ShowWithoutActivation { get { return probeMode != null; } }
+    protected override bool ShowWithoutActivation { get { return probeMode != null || manualSeconds>0; } }
     protected override CreateParams CreateParams {
         get {
             var value=base.CreateParams;
-            if(probeMode!=null)value.ExStyle |= 0x08000000 | 0x00000020; // no activate; mouse passes through
+            if(probeMode!=null || unattendedManual)value.ExStyle |= 0x08000000 | 0x00000020; // no activate; mouse passes through
             return value;
         }
     }
@@ -116,6 +120,13 @@ sealed partial class InputProbeHost : Form
                 !message.TryGetValue("cancellationEpoch",out epoch) || !message.TryGetValue("kind",out kind) ||
                 !(documentId is string) || !(epoch is int) || !(kind is string))return;
             if(!lifecycle.Observe((string)documentId,(int)epoch))return;
+            object requestId,focused;
+            if((string)kind=="cancel" && message.TryGetValue("activationRequestId",out requestId) && requestId is string)activation.PageCancelled(activationView,(string)requestId);
+            if((string)kind=="input-ready" && message.TryGetValue("requestId",out requestId) && requestId is string && message.TryGetValue("focused",out focused) && focused is bool){
+                bool accepted=activation.Complete((string)requestId,activationView,lifecycle.DocumentId,lifecycle.Generation,
+                    IsInputForeground() && (bool)focused,(int)epoch,lifecycle.CancellationEpoch);
+                if(accepted){var command=lifecycle.Command(true,"explicit-enable",IsInputForeground(),(string)requestId);if(command!=null)view.CoreWebView2.PostWebMessageAsJson(json.Serialize(command));}
+            }
             File.AppendAllText(Path.Combine(root,"input-events.jsonl"),DateTime.UtcNow.ToString("o")+" "+data+Environment.NewLine,Encoding.UTF8);
             status.Text="Input diagnostic: "+(string)kind;
         }
@@ -158,15 +169,21 @@ sealed partial class InputProbeHost : Form
     void SetMode(bool enabled,string reason)
     {
         if(closing || view.IsDisposed)return;
-        bool foreground=Form.ActiveForm==this && WindowState!=FormWindowState.Minimized;
-        var command=lifecycle.Command(enabled,reason,foreground);
-        if(command==null)return;
         try {
-            if(enabled)view.Focus();
-            view.CoreWebView2.PostWebMessageAsJson(json.Serialize(command));
+            if(enabled){
+                if(!lifecycle.Ready || !IsInputForeground())return;
+                view.Focus();if(!IsInputForeground())return;
+                string request=activation.Begin(activationView,lifecycle.DocumentId,lifecycle.Generation);
+                view.CoreWebView2.PostWebMessageAsJson(json.Serialize(new{kind="prepare-input",documentId=lifecycle.DocumentId,requestId=request}));
+            }else{
+                activation.Cancel(activationView);
+                var command=lifecycle.Command(false,reason,IsInputForeground());if(command!=null)view.CoreWebView2.PostWebMessageAsJson(json.Serialize(command));
+            }
         }
         catch(Exception) { FailClosed("mode-dispatch-failed"); }
     }
+    [DllImport("user32.dll")]static extern IntPtr GetForegroundWindow();
+    bool IsInputForeground(){return Form.ActiveForm==this && WindowState!=FormWindowState.Minimized && IsHandleCreated && GetForegroundWindow()==Handle;}
     void FailClosed(string reason)
     {
         if(closing)return;
@@ -181,6 +198,10 @@ sealed partial class InputProbeHost : Form
     [STAThread]
     static int Main(string[] args)
     {
+        int manualSeconds=0;
+        bool unattended=args.Length>0 && args[0]=="--manual-timeout-probe";
+        bool manual=unattended || (args.Length>0 && args[0]=="--manual-input-probe");
+        if(manual && (args.Length!=2 || !Int32.TryParse(args[1],out manualSeconds) || manualSeconds<60 || manualSeconds>600))return 5;
         bool probe=args.Length==1 && args[0]=="--instance-probe";
         string lifecycleProbe=args.Length==1 && (args[0]=="--lifecycle-probe" || args[0]=="--failure-probe") ? args[0] : null;
         try
@@ -204,7 +225,7 @@ sealed partial class InputProbeHost : Form
                 }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                using(var host=new InputProbeHost(lifecycleProbe)) {
+                using(var host=new InputProbeHost(lifecycleProbe,manualSeconds,unattended)) {
                     Application.Run(host);
                     return host.ExitCode;
                 }

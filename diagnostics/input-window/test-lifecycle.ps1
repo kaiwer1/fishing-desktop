@@ -21,7 +21,7 @@ function Invoke-LifecycleProbe([string]$mode,[int]$expectedExit,[string]$reportN
     if($taskProcess.ExitCode -ne $expectedExit){throw ("Unexpected exit code: "+$taskProcess.ExitCode+"; private reports: "+$taskRun)}
     if($mode -eq '--lifecycle-probe') {
       $taskResult=Get-Content -LiteralPath $taskSummary -Raw | ConvertFrom-Json
-      if(-not $taskResult.passed -or $taskResult.checks.Count -ne 5){throw 'Lifecycle checks did not complete.'}
+      if(-not $taskResult.passed -or $taskResult.checks.Count -ne 6){throw 'Lifecycle checks did not complete.'}
       Copy-Item -LiteralPath $taskSummary -Destination (Join-Path $taskRun ($reportName+'.json'))
     } else {
       $taskFailure=Get-Content -LiteralPath (Join-Path $taskRun 'host-failure.json') -Raw | ConvertFrom-Json

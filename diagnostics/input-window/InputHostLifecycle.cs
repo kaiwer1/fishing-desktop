@@ -30,11 +30,11 @@ sealed class InputHostLifecycle
         CancellationEpoch = cancellationEpoch;
         return true;
     }
-    public object Command(bool enabled, string reason, bool foreground)
+    public object Command(bool enabled, string reason, bool foreground,string activationRequestId="")
     {
         if (Closed || !Ready || (enabled && !foreground)) return null;
         return new { kind = "mode", documentId = DocumentId, revision = ++Revision,
-            cancellationEpoch = CancellationEpoch, enabled = enabled, reason = reason };
+            cancellationEpoch = CancellationEpoch, enabled = enabled, reason = reason,activationRequestId=activationRequestId };
     }
     public void Close() { Closed = true; Invalidate(); }
 }

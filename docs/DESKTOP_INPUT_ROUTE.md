@@ -1,5 +1,7 @@
 # P0：桌面输入路线与缺口
 
+2026-10-26 09:39：[有时限普通输入诊断](../diagnostics/input-window/MANUAL_EVIDENCE.md)通过用户协助发现并修复 F8 焦点交接的旧代次竞态。修复轮次启用成功，中键1组、滚轮11次可信事件；其他鼠标/普通键和按住切窗返回尚缺记录，完整输入不标通过。23项页面、9项宿主状态、12项汇总检查，以及故障前/重启后各6项真实页面检查通过；无人60秒正常退出。普通输入不是桌面图标或壁纸集成证明。
+
 2026-10-26 宿主启动边界补充：当前独立双窗口仍要求已有且核对通过的传统 WorkerW；空闲 Lively 只用于测试准备，不是已完成的产品启动器。官方[应用壁纸说明](https://github.com/lively-community/lively/wiki/Application-Wallpaper)明确列出多窗口不支持、运行中窗口尺寸由 Lively 管理等约束（页面编辑于2023年，具体行为仍须结合本机2.2.1.0核对）；[发行版差异](https://github.com/lively-community/lively/wiki/Differences-Between-Distributions)仍说明商店版不支持应用/游戏壁纸。因此不能直接把当前双窗可执行文件写进应用壁纸配置，就宣称补齐无已有层启动。后续须分别验证单一呈现进程与 owner/交互进程的分离，或独立桌面层的创建/失效路径；当前不自动创建 Explorer 图层，不替用户切换宿主发行版。
 
 2026-10-25 20:49：用当前 Computer Use 工具重新检查真实输入窗口，可访问性读取成功，但窗口截图仍 `FrameArrived timed out`、按钮点击 `coordinate input geometry is unavailable`。未完成任何鼠标事件，已关闭本次窗口并核对专用进程残留为 0。隐藏桌面 WebView 已扩展到 15 项生命周期/受控失效检查，仍不能替代鼠标或图标验收。

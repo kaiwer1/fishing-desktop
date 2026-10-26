@@ -20,7 +20,7 @@ sealed partial class DualWindowContext
         // WinForms ShowWithoutActivation and WS_EX_NOACTIVATE are both set.
         // No Activate()/BringToFront()/Explorer mutation is used here.
         desktopShown.Add(pane);GuardPresentation(()=>pane.Show());CheckDesktop(pane);
-        await pane.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+        await StartVisual(pane);
         var timer=Stopwatch.StartNew();Dictionary<string,object> state=null;
         while(timer.ElapsedMilliseconds<5000 && Live(pane)){
             state=await VisualState(pane);
@@ -41,7 +41,7 @@ sealed partial class DualWindowContext
                 Math.Abs(blue.R-71)<=12 && Math.Abs(blue.G-125)<=12 && Math.Abs(blue.B-183)<=12,"Own WebView image did not contain expected rendering markers.");
         }
         if(threeScene)await VerifyThreeScene(pane,true);
-        await pane.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.stop()");
+        await StopVisual(pane);
         long stopped=Number(await VisualState(pane),"frames");await Task.Delay(150);
         Require(Number(await VisualState(pane),"frames")==stopped,"Stopped visual kept rendering.");
         GuardPresentation(()=>pane.Hide());desktopShown.Remove(pane);CheckDesktop(pane);

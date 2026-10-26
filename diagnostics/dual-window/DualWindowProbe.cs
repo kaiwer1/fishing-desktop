@@ -68,6 +68,7 @@ sealed partial class DualWindowContext
         try{
             var read=windows[false];var control=windows[true];
             var a=await Ready(read);var b=await Ready(control);
+            if(sceneWatchdogCase!=null){await RunWatchdogProbe(read,control);return;}
             if(sceneFaultSelfTest){await RunSceneFaultProbe(read,control);return;}
             if(sceneContext){await RunContextProbe(read,control);Shutdown();return;}
             if(sceneViewport){await RunViewportProbe(read,control);Shutdown();return;}

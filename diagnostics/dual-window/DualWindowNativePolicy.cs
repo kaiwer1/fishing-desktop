@@ -59,7 +59,7 @@ sealed partial class DualWindowContext
     {
         if(wallpaperPolicySelfTest){
             desktopShown.Add(read);GuardPresentation(()=>read.Show());CheckDesktop(read);
-            await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+            await StartVisual(read);
             rendererEnabled=true;RendererPageReady(read);await WaitRenderer(read,"active");
             // Foreground changes by the owned fixture are intentional. Verify
             // foreground around our own show/hide actions instead of globally.

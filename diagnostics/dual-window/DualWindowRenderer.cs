@@ -107,7 +107,7 @@ sealed partial class DualWindowContext
     async Task RunRendererProbe(ProbeWindow read,ProbeWindow control,string ownerId,string originalRequest)
     {
         rendererEnabled=true;RendererPageReady(read);await WaitRenderer(read,"active");
-        await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+        await StartVisual(read);
         string lease=await Activate(control);SetHostPause(PauseReason.Manual,true);
         await WaitRenderer(read,"suspended");
         Require(read.View.CoreWebView2.IsSuspended && !read.View.Visible && !control.View.CoreWebView2.IsSuspended,"Selective renderer suspension failed.");

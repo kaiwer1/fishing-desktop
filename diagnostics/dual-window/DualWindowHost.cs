@@ -18,6 +18,8 @@ sealed class ProbeWindow : Form
     internal int NavigationGeneration;
     internal bool AwaitingNavigationStart=true;
     internal bool Ready;
+    internal bool DrawExpected;
+    internal long DrawEpoch;
     readonly bool automated;
     readonly DualWindowContext context;
     internal readonly bool DesktopReadOnly;
@@ -96,9 +98,9 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false,bool sceneViewport=false,bool sceneContext=false,bool sceneFaultSelfTest=false)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false,bool sceneViewport=false,bool sceneContext=false,bool sceneFaultSelfTest=false,string sceneWatchdogCase=null)
     {
-        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;this.threeScene=threeScene;this.sceneViewport=sceneViewport;this.sceneContext=sceneContext;this.sceneFaultSelfTest=sceneFaultSelfTest;
+        this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;this.threeScene=threeScene;this.sceneViewport=sceneViewport;this.sceneContext=sceneContext;this.sceneFaultSelfTest=sceneFaultSelfTest;this.sceneWatchdogCase=sceneWatchdogCase;
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         this.nativePolicySelfTest=nativePolicySelfTest;
         this.rendererSelfTest=rendererSelfTest;
@@ -108,6 +110,7 @@ sealed partial class DualWindowContext : ApplicationContext
         owner=new DualWindowOwner(Path.Combine(root,"counter.journal.jsonl"));
         if(dispatcher.Handle==IntPtr.Zero)throw new InvalidOperationException("Owner dispatcher handle unavailable.");
         InitializeActivityPolicy();
+        InitializeSceneWatchdog();
         if(!automated && !ManualUnattended){
             var menu=new ContextMenuStrip();
             menu.Items.Add("Open read only",null,delegate{OpenFromUser(false);});
@@ -168,6 +171,7 @@ sealed partial class DualWindowContext : ApplicationContext
                 if(!Live(pane)){e.Cancel=true;return;}
                 if(e.Uri!=PageUrl){e.Cancel=true;Revoke(pane);return;}
                 activation.Cancel(pane.Ticket.ViewId);
+                ForgetVisual(pane);
                 RendererNavigating(pane);
                 owner.Navigating(pane.Ticket);pane.Navigation=e.NavigationId;pane.Ready=false;
                 UpdateViewAvailability();
@@ -210,6 +214,7 @@ sealed partial class DualWindowContext : ApplicationContext
     }
     internal void Retire(ProbeWindow pane)
     {
+        ForgetVisual(pane);
         RetireRenderer(pane);
         if(Live(pane)){
             // Remove identity before child controls dispose or their asynchronous events return.
@@ -226,6 +231,7 @@ sealed partial class DualWindowContext : ApplicationContext
     {
         if(!Live(pane) || pane.View.CoreWebView2==null)return false;
         RendererNavigating(pane);
+        ForgetVisual(pane);
         Revoke(pane);owner.Navigating(pane.Ticket);pane.Ready=false;pane.AwaitingNavigationStart=true;
         pane.NavigationGeneration=checked(pane.NavigationGeneration+1);
         UpdateViewAvailability();return true;
@@ -332,7 +338,7 @@ sealed partial class DualWindowContext : ApplicationContext
         if(stopping)return;
         closingPanes=new List<ProbeWindow>(windows.Values);
         foreach(var pane in closingPanes)Retire(pane);
-        stopping=true;deadline.Stop();StopManualLifetime();StopDesktopWatch();StopActivityPolicy();
+        stopping=true;deadline.Stop();StopManualLifetime();StopDesktopWatch();StopActivityPolicy();StopSceneWatchdog();
         if(tray!=null)tray.Visible=false;
         // Defer WebView disposal until after the current browser event returns.
         dispatcher.BeginInvoke(new Action(FinishShutdown));
@@ -346,7 +352,7 @@ sealed partial class DualWindowContext : ApplicationContext
                 try{pane.Close();pane.Dispose();}catch(Exception){ExitCode=4;}
             }
         }finally{
-            try{try{WriteDesktopShutdownReport();DisposeActivityPolicy();FinishManualLifetime();}finally{owner.Dispose();}}finally{ExitThread();}
+            try{try{WriteDesktopShutdownReport();DisposeActivityPolicy();DisposeSceneWatchdog();FinishManualLifetime();}finally{owner.Dispose();}}finally{ExitThread();}
         }
     }
     protected override void Dispose(bool disposing)
@@ -363,7 +369,12 @@ sealed partial class DualWindowContext : ApplicationContext
         bool displaySoak=args.Length>0 && args[0]=="--display-soak-self-test";
         int soak=0;bool soakRequested=threeSceneSoak || displaySoak || (args.Length>0 && args[0]=="--wallpaper-soak-self-test");
         if(soakRequested && (args.Length!=2 || !Int32.TryParse(args[1],out soak) || soak<120 || soak>7200))return 5;
-        bool sceneFaultSelfTest=args.Length==1 && args[0]=="--three-fault-policy-self-test";
+        string sceneWatchdogCase=null;
+        if(args.Length>0 && args[0]=="--three-watchdog-self-test"){
+            if(args.Length!=2 || (args[1]!="silent-stop" && args[1]!="stale-flag" && args[1]!="no-response" && args[1]!="transition-pending" && args[1]!="record-failure"))return 5;
+            sceneWatchdogCase=args[1];
+        }
+        bool sceneFaultSelfTest=sceneWatchdogCase!=null || (args.Length==1 && args[0]=="--three-fault-policy-self-test");
         bool restartCheck=args.Length==1 && args[0]=="--scene-fault-restart-check";
         bool sceneContext=args.Length==1 && args[0]=="--three-context-self-test";
         bool sceneViewport=sceneContext || (args.Length==1 && args[0]=="--three-viewport-self-test");
@@ -384,7 +395,7 @@ sealed partial class DualWindowContext : ApplicationContext
                 if(!guard.IsOwner)return 2;
                 if(restartCheck)return DualWindowContext.VerifySceneFaultRestart();
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene,sceneViewport,sceneContext,sceneFaultSelfTest)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene,sceneViewport,sceneContext,sceneFaultSelfTest,sceneWatchdogCase)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception error){
             if(restartCheck)try{File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"scene-fault-restart-error.txt"),error.ToString(),Encoding.UTF8);}catch(Exception){}

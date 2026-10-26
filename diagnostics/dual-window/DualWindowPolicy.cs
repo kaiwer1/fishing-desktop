@@ -33,6 +33,7 @@ sealed partial class DualWindowContext
     }
     void ApplyPolicy(RunTransition transition)
     {
+        if(transition.Changed)ResetSceneWatchdog();
         activityClock.Advance(activityWatch.Elapsed.TotalSeconds,transition.State.CanRun);
         if(transition.RevokeInput){
             foreach(var pane in windows.Values)if(pane.Ticket.CanControl){activation.Cancel(pane.Ticket.ViewId);SendLease(pane,null);}

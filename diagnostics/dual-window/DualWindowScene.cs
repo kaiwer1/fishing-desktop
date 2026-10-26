@@ -19,24 +19,37 @@ sealed partial class DualWindowContext
             pane.AwaitingNavigationStart || document!=pane.Ticket.DocumentId || !SceneFaultRecord.TryRead(message,pane.Ticket.DocumentId,out reason)){
             Send(pane,new{kind="scene-fault-reply",documentId=pane.Ticket.DocumentId,transportId=(string)message["transportId"],ignored=true});return;
         }
-        SetHostPause(FishingDesktop.Diagnostics.HostPolicy.PauseReason.SceneFault,true);
-        var snapshot=owner.Snapshot();var policy=owner.ActivityState();
-        bool? oldCommandRejectedByPause=null;
-        ProbeWindow control;
-        if(sceneFaultSelfTest && windows.TryGetValue(true,out control)){
-            var rejected=owner.Execute(control.Ticket,control.Ticket.DocumentId,faultProbeLease,Guid.NewGuid().ToString("D"),1,snapshot.Sequence);
-            oldCommandRejectedByPause=!rejected.Ok && rejected.Error=="host-paused" && rejected.Snapshot.Sequence==snapshot.Sequence;
+        StopForSceneFault(reason,"page");
+    }
+    void StopForSceneFault(string reason,string origin)
+    {
+        if(stopping)return;
+        Dictionary<string,object> record=null;
+        try{
+            SetHostPause(FishingDesktop.Diagnostics.HostPolicy.PauseReason.SceneFault,true);
+            var snapshot=owner.Snapshot();var policy=owner.ActivityState();
+            bool? oldCommandRejectedByPause=null;ProbeWindow control;
+            if(sceneFaultSelfTest && windows.TryGetValue(true,out control)){
+                var rejected=owner.Execute(control.Ticket,control.Ticket.DocumentId,faultProbeLease,Guid.NewGuid().ToString("D"),1,snapshot.Sequence);
+                oldCommandRejectedByPause=!rejected.Ok && rejected.Error=="host-paused" && rejected.Snapshot.Sequence==snapshot.Sequence;
+            }
+            record=new Dictionary<string,object>{{"schema",1},{"reason",reason},{"origin",origin},{"currentReadOnlyDocument",true},
+                {"ownerId",snapshot.OwnerId},{"sequence",snapshot.Sequence},{"value",snapshot.Value},{"canRun",policy.CanRun},
+                {"reasons",policy.Reasons.ToString()},{"activeSeconds",activityClock.ActiveSeconds},{"oldCommandRejectedByPause",oldCommandRejectedByPause},
+                {"watchdogSamples",watchdogSamples},{"watchdogRequests",watchdogRequests},{"watchdogLateIgnored",watchdogLateIgnored},
+                {"recordWriteFailed",false},{"explicitRestartRequired",true},{"gameLoaded",false}};
+            try{System.IO.File.WriteAllText(System.IO.Path.Combine(root,"scene-fault.json"),json.Serialize(record),System.Text.Encoding.UTF8);}
+            catch(Exception){record["recordWriteFailed"]=true;}
+        }catch(Exception){/* Diagnostic evidence is best effort; failure must still close. */}
+        finally{
+            if(record!=null)try{System.IO.File.WriteAllText(System.IO.Path.Combine(root,"scene-fault-exit.json"),json.Serialize(record),System.Text.Encoding.UTF8);}catch(Exception){}
+            Fail(new InvalidOperationException("Current three-dimensional draw view failed: "+reason+"; explicit host restart required."));
         }
-        System.IO.File.WriteAllText(System.IO.Path.Combine(root,"scene-fault.json"),json.Serialize(new{schema=1,reason=reason,
-            currentReadOnlyDocument=true,ownerId=snapshot.OwnerId,sequence=snapshot.Sequence,value=snapshot.Value,
-            canRun=policy.CanRun,reasons=policy.Reasons.ToString(),activeSeconds=activityClock.ActiveSeconds,
-            oldCommandRejectedByPause=oldCommandRejectedByPause,explicitRestartRequired=true,gameLoaded=false}),System.Text.Encoding.UTF8);
-        Fail(new InvalidOperationException("Current three-dimensional draw view failed: "+reason+"; explicit host restart required."));
     }
     async Task RunContextProbe(ProbeWindow read,ProbeWindow control)
     {
         string ownerId=owner.Snapshot().OwnerId,oldDocument=read.Ticket.DocumentId;
-        await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+        await StartVisual(read);
         await VerifyThreeScene(read,true);
         string injected=await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.loseContextForProbe()");
         Require(injected=="true","Own WebGL context loss extension unavailable; no fault was injected.");
@@ -59,7 +72,7 @@ sealed partial class DualWindowContext
         checks.Add("start resume and controlled draws cannot bypass a latched context fault");
         read.Close();read.Dispose();LockHeld();read=await Open(false);await Ready(read);
         Require(read.Ticket.DocumentId!=oldDocument,"Context recovery reused the old document.");
-        await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+        await StartVisual(read);
         await VerifyThreeScene(read,true);
         SameOwner(await Ready(read),ownerId,0,0);var current=await Ready(control);SameOwner(current,ownerId,0,0);
         Require(current["lease"]==null,"Recreated view granted interaction authority.");LockHeld();
@@ -103,9 +116,11 @@ sealed partial class DualWindowContext
             checks.Add("placeholder lake uses the shared scheduler with measured draw callbacks within its 30 per second target tolerance");
         }else{
             Require(sceneLoads>=5,"Recreated desktop views did not retain three-dimensional scene selection.");
+            Require(!policySelfTest || watchdogSamples>=3,"Runtime draw watchdog coverage was insufficient.");
             sceneResult=new{passed=true,sceneKind="webgl3d",placeholderEnvironment=true,gameLoaded=false,sceneLoads=sceneLoads,
                 finalRecreatedViewVerified=true,triangles=Number(proof,"triangles"),sampleColors=Number(proof,"distinctSampleColors"),glError=Number(proof,"glError"),
                 width=Number(state,"width"),height=Number(state,"height"),targetDrawCallbacksPerSecond=30,measuredDrawCallbacksPerSecond=sceneDrawRate,
+                runtimeWatchdogEnabled=policySelfTest,watchdogSamples=watchdogSamples,watchdogRequests=watchdogRequests,watchdogLateIgnored=watchdogLateIgnored,
                 presentedFpsMeasured=false,nativeFullscreenTested=false};
         }
     }

@@ -74,7 +74,7 @@ sealed partial class DualWindowContext
         await Wait(control,s=>Field(s,"hostPolicy")!=null && (bool)Field(s,"hostPolicy")["canRun"] && s["lease"]==null);
         if(wallpaperPolicySelfTest){
             desktopShown.Add(read);GuardPresentation(()=>read.Show());CheckDesktop(read);
-            await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");await WaitRenderer(read,"active");
+            await StartVisual(read);await WaitRenderer(read,"active");
         }
         Reply(await Command(control,lease,Guid.NewGuid().ToString("D"),1,2),false,"inactive-lease");
         string fresh=await Activate(control);Reply(await Command(control,fresh,request,7,0),true,null);

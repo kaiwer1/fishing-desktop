@@ -14,7 +14,7 @@ sealed partial class DualWindowContext
     {
         string ownerId=owner.Snapshot().OwnerId,request=Guid.NewGuid().ToString("D");
         rendererEnabled=true;RendererPageReady(read);await WaitRenderer(read,"active");
-        await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+        await StartVisual(read);
         await VerifyThreeScene(read,true);
         faultProbeLease=await Activate(control);Reply(await Command(control,faultProbeLease,request,7,0),true,null);
         SameOwner(await Ready(read),ownerId,1,7);LockHeld();
@@ -41,7 +41,7 @@ sealed partial class DualWindowContext
         var current=await Ready(control);Require((string)current["lease"]==faultProbeLease,"Negative reports revoked healthy interaction.");
         checks.Add("ignored fault reports preserve active time and the existing valid interaction lease");
         File.WriteAllText(Path.Combine(root,"scene-fault-preflight.json"),json.Serialize(new{passed=true,checks=checks.ToArray(),ownerId=ownerId,
-            requestId=request,oldLease=faultProbeLease,sequence=1,value=7,invalidReportsIgnored=6,ignoredReportsAcknowledged=true,selectiveRendererEnabled=true,
+            requestId=request,oldLease=faultProbeLease,expectedFaultReason="webgl-context-lost",sequence=1,value=7,invalidReportsIgnored=6,ignoredReportsAcknowledged=true,selectiveRendererEnabled=true,
             ownContextExtensionOnly=true,desktopAttachmentTested=false,hardwareDeviceLossTested=false,gameLoaded=false}),Encoding.UTF8);
         string injected=await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.loseContextForProbe()");
         if(stopping)return;
@@ -53,9 +53,9 @@ sealed partial class DualWindowContext
     {
         string directory=AppDomain.CurrentDomain.BaseDirectory;var serializer=new JavaScriptSerializer();
         var before=serializer.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(directory,"scene-fault-preflight.json")));
-        var fault=serializer.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(directory,"scene-fault.json")));
+        var fault=serializer.Deserialize<Dictionary<string,object>>(File.ReadAllText(Path.Combine(directory,"scene-fault-exit.json")));
         Require((bool)before["passed"] && !(bool)fault["canRun"] && (bool)fault["oldCommandRejectedByPause"] &&
-            (string)fault["reason"]=="webgl-context-lost","Fault boundary evidence was missing.");
+            (string)fault["reason"]==(string)before["expectedFaultReason"],"Fault boundary evidence was missing.");
         using(var restarted=new DualWindowOwner(Path.Combine(directory,"counter.journal.jsonl"))){
             // Match InitializeActivityPolicy in a policy host. The reusable
             // counter owner alone deliberately defaults to an unpaused gate.

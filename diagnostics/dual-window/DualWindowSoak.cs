@@ -28,7 +28,7 @@ sealed partial class DualWindowContext
                 if(clock.Elapsed.TotalSeconds>=rebuildAt && !manual && policy.CanRun){
                     read.Dispose();LockHeld();read=await Open(false);await Ready(read);
                     desktopShown.Add(read);GuardPresentation(()=>read.Show());CheckDesktop(read);
-                    await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+                    await StartVisual(read);
                     await WaitRenderer(read,"active");rebuilds++;
                     while(rebuildAt<=clock.Elapsed.TotalSeconds)rebuildAt+=180;
                 }
@@ -61,6 +61,7 @@ sealed partial class DualWindowContext
                         manualPause=manual,canRun=policy.CanRun,reasons=policy.Reasons.ToString(),policyRevision=policy.Revision,
                         policyConsistent=policyConsistent,viewConsistent=viewConsistent,viewNavigationGeneration=navigation,
                         drawLoopRunning=visual==null?(bool?)null:(bool)visual["running"],drawProgressChecks=progress.Checks,
+                        runtimeWatchdogEnabled=threeScene && policySelfTest,watchdogSamples=watchdogSamples,watchdogRequests=watchdogRequests,watchdogLateIgnored=watchdogLateIgnored,
                         activeSeconds=activityClock.ActiveSeconds,droppedActiveSeconds=activityClock.DroppedActiveSeconds,
                         rendererOutcome=renderer.Outcome,rendererPending=renderer.Pending,isSuspended=suspended,frozenShown=backend.Surface.IsShown,
                         frozenWidth=backend.Surface.ImageSize.Width,frozenHeight=backend.Surface.ImageSize.Height,captures=backend.Captures,

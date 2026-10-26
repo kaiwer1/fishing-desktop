@@ -101,6 +101,7 @@ try{
   $taskExpectedChecks=if($ThreeScene){if($SoakSeconds -gt 0){31}else{30}}elseif($DisplaySoak){29}elseif($OperatorFullscreen){34}elseif($StartupPreparation){16}elseif($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
   if($ThreeScene -and (-not $taskReport.scene.passed -or -not $taskReport.scene.finalRecreatedViewVerified -or $taskReport.scene.sceneLoads -lt 5 -or
+    -not $taskReport.scene.runtimeWatchdogEnabled -or $taskReport.scene.watchdogSamples -lt 3 -or
     $taskReport.scene.gameLoaded -or $taskReport.scene.nativeFullscreenTested -or $taskReport.scene.presentedFpsMeasured)){throw 'Three-dimensional scene report mismatch.'}
   $taskDesktopReport=$null
   $taskRebuilds=0

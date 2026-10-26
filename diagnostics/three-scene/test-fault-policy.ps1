@@ -1,9 +1,9 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[ValidateSet('','silent-stop','stale-flag','no-response','transition-pending','record-failure')][string]$WatchdogCase='')
 $ErrorActionPreference='Stop'
 $taskBuild=& (Join-Path $PSScriptRoot '../dual-window/build.ps1') -SdkDirectory $SdkDirectory -OutputDirectory $OutputDirectory -ThreeScene
 $taskRun=$taskBuild.outputDirectory
 $taskOwned=@();$taskForced=$false;$taskCleanupConfirmed=$false;$taskFailure=$null;$taskExit=$null;$taskRestartExit=$null
-function Start-SceneFaultHost([string]$Mode){
+function Start-SceneFaultHost([string[]]$Mode){
     $taskStarted=Start-Process -FilePath $taskBuild.executable -ArgumentList $Mode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
     try{return [pscustomobject]@{Process=$taskStarted;StartTicks=$taskStarted.StartTime.ToUniversalTime().Ticks}}
     catch{
@@ -23,19 +23,28 @@ function Wait-SceneFaultProfile {
     throw 'Private profile processes remain; refusing broad cleanup.'
 }
 try{
-    $taskFaultHost=Start-SceneFaultHost '--three-fault-policy-self-test';$taskOwned+=,$taskFaultHost
+    $taskMode=if($WatchdogCase){@('--three-watchdog-self-test',$WatchdogCase)}else{@('--three-fault-policy-self-test')}
+    $taskFaultHost=Start-SceneFaultHost -Mode $taskMode;$taskOwned+=,$taskFaultHost
     if(-not $taskFaultHost.Process.WaitForExit(30000)){throw 'Scene failure policy exceeded its deadline.'}
     $taskExit=$taskFaultHost.Process.ExitCode
     if($taskExit -ne 4){throw ('Expected conservative failure exit 4; observed '+$taskExit)}
     Wait-SceneFaultProfile
     $taskPreflight=Get-Content -LiteralPath (Join-Path $taskRun 'scene-fault-preflight.json') -Raw | ConvertFrom-Json
-    $taskFault=Get-Content -LiteralPath (Join-Path $taskRun 'scene-fault.json') -Raw | ConvertFrom-Json
-    if(-not $taskPreflight.passed -or $taskPreflight.checks.Count -ne 5 -or $taskPreflight.invalidReportsIgnored -ne 6 -or
-       -not $taskPreflight.ignoredReportsAcknowledged -or -not $taskPreflight.selectiveRendererEnabled -or -not $taskPreflight.ownContextExtensionOnly -or
+    $taskFault=Get-Content -LiteralPath (Join-Path $taskRun 'scene-fault-exit.json') -Raw | ConvertFrom-Json
+    $taskReason=if($WatchdogCase -in @('silent-stop','record-failure')){'draw-loop-stopped'}elseif($WatchdogCase -eq 'stale-flag'){'draw-progress-stalled'}elseif($WatchdogCase -eq 'no-response'){'draw-response-timeout'}elseif($WatchdogCase -eq 'transition-pending'){'draw-renderer-transition-timeout'}else{'webgl-context-lost'}
+    $taskModeEvidence=if($WatchdogCase){$taskPreflight.watchdogCase -eq $WatchdogCase -and $taskPreflight.pauseLongerThanGraceVerified -and
+        $taskPreflight.reloadVerified -and $taskPreflight.watchdogSamples -ge 3 -and -not $taskPreflight.ownContextExtensionOnly -and
+        $taskFault.origin -eq 'watchdog' -and $taskFault.watchdogSamples -ge 3}else{$taskPreflight.invalidReportsIgnored -eq 6 -and
+        $taskPreflight.ignoredReportsAcknowledged -and $taskPreflight.ownContextExtensionOnly -and $taskFault.origin -eq 'page'}
+    if(-not $taskPreflight.passed -or $taskPreflight.checks.Count -ne 5 -or -not $taskModeEvidence -or
+       -not $taskPreflight.selectiveRendererEnabled -or
        $taskPreflight.desktopAttachmentTested -or $taskPreflight.hardwareDeviceLossTested -or $taskPreflight.gameLoaded -or
-       $taskFault.schema -ne 1 -or $taskFault.reason -ne 'webgl-context-lost' -or -not $taskFault.currentReadOnlyDocument -or
+       $taskFault.schema -ne 1 -or $taskFault.reason -ne $taskReason -or -not $taskFault.currentReadOnlyDocument -or
        $taskFault.canRun -or $taskFault.reasons -notmatch 'SceneFault' -or -not $taskFault.oldCommandRejectedByPause -or
        $taskFault.sequence -ne 1 -or $taskFault.value -ne 7 -or -not $taskFault.explicitRestartRequired){throw 'Scene fault evidence mismatch.'}
+    if([bool]$taskFault.recordWriteFailed -ne ($WatchdogCase -eq 'record-failure') -or
+       ($WatchdogCase -eq 'record-failure' -and (-not $taskPreflight.faultRecordPathBlocked -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'scene-fault.json') -PathType Container))) -or
+       ($WatchdogCase -eq 'transition-pending' -and -not $taskPreflight.syntheticPendingBackend)){throw 'Injected failure boundary mismatch.'}
     $taskRestart=Start-SceneFaultHost '--scene-fault-restart-check';$taskOwned+=,$taskRestart
     if(-not $taskRestart.Process.WaitForExit(10000)){throw 'Explicit counter restart check exceeded its deadline.'}
     $taskRestartExit=$taskRestart.Process.ExitCode
@@ -62,9 +71,9 @@ finally{
 }
 $taskResult=[pscustomobject]@{passed=($null -eq $taskFailure);expectedFailureExitCode=4;observedFailureExitCode=$taskExit;restartExitCode=$taskRestartExit;
     forcedCleanup=$taskForced;cleanupConfirmed=$taskCleanupConfirmed;remainingDedicatedProcesses=$(if($taskCleanupConfirmed){0}else{$null});
-    ownContextExtensionOnly=$true;hardwareDeviceLossTested=$false;desktopAttachmentTested=$false;gameLoaded=$false;outputDirectory=$taskRun;
-    preflight=$(if($taskFailure){$null}else{$taskPreflight | Select-Object passed,checks,invalidReportsIgnored,ignoredReportsAcknowledged,selectiveRendererEnabled});
-    fault=$(if($taskFailure){$null}else{$taskFault | Select-Object reason,canRun,reasons,oldCommandRejectedByPause,sequence,value,explicitRestartRequired});
+    ownContextExtensionOnly=(-not [bool]$WatchdogCase);watchdogCase=$WatchdogCase;hardwareDeviceLossTested=$false;desktopAttachmentTested=$false;gameLoaded=$false;outputDirectory=$taskRun;
+    preflight=$(if($taskFailure){$null}else{$taskPreflight | Select-Object passed,checks,invalidReportsIgnored,ignoredReportsAcknowledged,selectiveRendererEnabled,watchdogCase,pauseLongerThanGraceVerified,reloadVerified,watchdogSamples});
+    fault=$(if($taskFailure){$null}else{$taskFault | Select-Object reason,origin,canRun,reasons,oldCommandRejectedByPause,watchdogSamples,watchdogRequests,watchdogLateIgnored,recordWriteFailed,sequence,value,explicitRestartRequired});
     restart=$(if($taskFailure){$null}else{$taskRecovered})}
 $taskResult | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $taskRun 'scene-fault-process-summary.json') -Encoding utf8
 if($taskFailure){throw $taskFailure}

@@ -23,6 +23,7 @@
 | `DualWindowPolicy.cs` / `../host-policy/RunGate.cs` | 多原因暂停、单调活动时钟、owner 命令门禁及受控真实消息测试 |
 | `DualWindowNativePolicy.cs` | 200 ms 原生采样接入 owner、独立自有全屏窗口及联合消息检查 |
 | `DualWindowRenderer.cs` / `../host-policy/RendererSuspender.cs` | 只读页选择性挂起、最新意图协调、暂停重载及释放重建 |
+| `FrozenFrameSurface.cs` / `../host-policy/BoundedFrameStream.cs` | 仅本 WebView 的单张暂停静帧、字节/像素预算和显式释放 |
 | `view.html` | 只呈现快照的页面和计数器提交按钮；`sendRaw` 仅用于重放过期诊断消息 |
 | `DualWindowOwnerTests.cs` | 无浏览器的生命周期、写锁和旧身份回归测试 |
 
@@ -133,6 +134,8 @@ $taskBuild
 2026-10-26 08:15，**19 项真实检查通过**，包含暂停重载后再次挂起、恢复绘制、释放挂起视图及重建保持去重。协调器固定检查 14 项、页面启停 5 项通过；普通 11 项和可见桌面 16 项回归通过。全部正常退出、专用残留为 0。固定异常时序不等于实际制造了 SDK 的所有迟到故障；此模式也未测 CPU/内存收益，隐藏控件所需的产品冻结背景仍待接入，见[挂起说明](../host-policy/README.md)。
 
 ### 可见桌面渲染自测
+
+08:24 已加入单张冻结背景：使用本 WebView 的 PNG，不采集其他窗口；48 MiB 流上限、8,388,608 像素解码上限，最多一个在途捕获，超时1.5秒后继续暂停。只在代次与 Core 仍匹配时替换缓存；恢复隐藏静帧，关闭释放。预算测试6项、带缓存的真实渲染19项通过。可见桌面/原生全屏联合、峰值内存和最终桌面合成仍待验收；捕获失败只能退回已有缓存或宿主背景。
 
 ```powershell
 & ./diagnostics/dual-window/test-webviews.ps1 -SdkDirectory $taskSdk -OutputDirectory $taskOutput -VisibleDesktop

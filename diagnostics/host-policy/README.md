@@ -60,6 +60,12 @@
 
 ## 官方依据
 
+08:24 补充冻结背景：渲染暂停前用本 WebView 的 CapturePreview 获取 PNG，隐藏控件后显示同尺寸的自有 PictureBox；恢复隐藏背景但保留一张最近有效静帧，关闭释放。图片不写磁盘，不捕获桌面或其他应用。
+
+捕获流的写入、WriteByte、Seek、Position 和 SetLength 都受 48 MiB 上限约束；PNG 首部声明尺寸在解码前受 8,388,608 像素上限约束。预算内可容纳4K静帧，不等于4K桌面实测。每个视图最多一个未完成捕获，1.5秒超时后继续暂停；迟到结果只释放资源，不覆盖新代次。捕获失败使用最近有效帧，没有有效帧时仍会露出宿主背景，且记录失败，不能声称总能保帧。
+
+`test-frames.ps1` 的6项预算/解码/独立像素检查通过；带静帧的真实渲染模式仍为19项并通过，核对首次捕获、缓存尺寸、暂停显示、恢复隐藏、释放后不保留图片。尚未在可见桌面上与原生全屏同时联合，也未测量峰值内存或恢复瞬间的最终桌面合成效果。
+
 - [OpenInputDesktop](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-openinputdesktop)：返回接收输入的桌面，必须 CloseDesktop；断开会话时可返回将来重连时使用的桌面，因此同时检查 WTS 连接状态。
 - [GetUserObjectInformationW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getuserobjectinformationw)：这里只读取对象名称，未查询 SID 等信息。
 - [GetForegroundWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getforegroundwindow)：激活切换时可能为 NULL，不能直接视作可运行。

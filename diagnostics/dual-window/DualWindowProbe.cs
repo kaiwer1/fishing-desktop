@@ -68,6 +68,7 @@ sealed partial class DualWindowContext
         try{
             var read=windows[false];var control=windows[true];
             var a=await Ready(read);var b=await Ready(control);
+            if(sceneContext){await RunContextProbe(read,control);Shutdown();return;}
             if(sceneViewport){await RunViewportProbe(read,control);Shutdown();return;}
             if(desktopMode){CheckDesktop(read);checks.Add("real read-only WebView initializes inside a hidden existing desktop layer without activation");}
             if(startupPreparation){

@@ -6,9 +6,45 @@ using System.Threading.Tasks;
 sealed partial class DualWindowContext
 {
     readonly bool threeScene;
+    readonly bool sceneContext;
     int sceneLoads;
     double sceneDrawRate;
     object sceneResult;
+    async Task RunContextProbe(ProbeWindow read,ProbeWindow control)
+    {
+        string ownerId=owner.Snapshot().OwnerId,oldDocument=read.Ticket.DocumentId;
+        await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+        await VerifyThreeScene(read,true);
+        string injected=await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.loseContextForProbe()");
+        Require(injected=="true","Own WebGL context loss extension unavailable; no fault was injected.");
+        Dictionary<string,object> state=null;
+        for(int attempt=0;attempt<100;attempt++){
+            state=await VisualState(read);
+            if((string)state["error"]=="webgl-context-lost" && !(bool)state["running"] && (bool)state["contextLost"])break;
+            await Task.Delay(25);
+        }
+        Require(state!=null && (string)state["error"]=="webgl-context-lost" && !(bool)state["running"] &&
+            (bool)state["contextLost"] && state["proof"]==null,"Context loss failed to stop drawing and invalidate old proof.");
+        checks.Add("own WebGL context loss is observed and invalidates geometry pixel proof without a silent fallback");
+        long stoppedFrames=Number(state,"frames");await Task.Delay(600);state=await VisualState(read);
+        Require(Number(state,"frames")==stoppedFrames && !(bool)state["running"],"Faulted context continued scheduling draws.");
+        checks.Add("draw callback count remains frozen after the real context loss event");
+        string blocked=await read.View.CoreWebView2.ExecuteScriptAsync("(()=>{const v=window.dualProbe.visual;v.start();v.pause();v.resume();try{v.inspectViewport();return false}catch{return true}})()");
+        await Task.Delay(200);state=await VisualState(read);
+        Require(blocked=="true" && Number(state,"frames")==stoppedFrames && !(bool)state["running"] && state["proof"]==null &&
+            (string)state["error"]=="webgl-context-lost","Faulted context restarted or supplied stale proof.");
+        checks.Add("start resume and controlled draws cannot bypass a latched context fault");
+        read.Close();read.Dispose();LockHeld();read=await Open(false);await Ready(read);
+        Require(read.Ticket.DocumentId!=oldDocument,"Context recovery reused the old document.");
+        await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+        await VerifyThreeScene(read,true);
+        SameOwner(await Ready(read),ownerId,0,0);var current=await Ready(control);SameOwner(current,ownerId,0,0);
+        Require(current["lease"]==null,"Recreated view granted interaction authority.");LockHeld();
+        checks.Add("explicit replacement creates a healthy new scene while preserving owner lock state and disabled interaction");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(root,"context-summary.json"),json.Serialize(new{passed=true,checks=checks.ToArray(),
+            ownContextExtensionOnly=true,hardwareDeviceLossTested=false,desktopAttachmentTested=false,gameLoaded=false,sceneLoads=sceneLoads,
+            sequence=owner.Snapshot().Sequence,value=owner.Snapshot().Value,oldDocumentReplaced=true,normalExplicitReplacement=true}),System.Text.Encoding.UTF8);
+    }
     async Task<bool> LoadScenePage(ProbeWindow pane,ulong navigation,int generation)
     {
         await pane.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.installLakeScene()");

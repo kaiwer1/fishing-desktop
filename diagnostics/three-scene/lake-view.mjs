@@ -9,9 +9,9 @@ export function createLakeVisualProbe(document) {
   let proof=null,error=null,controlledDraws=0;
   const state=()=>({kind:'webgl3d',running,frames,targetDrawCallbacksPerSecond:30,sampledAt:performance.now(),width:canvas?.width??0,height:canvas?.height??0,
     viewportWidth:document.documentElement.clientWidth,viewportHeight:document.documentElement.clientHeight,devicePixelRatio,
-    controlledDraws,proof,error,sceneOnly:true,gameLoaded:false});
+    controlledDraws,proof,error,contextLost:renderer?.getContext().isContextLost()??false,sceneOnly:true,gameLoaded:false});
   function resize(){
-    if(!renderer)return;
+    if(!renderer || error || disposed)return;
     const width=document.documentElement.clientWidth,height=document.documentElement.clientHeight;
     const size=renderSize(width,height,devicePixelRatio,{quality:'medium',scale:1,fps:30});
     renderer.setSize(size.width,size.height,false);environment.camera.aspect=size.aspect;environment.camera.updateProjectionMatrix();
@@ -32,23 +32,29 @@ export function createLakeVisualProbe(document) {
     canvas=document.createElement('canvas');overlay=document.createElement('canvas');
     for(const element of [canvas,overlay]){element.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none';document.body.append(element);}
     renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'default'});renderer.setPixelRatio(1);
-    canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();error='webgl-context-lost';stop();});
+    canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();fail('webgl-context-lost');});
     renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
     environment=createLakeEnvironment();resize();
     scheduler=createFrameScheduler({render:(_now,dt)=>{
       if(disposed)return;time+=dt;environment.waterMaterial.uniforms.time.value=time;renderer.render(environment.scene,environment.camera);frames++;
       // Warm-up/readback after creation or resize, outside steady-state sampling.
       if(frames>=3 && proof===null)inspectFrame();
-    },onError:failure=>{error=failure.message;running=false;}});
+    },onError:failure=>fail(failure.message||'webgl-render-failed')});
   }
+  function fail(reason){error=reason;proof=null;resumeWanted=false;stop();}
   function stop(){running=false;scheduler?.stop();return state();}
   const api={state,
-    start(){if(disposed)throw Error('Disposed lake probe');if(running)return state();try{initialize();running=true;scheduler.wake(30);}catch(failure){error=failure.message;api.dispose();}return state();},
+    start(){if(disposed)throw Error('Disposed lake probe');if(error || running)return state();try{initialize();running=true;scheduler.wake(30);}catch(failure){error=failure.message;api.dispose();}return state();},
     stop(){resumeWanted=false;return stop();},
     pause(){resumeWanted ||= running;return stop();},
     resume(){const wanted=resumeWanted;resumeWanted=false;return wanted?api.start():state();},
     inspectViewport(){
-      if(disposed)throw Error('Disposed lake probe');initialize();resize();renderer.render(environment.scene,environment.camera);controlledDraws++;inspectFrame();return state();
+      if(disposed)throw Error('Disposed lake probe');if(error)throw Error('Faulted lake probe');initialize();resize();renderer.render(environment.scene,environment.camera);controlledDraws++;inspectFrame();return state();
+    },
+    loseContextForProbe(){
+      if(disposed || !renderer || error)return false;
+      const extension=renderer.getContext().getExtension('WEBGL_lose_context');
+      if(!extension)return false;extension.loseContext();return true;
     },
     dispose(){if(disposed)return;stop();disposed=true;environment?.dispose();renderer?.dispose();canvas?.remove();overlay?.remove();document.documentElement.style.overflow=previousOverflow;window.removeEventListener('resize',resize);}
   };

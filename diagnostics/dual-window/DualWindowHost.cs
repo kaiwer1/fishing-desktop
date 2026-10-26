@@ -76,6 +76,7 @@ sealed partial class DualWindowContext : ApplicationContext
     readonly bool policySelfTest;
     readonly bool nativePolicySelfTest;
     readonly bool rendererSelfTest;
+    readonly bool wallpaperPolicySelfTest;
     readonly NotifyIcon tray;
     CoreWebView2Environment environment;
     bool stopping;
@@ -84,11 +85,12 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest)
     {
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         this.nativePolicySelfTest=nativePolicySelfTest;
         this.rendererSelfTest=rendererSelfTest;
+        this.wallpaperPolicySelfTest=wallpaperPolicySelfTest;
         owner=new DualWindowOwner(Path.Combine(root,"counter.journal.jsonl"));
         if(dispatcher.Handle==IntPtr.Zero)throw new InvalidOperationException("Owner dispatcher handle unavailable.");
         InitializeActivityPolicy();
@@ -322,8 +324,9 @@ sealed partial class DualWindowContext : ApplicationContext
     }
     [STAThread] static int Main(string[] args)
     {
-        bool visibleDesktop=args.Length==1 && args[0]=="--desktop-visible-self-test";
-        bool nativePolicy=args.Length==1 && args[0]=="--native-policy-self-test";
+        bool wallpaperPolicy=args.Length==1 && args[0]=="--wallpaper-policy-self-test";
+        bool visibleDesktop=wallpaperPolicy || (args.Length==1 && args[0]=="--desktop-visible-self-test");
+        bool nativePolicy=wallpaperPolicy || (args.Length==1 && args[0]=="--native-policy-self-test");
         bool renderer=args.Length==1 && args[0]=="--renderer-self-test";
         bool policy=renderer || nativePolicy || (args.Length==1 && args[0]=="--policy-self-test");
         bool desktop=visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
@@ -333,7 +336,7 @@ sealed partial class DualWindowContext : ApplicationContext
             using(var guard=new HostInstanceGuard()){
                 if(!guard.IsOwner)return 2;
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception){return 3;}
     }

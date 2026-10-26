@@ -19,7 +19,7 @@ sealed partial class DualWindowContext
         CheckDesktop(pane);
         // WinForms ShowWithoutActivation and WS_EX_NOACTIVATE are both set.
         // No Activate()/BringToFront()/Explorer mutation is used here.
-        desktopShown.Add(pane);pane.Show();CheckDesktop(pane);
+        desktopShown.Add(pane);GuardPresentation(()=>pane.Show());CheckDesktop(pane);
         await pane.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
         var timer=Stopwatch.StartNew();Dictionary<string,object> state=null;
         while(timer.ElapsedMilliseconds<5000 && Live(pane)){
@@ -43,7 +43,7 @@ sealed partial class DualWindowContext
         await pane.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.stop()");
         long stopped=Number(await VisualState(pane),"frames");await Task.Delay(150);
         Require(Number(await VisualState(pane),"frames")==stopped,"Stopped visual kept rendering.");
-        pane.Hide();desktopShown.Remove(pane);CheckDesktop(pane);
+        GuardPresentation(()=>pane.Hide());desktopShown.Remove(pane);CheckDesktop(pane);
         visualResult=new{passed=true,renderedFrames=stopped,width=width,height=height,markersVerified=true,
             ownWebViewImageOnly=true,desktopCompositionCaptured=false,foregroundUnchanged=true};
         checks.Add("visible no-activate desktop child renders expected pixels and stops its own animation without changing foreground");

@@ -48,6 +48,14 @@ sealed partial class DualWindowContext
     async Task RunNativePolicyProbe(ProbeWindow read,ProbeWindow control,string ownerId,string originalRequest)
     {
         string oldLease=(string)(await Ready(control))["lease"];
+        if(wallpaperPolicySelfTest){
+            desktopShown.Add(read);GuardPresentation(()=>read.Show());CheckDesktop(read);
+            await read.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.visual.start()");
+            rendererEnabled=true;RendererPageReady(read);await WaitRenderer(read,"active");
+            // Foreground changes by the owned fixture are intentional. Verify
+            // foreground around our own show/hide actions instead of globally.
+            desktopAllowForegroundChanges=true;
+        }
         StartNativePolicy();
         string path=Path.Combine(root,"NativeEnvironmentFixture.exe");
         if(!File.Exists(path))throw new InvalidOperationException("Build with NativePolicy to include the owned fixture.");
@@ -70,14 +78,24 @@ sealed partial class DualWindowContext
                 if(frozen<0)frozen=activityClock.ActiveSeconds;else Require(activityClock.ActiveSeconds==frozen,"Native fullscreen owner clock advanced.");
                 if(!checkedPaused){
                     await Wait(control,s=>Field(s,"hostPolicy")!=null && !(bool)Field(s,"hostPolicy")["canRun"] && s["lease"]==null);
+                    if(wallpaperPolicySelfTest){
+                        await WaitRenderer(read,"suspended");var backend=rendererBackends[read];
+                        Require(read.View.CoreWebView2.IsSuspended && backend.Surface.IsShown && backend.Surface.ImageSize==read.View.ClientSize,"Visible wallpaper did not retain its own frozen frame while suspended.");
+                        CheckDesktop(read);
+                    }
                     Reply(await Command(control,oldLease,Guid.NewGuid().ToString("D"),1,2),false,"host-paused");
-                    SameOwner(await Ready(read),ownerId,2,10);LockHeld();checkedPaused=true;
+                    SameOwner(await Ready(wallpaperPolicySelfTest?control:read),ownerId,2,10);LockHeld();checkedPaused=true;
                 }
+                if(wallpaperPolicySelfTest)Require(read.View.CoreWebView2.IsSuspended,"Wallpaper renderer resumed during confirmed fullscreen.");
             }else{frozen=-1;consecutive=0;fullRevision=-1;}
             if(phase=="restored" && nativeSample!=null && nativeSample.Known && !nativeSample.Fullscreen){
                 restored++;
                 if(checkedPaused && !checkedRestored){
                     await Wait(control,s=>Field(s,"hostPolicy")!=null && (bool)Field(s,"hostPolicy")["canRun"] && s["lease"]==null);
+                    if(wallpaperPolicySelfTest){
+                        await WaitRenderer(read,"active");await Ready(read);CheckDesktop(read);
+                        Require(!read.View.CoreWebView2.IsSuspended && !rendererBackends[read].Surface.IsShown && (bool)(await VisualState(read))["running"],"Visible wallpaper did not restore active drawing after native fullscreen.");
+                    }
                     Reply(await Command(control,oldLease,Guid.NewGuid().ToString("D"),1,2),false,"inactive-lease");
                     double start=activityClock.ActiveSeconds;await Task.Delay(150);double delta=activityClock.ActiveSeconds-start;
                     Require(delta>0 && delta<.35,"Native restoration caught up paused time.");
@@ -92,6 +110,13 @@ sealed partial class DualWindowContext
         checks.Add("native owned fullscreen observations automatically pause the real WebView owner and revoke page commands");
         checks.Add("confirmed native fullscreen samples freeze owner activity while committed state and storage lock remain intact");
         checks.Add("native fullscreen exit resumes activity without old authority and explicit activation retains request deduplication");
+        if(wallpaperPolicySelfTest){
+            Require(rendererBackends[read].Captures>=1 && desktopShown.Contains(read),"Combined wallpaper had no retained frame or visible layer.");
+            checks.Add("visible desktop wallpaper freezes its own bounded image and suspends WebView under native fullscreen");
+            checks.Add("native fullscreen exit restores visible wallpaper drawing while old interaction authority stays revoked");
+            rendererResult=new{passed=true,realWebViewSuspended=true,ownFrozenFrameVerified=true,nativeFullscreenCombined=true,
+                visibleDesktopCombined=true,actualCpuMemoryMeasured=false,captures=rendererBackends[read].Captures};
+        }
         nativePolicyResult=new{passed=true,nativeSignalsTested=true,controlledOwnFixture=true,fullSamples=full,
             maximumConsecutiveFullSamples=maxConsecutive,normalSamples=normal,restoredSamples=restored,
             ownerClockFrozen=true,noAutomaticLeaseRestore=true,fixtureNormalExit=true,lockOrPowerTransitionTested=false};

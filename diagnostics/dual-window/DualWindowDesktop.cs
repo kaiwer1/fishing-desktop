@@ -19,6 +19,15 @@ sealed partial class DualWindowContext
     IntPtr desktopInitialForeground;
     int desktopLosses;
     string desktopLastLossReason;
+    bool desktopAllowForegroundChanges;
+    int presentationChecks;
+    bool presentationFailed;
+    void GuardPresentation(Action action)
+    {
+        IntPtr before=GetForegroundWindow();action();
+        if(GetForegroundWindow()!=before){presentationFailed=true;throw new InvalidOperationException("Own presentation action changed foreground; source not attributed.");}
+        presentationChecks++;
+    }
     sealed class DesktopAttachmentLost : InvalidOperationException
     {
         internal readonly ProbeWindow Pane;
@@ -57,7 +66,7 @@ sealed partial class DualWindowContext
         var state=desktopApi.ReadWindow(lease.WindowHandle);
         bool shouldShow=desktopShown.Contains(pane);
         if(state==null || state.Visible!=shouldShow || pane.Visible!=shouldShow)throw new InvalidOperationException("Desktop diagnostic visibility changed unexpectedly.");
-        if(GetForegroundWindow()!=desktopInitialForeground){
+        if(!desktopAllowForegroundChanges && GetForegroundWindow()!=desktopInitialForeground){
             string kind="external-or-shell";IntPtr foreground=GetForegroundWindow();
             foreach(var view in windows.Values)if(view.IsHandleCreated && view.Handle==foreground)kind=view.Ticket.CanControl?"own-interaction":"own-observer";
             throw new InvalidOperationException("Foreground changed during desktop diagnostic; current category="+kind+". No external title or identity recorded.");
@@ -102,13 +111,15 @@ sealed partial class DualWindowContext
         if(!desktopMode)return;
         bool foregroundUnchanged=GetForegroundWindow()==desktopInitialForeground;
         bool cleaned=desktopLeases.Count==0 && desktopAttachments==desktopDetachments && !desktopCleanupFailed;
-        if(!cleaned || !foregroundUnchanged)ExitCode=4;
+        bool foregroundSafe=wallpaperPolicySelfTest?!presentationFailed && presentationChecks>=3:foregroundUnchanged;
+        if(!cleaned || !foregroundSafe)ExitCode=4;
         File.WriteAllText(Path.Combine(root,"desktop-summary.json"),json.Serialize(new{
-            passed=cleaned && foregroundUnchanged && ExitCode==0,attachments=desktopAttachments,detachments=desktopDetachments,
+            passed=cleaned && foregroundSafe && ExitCode==0,attachments=desktopAttachments,detachments=desktopDetachments,
             validations=desktopValidations,remainingLeases=desktopLeases.Count,foregroundUnchanged=foregroundUnchanged,
             recoveredViewLosses=desktopLosses,lastLossReason=desktopLastLossReason,
             hiddenOnly=!visibleDesktopTest,realDesktopAttachment=desktopAttachments>0,nativeInputTested=false,multipleMonitorsTested=false,
-            visual=visualResult
+            visual=visualResult,presentationChecks=presentationChecks,presentationChecksPassed=!presentationFailed,
+            foregroundScope=wallpaperPolicySelfTest?"own-presentation-actions":"entire-test"
         }),Encoding.UTF8);
     }
 }

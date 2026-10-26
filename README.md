@@ -8,6 +8,8 @@
 
 ## 当前状态
 
+2026-10-26：P0候选已通过[可见桌面完整暂停路径](diagnostics/dual-window/README.md)25项联合检查：原生全屏触发唯一 owner 暂停，保留本视图静帧并挂起只读 WebView，恢复仍需新输入授权。当前是独立诊断画面，尚未接入游戏；真实鼠标/图标、锁屏/休眠、多屏和长期资源仍待验收。
+
 **开发顺序更新（2026-10-24）**：按用户要求，当前界面与钓鱼流程开发先暂停，先做 RF4 客户端调查，再按整套体验的计划推进。[模块调查与反编译范围](docs/RF4_MODULE_RESEARCH.md)、[整体开发计划](docs/DEVELOPMENT_PLAN.md)、[首项输入/钓组规格草案](docs/INPUT_RIG_SPEC.md)。目前推进 P0：[独立输入候选](diagnostics/input-window/README.md)已通过单实例、页面会话隔离、真实 WebView2 重载和故障退出检查，完整鼠标/桌面兼容仍待验收。本机界面草稿未作为新版本发布。
 
 研究报告已按最新授权公开。新增[鼠标抛竿链路规格](docs/CASTING_FLOW_SPEC.md)，记录开始、蓄力、松开和动画提交的证据及未知项；已开始[桌面宿主基线](docs/WALLPAPER_HOST_BASELINE.md)验证。原客户端数据、完整配置和伪代码不随文档发布。

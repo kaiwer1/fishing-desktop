@@ -51,7 +51,7 @@ sealed partial class DualWindowContext
             try{await pending;}catch(Exception){}
             finally{stream.Dispose();if(Object.ReferenceEquals(capture,pending))capture=null;}
         }
-        public void SetVisible(bool visible){pane.View.Visible=visible;if(visible)Surface.Hide();else Surface.Show();}
+        public void SetVisible(bool visible){context.GuardPresentation(()=>{pane.View.Visible=visible;if(visible)Surface.Hide();else Surface.Show();});}
         public Task<bool> TrySuspendAsync(){return core.TrySuspendAsync();}
         public void Resume(){captureGeneration=checked(captureGeneration+1);core.Resume();context.SendFreshPresentation(pane);}
         public void Dispose(){if(disposed)return;disposed=true;captureGeneration=checked(captureGeneration+1);Surface.Dispose();}

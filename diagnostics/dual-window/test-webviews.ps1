@@ -1,10 +1,11 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy)
 $ErrorActionPreference='Stop'
+if($WallpaperPolicy){$VisibleDesktop=$true;$NativePolicy=$true}
 if($VisibleDesktop){$DesktopLayer=$true}
 if($NativePolicy){$HostPolicy=$true}
 if($RendererPolicy){$HostPolicy=$true}
 if($RendererPolicy -and $NativePolicy){throw 'Run native foreground and renderer lifecycle tests separately.'}
-if($HostPolicy -and $DesktopLayer){throw 'Run controlled policy and desktop tests separately.'}
+if($HostPolicy -and $DesktopLayer -and -not $WallpaperPolicy){throw 'Use WallpaperPolicy for the combined test.'}
 $taskBuild=& (Join-Path $PSScriptRoot 'build.ps1') -SdkDirectory $SdkDirectory -OutputDirectory $OutputDirectory -DesktopLayer:$DesktopLayer -NativePolicy:$NativePolicy
 $taskRun=$taskBuild.outputDirectory
 $taskProfile=Join-Path $taskRun 'private-profile'
@@ -65,7 +66,7 @@ function Stop-DualOwned($Identity) {
   finally{if($null -ne $taskOwned){$taskOwned.Dispose()}}
 }
 try{
-  $taskMode=if($RendererPolicy){'--renderer-self-test'}elseif($NativePolicy){'--native-policy-self-test'}elseif($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
+  $taskMode=if($WallpaperPolicy){'--wallpaper-policy-self-test'}elseif($RendererPolicy){'--renderer-self-test'}elseif($NativePolicy){'--native-policy-self-test'}elseif($HostPolicy){'--policy-self-test'}elseif($VisibleDesktop){'--desktop-visible-self-test'}elseif($DesktopLayer){'--desktop-self-test'}else{'--self-test'}
   $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList $taskMode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
   $taskRootIdentity=[pscustomobject]@{id=$taskProcess.Id;startTicks=$taskProcess.StartTime.ToUniversalTime().Ticks;path=$taskBuild.executable}
   $taskKnown[$taskRootIdentity.id]=$taskRootIdentity
@@ -77,7 +78,7 @@ try{
   }
   if($taskProcess.ExitCode -ne 0){throw ('Dual-window self-test exited '+$taskProcess.ExitCode+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  $taskExpectedChecks=if($RendererPolicy){19}elseif($NativePolicy){18}elseif($HostPolicy){15}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
+  $taskExpectedChecks=if($WallpaperPolicy){25}elseif($RendererPolicy){19}elseif($NativePolicy){18}elseif($HostPolicy){15}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
   $taskDesktopReport=$null
   if($HostPolicy -and (-not $taskReport.hostPolicy.passed -or -not $taskReport.hostPolicy.pausedClockStable -or -not $taskReport.hostPolicy.noAutomaticLeaseRestore)){throw 'Host policy report mismatch.'}
@@ -86,9 +87,10 @@ try{
   if($DesktopLayer){
     $taskDesktopReport=Get-Content -LiteralPath (Join-Path $taskRun 'desktop-summary.json') -Raw | ConvertFrom-Json
     if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne 4 -or $taskDesktopReport.detachments -ne 4 -or
-      $taskDesktopReport.remainingLeases -ne 0 -or -not $taskDesktopReport.foregroundUnchanged -or
+      $taskDesktopReport.remainingLeases -ne 0 -or (-not $WallpaperPolicy -and -not $taskDesktopReport.foregroundUnchanged) -or
       $taskDesktopReport.recoveredViewLosses -ne 1 -or $taskDesktopReport.lastLossReason -ne 'attached-window-changed'){throw 'Desktop shutdown report mismatch.'}
     if($VisibleDesktop -and (-not $taskDesktopReport.visual.passed -or -not $taskDesktopReport.visual.markersVerified -or $taskDesktopReport.visual.renderedFrames -lt 3)){throw 'Visible rendering report mismatch.'}
+    if($WallpaperPolicy -and (-not $taskDesktopReport.presentationChecksPassed -or $taskDesktopReport.presentationChecks -lt 3 -or -not $taskReport.renderer.nativeFullscreenCombined -or -not $taskReport.renderer.ownFrozenFrameVerified)){throw 'Combined wallpaper report mismatch.'}
   }
 }catch{$taskFailure=$_}
 finally{

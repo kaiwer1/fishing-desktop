@@ -150,6 +150,20 @@ node --test diagnostics/dual-window/visual-probe.test.mjs
 
 API 依据：[Form.ShowWithoutActivation](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.form.showwithoutactivation)、[CapturePreviewAsync](https://learn.microsoft.com/en-us/dotnet/api/microsoft.web.webview2.core.corewebview2.capturepreviewasync)。这些 API 本身不证明桌面图标输入可用。
 
+### 可见桌面、原生暂停与挂起联合
+
+```powershell
+& ./diagnostics/dual-window/test-webviews.ps1 -SdkDirectory $taskSdk -OutputDirectory $taskOutput -WallpaperPolicy
+```
+
+此显式开关准备 NativePolicy 构建并运行 `--wallpaper-policy-self-test`，需要已有且匹配的传统 WorkerW。先完成可见渲染、视图重建/失效及受控暂停检查，再显示当前只读桌面页、启用其静帧/挂起协调器，并运行自有全屏窗口。全屏采样暂停 owner，同时保留本 WebView 的静帧并挂起只读页；恢复时显示实时页，输入仍需新授权。
+
+2026-10-26 08:29，**25 项联合检查通过**：341 个连续确认全屏样本，静帧尺寸与1920×1080视口一致，一次有效捕获，SDK 挂起状态在全屏期间保持；恢复绘制、命令拒绝/新授权及请求去重通过。四次挂接/四次撤回，一次受控视图失效，零剩余 lease；无强制清理，专用浏览器/全屏窗均正常退出。空闲测试用 Lively 只准备已有层，测试后正常关闭并按原字节恢复空布局和设置。
+
+全屏测试本身有意改变前台，因此不把整个运行期间的前台不变作为条件；改为围绕本项目显示/隐藏控件的操作核对，实际6次核对通过。报告保留 `foregroundScope=own-presentation-actions`，不能解释成没有任何前台切换。原有单独可见模式仍采用全程前台核对。
+
+此前一轮被用户 Esc 中止并请求自有测试窗退出，未算通过；用户明确恢复后重新执行的本轮由测试程序自行完成，无需原生工具激活。原生工具仍返回上次中止提示，没有继续调用它或注入输入。25项不包括真实鼠标、桌面图标、锁屏、实际休眠、独占游戏、多屏或资源收益；当前画面仍是诊断标记，不是写实钓鱼场景。
+
 ### 普通窗口
 
 在明确要测试普通窗口时，手动运行 `$taskBuild.executable`，不传 `--self-test`。只读窗口和交互窗口分别显示；点击交互窗口的 `Enable interaction` 后才能提交 +1。切到其他窗口会撤销授权，回来后需再次显式启用。窗口顶部及托盘可重开已关闭的窗口；标题栏关闭按钮只关闭该窗口。

@@ -9,6 +9,13 @@ namespace FishingDesktop.Diagnostics.MultiOutput
     public enum OutputGlobalBlock { None=0,Startup=1,Manual=2,SessionUnavailable=4,PowerSuspended=8,EnvironmentUnknown=16,TopologyChanging=32,SceneFault=64 }
     [Flags]
     public enum OutputLocalBlock { None=0,Unbound=1,NotReady=2,Portrait=4,Fullscreen=8,RendererUnavailable=16 }
+    // An opaque host-side vote identity, valid only in the policy that registered
+    // this exact object. It is neither a page identifier nor an input lease.
+    public sealed class OutputGlobalSource
+    {
+        public readonly OutputGlobalBlock OwnedMask;
+        internal OutputGlobalSource(OutputGlobalBlock ownedMask){OwnedMask=ownedMask;}
+    }
     static class OutputKeys
     {
         internal static string Canonical(string value)
@@ -77,13 +84,18 @@ namespace FishingDesktop.Diagnostics.MultiOutput
             internal OutputState State(OutputGlobalBlock global){return new OutputState(Definition,View,Bound,Ready,Landscape,Fullscreen,Renderer,global);}
         }
         const OutputGlobalBlock AllGlobals=(OutputGlobalBlock)127;
-        readonly int ownerThread=Thread.CurrentThread.ManagedThreadId,maximumOutputs;
+        readonly int ownerThread=Thread.CurrentThread.ManagedThreadId,maximumOutputs,maximumGlobalSources;
         Dictionary<string,Entry> outputs=new Dictionary<string,Entry>(StringComparer.Ordinal);
+        Dictionary<OutputGlobalSource,OutputGlobalBlock> globalSources=new Dictionary<OutputGlobalSource,OutputGlobalBlock>();
         long revision,topology,inputEpoch;
         string controlTarget;
-        OutputGlobalBlock global=OutputGlobalBlock.Startup;
-        public OutputPolicy(int maximumOutputs=16)
-        {if(maximumOutputs<=0)throw new ArgumentOutOfRangeException("maximumOutputs");this.maximumOutputs=maximumOutputs;}
+        OutputGlobalBlock global=OutputGlobalBlock.Startup,legacyGlobal=OutputGlobalBlock.Startup;
+        public OutputPolicy(int maximumOutputs=16,int maximumGlobalSources=8)
+        {
+            if(maximumOutputs<=0)throw new ArgumentOutOfRangeException("maximumOutputs");
+            if(maximumGlobalSources<=0||maximumGlobalSources>64)throw new ArgumentOutOfRangeException("maximumGlobalSources");
+            this.maximumOutputs=maximumOutputs;this.maximumGlobalSources=maximumGlobalSources;
+        }
         void Check(){if(Thread.CurrentThread.ManagedThreadId!=ownerThread)throw new InvalidOperationException("Output policy requires its owner thread.");}
         static bool Eligible(Dictionary<string,Entry> entries,string target,OutputGlobalBlock blocked)
         {Entry entry;return target!=null&&blocked==OutputGlobalBlock.None&&entries.TryGetValue(target,out entry)&&entry.State(blocked).CanDraw;}
@@ -144,8 +156,37 @@ namespace FishingDesktop.Diagnostics.MultiOutput
         public bool ReplaceGlobal(OutputGlobalBlock mask,OutputGlobalBlock blocked)
         {
             Check();if(mask==OutputGlobalBlock.None||(mask&~AllGlobals)!=0||(blocked&~mask)!=0)throw new ArgumentOutOfRangeException("mask");
-            var next=(global&~mask)|blocked;if(next==global)return false;
-            Commit(outputs,topology,controlTarget,next,(next&~global)!=0);return true;
+            var next=(legacyGlobal&~mask)|blocked;if(next==legacyGlobal)return false;
+            return CommitGlobalVotes(next,globalSources);
+        }
+        bool CommitGlobalVotes(OutputGlobalBlock nextLegacy,Dictionary<OutputGlobalSource,OutputGlobalBlock> nextSources)
+        {
+            OutputGlobalBlock next=nextLegacy;foreach(var vote in nextSources.Values)next|=vote;
+            bool changed=next!=global;
+            // Commit may throw on revision/epoch overflow; do it before storing
+            // either ledger so a rejected operation cannot partially replace it.
+            if(changed)Commit(outputs,topology,controlTarget,next,(next&~global)!=0);
+            // A masked vote is still real state. Save it even when the aggregate
+            // and its revision/epoch do not change.
+            legacyGlobal=nextLegacy;globalSources=nextSources;return changed;
+        }
+        public OutputGlobalSource RegisterGlobalSource(OutputGlobalBlock mask,OutputGlobalBlock initialBlocked=OutputGlobalBlock.None)
+        {
+            Check();if(mask==OutputGlobalBlock.None||(mask&~AllGlobals)!=0||(initialBlocked&~mask)!=0)throw new ArgumentOutOfRangeException("mask");
+            if(globalSources.Count>=maximumGlobalSources)throw new InvalidOperationException("Global source capacity exceeded.");
+            var source=new OutputGlobalSource(mask);var next=new Dictionary<OutputGlobalSource,OutputGlobalBlock>(globalSources);next.Add(source,initialBlocked);
+            CommitGlobalVotes(legacyGlobal,next);return source;
+        }
+        // Atomically replaces this source's WHOLE vote inside its fixed mask.
+        // False means the aggregate did not change; a hidden vote is still saved.
+        public bool ReplaceGlobalForSource(OutputGlobalSource source,OutputGlobalBlock blocked)
+        {
+            Check();if(source==null)throw new ArgumentNullException("source");OutputGlobalBlock previous;
+            if(!globalSources.TryGetValue(source,out previous))throw new ArgumentException("Unknown or foreign global source.","source");
+            if((blocked&~source.OwnedMask)!=0)throw new ArgumentOutOfRangeException("blocked");
+            if(previous==blocked)return false;
+            var next=new Dictionary<OutputGlobalSource,OutputGlobalBlock>(globalSources);next[source]=blocked;
+            return CommitGlobalVotes(legacyGlobal,next);
         }
         public bool SelectControlTarget(string outputKey)
         {

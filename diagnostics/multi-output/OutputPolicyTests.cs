@@ -163,6 +163,123 @@ static class OutputPolicyTests
             var p=Running();p.SelectControlTarget("left");var before=p.Snapshot();Need(p.CanActivate("left",1,1,before.InputEpoch)&&p.CanActivate("LEFT",1,1,before.InputEpoch),"Current target was ineligible.");
             Need(!p.CanActivate("left",1,2,before.InputEpoch)&&!p.CanActivate("right",1,1,before.InputEpoch)&&p.Snapshot().Revision==before.Revision&&p.Snapshot().InputEpoch==before.InputEpoch,"Eligibility query changed state or accepted wrong scope.");
         });
+        Test("empty source registration preserves the legacy startup vote",()=>{
+            var p=new OutputPolicy();var before=p.Snapshot();var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown|OutputGlobalBlock.SessionUnavailable);
+            var after=p.Snapshot();Need(source.OwnedMask==(OutputGlobalBlock.EnvironmentUnknown|OutputGlobalBlock.SessionUnavailable)&&after.GlobalBlocks==OutputGlobalBlock.Startup&&
+                after.Revision==before.Revision&&after.InputEpoch==before.InputEpoch&&!after.CanRun,"Registering a source changed Startup or effective policy.");
+        });
+        Test("two initially blocked sources cannot clear each other even when the second vote is hidden",()=>{
+            var p=Running();p.SelectControlTarget("left");var first=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.EnvironmentUnknown);var paused=p.Snapshot();
+            var second=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.EnvironmentUnknown);Need(p.Snapshot().Revision==paused.Revision&&p.Snapshot().InputEpoch==paused.InputEpoch,"Hidden registration churned aggregate state.");
+            Need(!p.ReplaceGlobalForSource(first,OutputGlobalBlock.None)&&p.Snapshot().GlobalBlocks==OutputGlobalBlock.EnvironmentUnknown&&!p.Snapshot().CanRun,"First recovery erased another source.");
+            Need(p.ReplaceGlobalForSource(second,OutputGlobalBlock.None)&&p.Snapshot().CanRun&&p.Snapshot().InputEpoch>paused.InputEpoch&&!p.CanActivate("left",1,1,paused.InputEpoch),"Last recovery reused paused activation scope.");
+        });
+        Test("a hidden vote replacement is stored without revision or epoch churn",()=>{
+            var p=Running();var first=p.RegisterGlobalSource(OutputGlobalBlock.SessionUnavailable);var second=p.RegisterGlobalSource(OutputGlobalBlock.SessionUnavailable);
+            p.ReplaceGlobalForSource(first,OutputGlobalBlock.SessionUnavailable);var before=p.Snapshot();
+            Need(!p.ReplaceGlobalForSource(second,OutputGlobalBlock.SessionUnavailable)&&p.Snapshot().Revision==before.Revision&&p.Snapshot().InputEpoch==before.InputEpoch,"Hidden replacement reported an effective change.");
+            Need(!p.ReplaceGlobalForSource(first,OutputGlobalBlock.None)&&p.Snapshot().GlobalBlocks==OutputGlobalBlock.SessionUnavailable,"Hidden vote was not retained.");
+            Need(p.ReplaceGlobalForSource(second,OutputGlobalBlock.None)&&p.Snapshot().CanRun,"Final source could not recover independently.");
+        });
+        Test("legacy hidden addition survives source recovery until legacy explicitly clears",()=>{
+            var p=Running();var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.EnvironmentUnknown);var before=p.Snapshot();
+            Need(!p.SetGlobal(OutputGlobalBlock.EnvironmentUnknown,true)&&p.Snapshot().Revision==before.Revision,"Hidden legacy addition churned state.");
+            Need(!p.ReplaceGlobalForSource(source,OutputGlobalBlock.None)&&p.Snapshot().GlobalBlocks==OutputGlobalBlock.EnvironmentUnknown,"Source recovery cleared the hidden legacy vote.");
+            Need(p.SetGlobal(OutputGlobalBlock.EnvironmentUnknown,false)&&p.Snapshot().CanRun,"Legacy recovery failed after source cleared.");
+        });
+        Test("legacy hidden removal is stored while a registered source stays blocked",()=>{
+            var p=Running();p.SetGlobal(OutputGlobalBlock.EnvironmentUnknown,true);var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.EnvironmentUnknown);var before=p.Snapshot();
+            Need(!p.SetGlobal(OutputGlobalBlock.EnvironmentUnknown,false)&&p.Snapshot().Revision==before.Revision&&!p.Snapshot().CanRun,"Legacy clear removed source blockage.");
+            Need(p.ReplaceGlobalForSource(source,OutputGlobalBlock.None)&&p.Snapshot().GlobalBlocks==OutputGlobalBlock.None&&p.Snapshot().CanRun,"Cleared legacy vote was accidentally retained.");
+        });
+        Test("wide legacy replacement never clears any registered source vote",()=>{
+            var p=Running();var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.EnvironmentUnknown);p.SetGlobal(OutputGlobalBlock.Manual,true);
+            Need(p.ReplaceGlobal((OutputGlobalBlock)127,OutputGlobalBlock.None)&&p.Snapshot().GlobalBlocks==OutputGlobalBlock.EnvironmentUnknown&&!p.Snapshot().CanRun,"Legacy replacement erased source-owned state.");
+            p.ReplaceGlobalForSource(source,OutputGlobalBlock.None);Need(p.Snapshot().CanRun,"Registered source did not retain its independent recovery path.");
+        });
+        Test("environment recovery preserves independent native session power and legacy manual votes",()=>{
+            var p=Running();p.SelectControlTarget("left");long oldEpoch=p.Snapshot().InputEpoch;
+            var poll=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown|OutputGlobalBlock.SessionUnavailable,OutputGlobalBlock.EnvironmentUnknown|OutputGlobalBlock.SessionUnavailable);
+            var native=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown|OutputGlobalBlock.SessionUnavailable|OutputGlobalBlock.PowerSuspended,OutputGlobalBlock.SessionUnavailable|OutputGlobalBlock.PowerSuspended);
+            p.SetGlobal(OutputGlobalBlock.Manual,true);p.ReplaceGlobalForSource(poll,OutputGlobalBlock.None);
+            Need(p.Snapshot().GlobalBlocks==(OutputGlobalBlock.Manual|OutputGlobalBlock.SessionUnavailable|OutputGlobalBlock.PowerSuspended)&&!p.Snapshot().CanRun,"Poll recovery cleared native or manual vote.");
+            p.ReplaceGlobalForSource(native,OutputGlobalBlock.None);Need(p.Snapshot().GlobalBlocks==OutputGlobalBlock.Manual&&!p.Snapshot().CanRun,"Native recovery cleared Manual.");
+            long paused=p.Snapshot().InputEpoch;p.SetGlobal(OutputGlobalBlock.Manual,false);var restored=p.Snapshot();
+            Need(restored.ControlEligible&&!p.CanActivate("left",1,1,oldEpoch)&&!p.CanActivate("left",1,1,paused)&&p.CanActivate("left",1,1,restored.InputEpoch),"Recovery reused old authority eligibility.");
+        });
+        Test("composite source replacement is atomic and preserves unrelated legacy blockers",()=>{
+            var p=Running();p.SelectControlTarget("left");var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown|OutputGlobalBlock.SessionUnavailable|OutputGlobalBlock.PowerSuspended,OutputGlobalBlock.SessionUnavailable);
+            p.SetGlobal(OutputGlobalBlock.Manual,true);var before=p.Snapshot();p.ReplaceGlobalForSource(source,OutputGlobalBlock.PowerSuspended);var after=p.Snapshot();
+            Need(after.GlobalBlocks==(OutputGlobalBlock.Manual|OutputGlobalBlock.PowerSuspended)&&!after.CanRun&&after.Revision==before.Revision+1&&after.InputEpoch>before.InputEpoch,"Source replacement partially published or cleared another vote.");
+        });
+        Test("empty and repeated source votes preserve a healthy target input scope",()=>{
+            var p=Running();p.SelectControlTarget("left");var before=p.Snapshot();var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown);
+            Need(!p.ReplaceGlobalForSource(source,OutputGlobalBlock.None)&&p.Snapshot().Revision==before.Revision&&p.Snapshot().InputEpoch==before.InputEpoch&&p.CanActivate("left",1,1,before.InputEpoch),"Empty source invalidated an unchanged healthy target.");
+        });
+        Test("null unregistered and foreign source tokens cannot mutate another policy",()=>{
+            var p=Running();var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown);var other=new OutputPolicy();var foreign=other.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown);
+            var unregistered=new OutputGlobalSource(OutputGlobalBlock.EnvironmentUnknown);var before=p.Snapshot();
+            Reject<ArgumentNullException>(()=>p.ReplaceGlobalForSource(null,OutputGlobalBlock.None));Reject<ArgumentException>(()=>p.ReplaceGlobalForSource(foreign,OutputGlobalBlock.EnvironmentUnknown));
+            Reject<ArgumentException>(()=>p.ReplaceGlobalForSource(unregistered,OutputGlobalBlock.EnvironmentUnknown));Need(p.Snapshot().Revision==before.Revision&&p.Snapshot().CanRun,"Invalid source identity changed the target policy.");
+            Need(p.ReplaceGlobalForSource(source,OutputGlobalBlock.EnvironmentUnknown),"Valid source was lost after rejected tokens.");
+        });
+        Test("invalid source masks and out-of-mask votes fail before consuming capacity or changing state",()=>{
+            var p=new OutputPolicy(4,1);var before=p.Snapshot();
+            Reject<ArgumentOutOfRangeException>(()=>p.RegisterGlobalSource(OutputGlobalBlock.None));Reject<ArgumentOutOfRangeException>(()=>p.RegisterGlobalSource((OutputGlobalBlock)128));
+            Reject<ArgumentOutOfRangeException>(()=>p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.PowerSuspended));var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown);
+            Reject<ArgumentOutOfRangeException>(()=>p.ReplaceGlobalForSource(source,OutputGlobalBlock.PowerSuspended));Reject<ArgumentOutOfRangeException>(()=>p.ReplaceGlobalForSource(source,(OutputGlobalBlock)128));
+            Reject<ArgumentOutOfRangeException>(()=>p.ReplaceGlobalForSource(source,(OutputGlobalBlock)(-1)));Need(p.Snapshot().Revision==before.Revision&&p.Snapshot().GlobalBlocks==OutputGlobalBlock.Startup,"Invalid source operation partially committed.");
+        });
+        Test("source capacity rejection preserves all existing identities and votes",()=>{
+            var p=new OutputPolicy(4,2);var first=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown);var second=p.RegisterGlobalSource(OutputGlobalBlock.PowerSuspended);var before=p.Snapshot();
+            Reject<InvalidOperationException>(()=>p.RegisterGlobalSource(OutputGlobalBlock.Manual,OutputGlobalBlock.Manual));Need(p.Snapshot().Revision==before.Revision&&p.Snapshot().GlobalBlocks==before.GlobalBlocks,"Capacity failure partially published a source.");
+            p.ReplaceGlobalForSource(first,OutputGlobalBlock.EnvironmentUnknown);p.ReplaceGlobalForSource(second,OutputGlobalBlock.PowerSuspended);
+            Need(p.Snapshot().GlobalBlocks==(OutputGlobalBlock.Startup|OutputGlobalBlock.EnvironmentUnknown|OutputGlobalBlock.PowerSuspended),"Capacity rejection invalidated an existing token.");
+        });
+        Test("source capacity is bounded and permits the documented upper limit",()=>{
+            Reject<ArgumentOutOfRangeException>(()=>new OutputPolicy(4,0));Reject<ArgumentOutOfRangeException>(()=>new OutputPolicy(4,-1));Reject<ArgumentOutOfRangeException>(()=>new OutputPolicy(4,65));
+            var p=new OutputPolicy(4,64);var sources=new List<OutputGlobalSource>();for(int i=0;i<64;i++)sources.Add(p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown));
+            Reject<InvalidOperationException>(()=>p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown));p.ReplaceGlobalForSource(sources[0],OutputGlobalBlock.EnvironmentUnknown);p.ReplaceGlobalForSource(sources[63],OutputGlobalBlock.EnvironmentUnknown);
+            p.ReplaceGlobalForSource(sources[0],OutputGlobalBlock.None);Need(p.Snapshot().GlobalBlocks==(OutputGlobalBlock.Startup|OutputGlobalBlock.EnvironmentUnknown),"Boundary source identity was lost.");
+        });
+        Test("default source capacity is eight and does not change default startup",()=>{
+            var p=new OutputPolicy();for(int i=0;i<8;i++)p.RegisterGlobalSource(OutputGlobalBlock.Manual);Reject<InvalidOperationException>(()=>p.RegisterGlobalSource(OutputGlobalBlock.Manual));
+            Need(p.Snapshot().GlobalBlocks==OutputGlobalBlock.Startup&&p.Snapshot().Revision==0,"Default source capacity changed legacy Startup.");
+        });
+        Test("foreign threads cannot register replace or clear global source votes",()=>{
+            var p=Running();var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown);var before=p.Snapshot();int rejected=0;var thread=new Thread(()=>{
+                try{p.RegisterGlobalSource(OutputGlobalBlock.Manual,OutputGlobalBlock.Manual);}catch(InvalidOperationException){rejected++;}
+                try{p.ReplaceGlobalForSource(source,OutputGlobalBlock.EnvironmentUnknown);}catch(InvalidOperationException){rejected++;}
+                try{p.ReplaceGlobal(OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.None);}catch(InvalidOperationException){rejected++;}
+            });thread.Start();thread.Join();Need(rejected==3&&p.Snapshot().Revision==before.Revision&&p.Snapshot().CanRun,"Foreign thread changed a vote ledger.");
+        });
+        Test("registering a new blocked source revokes prior scope and recovery needs a fresh epoch",()=>{
+            var p=Running();p.SelectControlTarget("left");var before=p.Snapshot();var source=p.RegisterGlobalSource(OutputGlobalBlock.PowerSuspended,OutputGlobalBlock.PowerSuspended);var paused=p.Snapshot();
+            Need(!paused.CanRun&&!paused.ControlEligible&&paused.InputEpoch>before.InputEpoch&&!p.CanActivate("left",1,1,before.InputEpoch),"Initial source blocker retained old eligibility.");
+            p.ReplaceGlobalForSource(source,OutputGlobalBlock.None);var now=p.Snapshot();Need(now.ControlEligible&&now.InputEpoch>paused.InputEpoch&&!p.CanActivate("left",1,1,paused.InputEpoch)&&p.CanActivate("left",1,1,now.InputEpoch),"Last source recovery restored stale activation scope.");
+        });
+        Test("each supported global bit remains independently owned by legacy and source votes",()=>{
+            foreach(var bit in new[]{OutputGlobalBlock.Startup,OutputGlobalBlock.Manual,OutputGlobalBlock.SessionUnavailable,OutputGlobalBlock.PowerSuspended,OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.TopologyChanging,OutputGlobalBlock.SceneFault}){
+                var p=Running();var source=p.RegisterGlobalSource(bit,bit);Need(!p.SetGlobal(bit,true),"Same-bit legacy addition changed the aggregate.");
+                Need(!p.ReplaceGlobalForSource(source,OutputGlobalBlock.None)&&p.Snapshot().GlobalBlocks==bit&&!p.Snapshot().CanRun,"Source clear erased same-bit legacy ownership.");
+                Need(p.SetGlobal(bit,false)&&p.Snapshot().CanRun,"Independent legacy recovery did not clear its final vote.");
+            }
+        });
+        Test("topology replacement retains source blockers and cannot revive old view scopes",()=>{
+            var p=Running();p.SelectControlTarget("left");var old=p.Snapshot();var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.EnvironmentUnknown);
+            p.ReplaceTopology(2,new[]{D("left")});p.BindView("left",2,2);p.Observe("left",2,2,true,true,false,true);p.SetGlobal(OutputGlobalBlock.EnvironmentUnknown,false);
+            Need(p.Snapshot().GlobalBlocks==OutputGlobalBlock.EnvironmentUnknown&&!p.Snapshot().CanRun,"Topology or legacy update lost the source blocker.");
+            p.ReplaceGlobalForSource(source,OutputGlobalBlock.None);Need(p.Snapshot().CanRun&&!p.Observe("left",1,1,true,true,false,true)&&!p.CanActivate("left",1,1,old.InputEpoch),"Source recovery revived prior topology/view authority.");
+        });
+        Test("cleared sources retain their bounded identity instead of silently unregistering",()=>{
+            var p=new OutputPolicy(4,1);var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown,OutputGlobalBlock.EnvironmentUnknown);p.ReplaceGlobalForSource(source,OutputGlobalBlock.None);
+            Reject<InvalidOperationException>(()=>p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown));Need(p.ReplaceGlobalForSource(source,OutputGlobalBlock.EnvironmentUnknown)&&
+                p.Snapshot().GlobalBlocks==(OutputGlobalBlock.Startup|OutputGlobalBlock.EnvironmentUnknown),"Clearing a source destroyed or replaced its identity.");
+        });
+        Test("source updates cannot mutate prior aggregate snapshots",()=>{
+            var p=Running();var before=p.Snapshot();var source=p.RegisterGlobalSource(OutputGlobalBlock.EnvironmentUnknown);p.ReplaceGlobalForSource(source,OutputGlobalBlock.EnvironmentUnknown);
+            Need(before.GlobalBlocks==OutputGlobalBlock.None&&before.CanRun&&before.Outputs[0].CanDraw&&!p.Snapshot().CanRun,"New source vote mutated an earlier immutable snapshot.");
+        });
         Console.WriteLine("RESULT "+passed+" passed / "+failed+" failed");return failed==0?0:1;
     }
 }

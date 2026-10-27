@@ -97,6 +97,11 @@ sealed class DualWindowOwner : IDisposable
         if(!IsCurrent(ticket))throw new InvalidOperationException("Stale view.");
         return ticket.Revision=checked(ticket.Revision+1);
     }
+    public bool IsAuthorized(Ticket ticket,string document,string lease)
+    {
+        Check();
+        return IsCurrent(ticket) && runGate.Snapshot().CanRun && authority.IsAuthorized(ticket.ViewId,document,lease);
+    }
     public OwnerReply Execute(Ticket ticket,string document,string lease,string request,int delta,long expected)
     {
         Check();

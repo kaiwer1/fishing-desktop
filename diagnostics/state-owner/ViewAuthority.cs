@@ -80,6 +80,15 @@ sealed class ViewAuthority
         activeView=null; activeLease=null;
         return true;
     }
+    // Read-only qualification. No diagnostic transaction or receipt lookup is
+    // used to authorize another domain's command.
+    public bool IsAuthorized(string viewId,string documentId,string lease)
+    {
+        CheckThread();
+        ViewSession view;
+        return !faulted && !String.IsNullOrEmpty(viewId) && !String.IsNullOrEmpty(documentId) && !String.IsNullOrEmpty(lease) && views.TryGetValue(viewId,out view) &&
+            view.DocumentId==documentId && view.CanControl && activeView==viewId && activeLease==lease;
+    }
     public OwnerReply Execute(string viewId,string documentId,string lease,string requestId,int delta,long expectedSequence)
     {
         CheckThread();

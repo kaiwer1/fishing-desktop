@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'">
+<title>钓鱼桌面 · 单竿数据接入</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#202421;color:#ededdf;font:16px/1.55 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1120px;margin:auto;padding:24px}header{border-bottom:1px solid #737965;padding-bottom:16px}h1{font-size:24px;margin:0 0 8px}p{margin:8px 0}.muted{color:#bac1b0;font-size:14px}#status{color:#d3df8a}#stats{display:flex;flex-wrap:wrap;gap:14px;margin:20px 0}#stats span{padding:8px 16px;background:#343a31}button{font:inherit;background:#454c3a;border:1px solid #8c9872;color:#fff;padding:9px 18px;cursor:pointer;margin:0 8px 8px 0}button:disabled{opacity:.4;cursor:default}button:focus-visible{outline:3px solid #d6e18c;outline-offset:2px}section{padding:16px 0;border-top:1px solid #555e4d}h2{font-size:18px;margin:0 0 12px}#creel{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;list-style:none;padding:0}.fish{padding:14px;background:#343a31}.fish label{display:flex;gap:8px;align-items:flex-start}#notice{min-height:26px;color:#d9d498}#portrait{display:none}body[data-role=observer] .interactive{display:none}@media(orientation:portrait){main{display:none}#portrait{display:flex;height:100vh;align-items:center;justify-content:center;font-size:24px}}
+</style></head>
+<body><div id="portrait">请横屏游玩</div><main>
+<header><h1>钓鱼桌面 · 单竿数据接入</h1><p class="muted">开发预览：本页验证存档与窗口接线，鱼情、挥竿动作和最终画面尚未接入。</p><p id="status">等待宿主载入进度…</p></header>
+<div id="stats"></div>
+<p id="session">等待进度</p>
+<div class="interactive"><button id="cast" disabled>出手（保存扣饵）</button><button id="recall" disabled>收回这一竿</button><button id="release" disabled>放流当前鱼</button><button id="menu" disabled>打开鱼护菜单</button></div>
+<p id="notice" role="status"></p>
+<section><h2>鱼护 <span id="capacity"></span></h2><ul id="creel"></ul><div class="interactive"><button id="sell" disabled>出售选中的鱼</button></div><button id="previous" disabled>上一页</button><button id="next" disabled>下一页</button></section>
+<p class="muted">从窗口顶部开启交互。收回不退还已经使用的鱼饵；切出窗口后需重新开启交互。</p>
+</main><script type="module" src="page.mjs"></script></body></html>

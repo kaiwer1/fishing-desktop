@@ -60,7 +60,8 @@ sealed partial class DualWindowContext
     {
         if(!Live(pane) || !pane.Ready)return;
         Send(pane,new{kind="role",documentId=pane.Ticket.DocumentId,role=pane.Ticket.CanControl?"独立交互窗口":"独立只读窗口"});
-        Send(pane,new{kind="snapshot",documentId=pane.Ticket.DocumentId,snapshot=owner.Snapshot()});SendPolicy(pane);
+        if(GameMode)SendGameSnapshot(pane);else Send(pane,new{kind="snapshot",documentId=pane.Ticket.DocumentId,snapshot=owner.Snapshot()});
+        SendPolicy(pane);
     }
     bool RendererIsSuspended(ProbeWindow pane){return renderers.ContainsKey(pane) && pane.View.CoreWebView2!=null && pane.View.CoreWebView2.IsSuspended;}
     async void ObserveRenderer(ProbeWindow pane,RendererSuspender renderer,Task pending)

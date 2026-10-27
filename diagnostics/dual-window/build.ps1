@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$NativePolicy,[switch]$ThreeScene)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$NativePolicy,[switch]$ThreeScene,[switch]$Game)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'private-path.ps1')
 $taskRoot=Get-DualWindowPrivateRoot $OutputDirectory
@@ -14,13 +14,16 @@ $taskPage=Join-Path $taskRun 'page'
 New-Item -ItemType Directory -Path $taskPage | Out-Null
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'view.html'),(Join-Path $PSScriptRoot 'visual-probe.mjs'),(Join-Path $PSScriptRoot '../state-owner/lease-session.mjs') -Destination $taskPage
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'manual-input-panel.mjs'),(Join-Path $PSScriptRoot '../input-window/input-session.mjs'),(Join-Path $PSScriptRoot '../input-window/manual-evidence.mjs') -Destination $taskPage
+if($Game){Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../../desktop/game-page/game.html'),(Join-Path $PSScriptRoot '../../desktop/game-page/page.mjs') -Destination $taskPage}
 if($ThreeScene){& node (Join-Path $PSScriptRoot '../three-scene/build.mjs') $taskPage;if($LASTEXITCODE -ne 0){throw 'Lake scene bundle did not build.'}}
 $taskExecutable=Join-Path $taskRun 'DualWindowHost.exe'
 $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platform:x64','/warnaserror+',
   '/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll',
   ('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.Core.dll')),('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.WinForms.dll')),('/out:'+$taskExecutable))
-if($DesktopLayer -or $NativePolicy -or $ThreeScene){$taskArgs+=('/win32manifest:'+(Join-Path $PSScriptRoot 'desktop.manifest'))}
+if($DesktopLayer -or $NativePolicy -or $ThreeScene -or $Game){$taskArgs+=('/win32manifest:'+(Join-Path $PSScriptRoot 'desktop.manifest'))}
 foreach($taskName in @('ActivationHandshake.cs','DualWindowOwner.cs','DualWindowHost.cs','DualWindowProbe.cs','DualWindowDesktop.cs','DualWindowVisual.cs','DualWindowPolicy.cs','DualWindowNativePolicy.cs','DualWindowRenderer.cs','FrozenFrameSurface.cs','DualWindowSoak.cs','DualWindowSignals.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+foreach($taskName in @('DualWindowGame.cs','DualWindowGameProbe.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+foreach($taskName in @('FloatGameState.cs','FloatGameReducer.cs','FloatJournalCodec.cs','FloatGameStore.cs','FloatGameLifecycle.cs','FloatGameOwner.cs','FloatPageProjection.cs','FloatPageCommands.cs')){$taskArgs+=(Join-Path $PSScriptRoot ('../../desktop/game-core/'+$taskName))}
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/RunGate.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/NativeEnvironment.cs')
 $taskArgs+=(Join-Path $PSScriptRoot '../host-policy/NativeSignalState.cs')

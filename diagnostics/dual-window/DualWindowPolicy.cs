@@ -16,7 +16,7 @@ sealed partial class DualWindowContext
         SetHostPause(PauseReason.Startup,true);
         UpdateViewAvailability();
         activityTimer.Tick+=delegate{
-            try{activityClock.Advance(activityWatch.Elapsed.TotalSeconds,owner.ActivityState().CanRun);}
+            try{activityClock.Advance(activityWatch.Elapsed.TotalSeconds,owner.ActivityState().CanRun && GameCanSimulate);}
             catch(Exception error){Fail(error);}
         };
         activityTimer.Start();
@@ -34,11 +34,13 @@ sealed partial class DualWindowContext
     void ApplyPolicy(RunTransition transition)
     {
         if(transition.Changed)ResetSceneWatchdog();
-        activityClock.Advance(activityWatch.Elapsed.TotalSeconds,transition.State.CanRun);
+        SyncGamePolicy();
+        activityClock.Advance(activityWatch.Elapsed.TotalSeconds,transition.State.CanRun && GameCanSimulate);
         if(transition.RevokeInput){
             foreach(var pane in windows.Values)if(pane.Ticket.CanControl){activation.Cancel(pane.Ticket.ViewId);SendLease(pane,null);}
         }
         if(transition.Changed)foreach(var pane in windows.Values)SendPolicy(pane);
+        if(transition.Changed && GameMode)Broadcast();
         if(transition.Changed)ApplyRendererPolicy();
     }
     void SendPolicy(ProbeWindow pane)

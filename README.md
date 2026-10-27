@@ -8,7 +8,7 @@
 
 ## 当前状态
 
-2026-10-26：按[整体开发计划](docs/DEVELOPMENT_PLAN.md)推进 P0 宿主、输入与性能路线，游戏界面和钓鱼流程仍暂停。本机三份界面草稿未发布；P1 尚未开始。
+2026-10-27：按[整体开发计划](docs/DEVELOPMENT_PLAN.md)推进 P0 宿主、输入与性能路线，游戏界面和钓鱼流程仍暂停。本机三份界面草稿未发布；P1 尚未开始。
 
 [画布故障处理](diagnostics/three-scene/FAULT_POLICY.md)已接通独立owner暂停、输入拒绝和安全退出，真实故障/计数状态恢复检查通过；[原生环境查询](diagnostics/host-policy/NATIVE_QUERIES.md)25项纯检查通过。这些仍是独立诊断，不是游戏已接通或真实全屏/多屏验收。
 
@@ -17,6 +17,8 @@
 [多只读输出基础](diagnostics/dual-window/MULTI_OUTPUT_OWNER.md)已通过状态与隐藏三页协议验证，多个只读页共用唯一owner；实际桌面控制器仍为单只读/主屏，物理多屏尚未完成。
 
 [只读屏幕采集](diagnostics/output-topology/README.md)通过44项边界检查及本机单屏原生验证；[拓扑策略桥接](diagnostics/multi-output/TOPOLOGY_BRIDGE.md)通过17项纯检查，[实际捕获与隐藏页面联合](diagnostics/multi-output/CAPTURED_TOPOLOGY.md)另通过12项。本机单屏证据不代表物理多屏、热插拔或产品定位已经验收。
+
+[整组环境观察](diagnostics/output-environment/README.md)66项纯检查通过；当前单屏两次Known、均无覆盖，临时窗口正常清理。只读查询尚未接入多输出暂停策略，不把这轮非覆盖观察当成全屏或会话切换验收。
 
 [单屏输入候选](docs/P0_INPUT_ACCEPTANCE.md)已在同轮取得左/右/中键、滚轮、键盘及按住鼠标左键切窗返回的完整记录，人工确认、正常退出、零专用残留后通过；用户另确认图标可选中、系统右键菜单正常。该结果属于独立诊断窗口，还没有接入游戏操作。
 

@@ -16,7 +16,7 @@
 
 [多只读输出基础](diagnostics/dual-window/MULTI_OUTPUT_OWNER.md)已通过状态与隐藏三页协议验证，多个只读页共用唯一owner；实际桌面控制器仍为单只读/主屏，物理多屏尚未完成。
 
-[只读屏幕采集](diagnostics/output-topology/README.md)通过44项边界检查及本机单屏原生验证；[拓扑策略桥接](diagnostics/multi-output/TOPOLOGY_BRIDGE.md)通过17项纯检查。页面联合另测，不代表物理多屏或热插拔已经验收。
+[只读屏幕采集](diagnostics/output-topology/README.md)通过44项边界检查及本机单屏原生验证；[拓扑策略桥接](diagnostics/multi-output/TOPOLOGY_BRIDGE.md)通过17项纯检查，[实际捕获与隐藏页面联合](diagnostics/multi-output/CAPTURED_TOPOLOGY.md)另通过12项。本机单屏证据不代表物理多屏、热插拔或产品定位已经验收。
 
 [单屏输入候选](docs/P0_INPUT_ACCEPTANCE.md)已在同轮取得左/右/中键、滚轮、键盘及按住鼠标左键切窗返回的完整记录，人工确认、正常退出、零专用残留后通过；用户另确认图标可选中、系统右键菜单正常。该结果属于独立诊断窗口，还没有接入游戏操作。
 

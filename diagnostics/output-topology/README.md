@@ -8,6 +8,8 @@
 
 ## API 与数据约定
 
+后续[实际拓扑→隐藏页面](../multi-output/CAPTURED_TOPOLOGY.md)12项另已通过；这是当前单屏的协议联合，仍不包含物理多屏/混合DPI或实际输出定位。
+
 命名空间 `FishingDesktop.Diagnostics.OutputTopology`：
 
 - `TopologyCapture(ITopologyQuery query, int maximumOutputs=16).Capture()` 返回不可变 `TopologySample`。

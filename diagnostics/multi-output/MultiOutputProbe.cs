@@ -35,7 +35,7 @@ sealed class LogicalPane : Form
 }
 
 // Separate logical-output protocol probe, not the production desktop controller.
-sealed class MultiOutputContext : ApplicationContext
+sealed partial class MultiOutputContext : ApplicationContext
 {
     const string PageUrl="https://fishing-multi.localhost/page.html";
     readonly string root=AppDomain.CurrentDomain.BaseDirectory;
@@ -46,17 +46,23 @@ sealed class MultiOutputContext : ApplicationContext
     readonly List<string> checks=new List<string>();
     readonly DualWindowOwner owner;
     readonly OutputPolicy outputPolicy=new OutputPolicy();
+    readonly bool captureMode;
     long nextViewGeneration,lastAppliedInputEpoch=-1;
     CoreWebView2Environment environment;
     List<LogicalPane> closing;
     bool stopping,finished;
     int loadedDocuments;
     internal int ExitCode{get;private set;}
-    internal MultiOutputContext()
+    internal MultiOutputContext(bool capturedTopology=false)
     {
+        captureMode=capturedTopology;
         owner=new DualWindowOwner(Path.Combine(root,"counter.journal.jsonl"));
-        outputPolicy.ReplaceTopology(1,new[]{new OutputDefinition("left",-1920,0,1920,1080,96,96),new OutputDefinition("right",0,0,2560,1440,144,144)});
-        outputPolicy.SelectControlTarget("right");ApplyOutputPolicy();
+        if(captureMode)topologyBridge=new TopologyPolicyBridge(outputPolicy);
+        else{
+            outputPolicy.ReplaceTopology(1,new[]{new OutputDefinition("left",-1920,0,1920,1080,96,96),new OutputDefinition("right",0,0,2560,1440,144,144)});
+            outputPolicy.SelectControlTarget("right");
+        }
+        ApplyOutputPolicy();
         if(dispatcher.Handle==IntPtr.Zero)throw new InvalidOperationException("Dispatcher unavailable.");
         deadline.Tick+=delegate{Fail(new InvalidOperationException("Logical multi-output deadline exceeded."));};deadline.Start();
         dispatcher.BeginInvoke(new Action(Start));
@@ -73,8 +79,9 @@ sealed class MultiOutputContext : ApplicationContext
         try{
             environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(root,"private-profile"));
             environment.BrowserProcessExited+=delegate(object sender,CoreWebView2BrowserProcessExitedEventArgs e){if(!stopping&&e.BrowserProcessExitKind==CoreWebView2BrowserProcessExitKind.Failed)Fail(new InvalidOperationException("Private browser failed."));};
-            var left=await Open("left",false);var right=await Open("right",false);var control=await Open("control",true);
-            await Probe(left,right,control);Shutdown();
+            if(captureMode)await ProbeCapturedTopology();
+            else{var left=await Open("left",false);var right=await Open("right",false);var control=await Open("control",true);await Probe(left,right,control);}
+            Shutdown();
         }catch(Exception error){Fail(error);}
     }
     async Task<LogicalPane> Open(string key,bool control)
@@ -82,7 +89,10 @@ sealed class MultiOutputContext : ApplicationContext
         Need(!stopping&&!panes.ContainsKey(key),"Logical output is already open or host is stopping.");
         var pane=new LogicalPane(this,key,control?owner.Open(true):owner.OpenOutput(key));panes.Add(key,pane);
         try{
-            pane.Show();await pane.View.EnsureCoreWebView2Async(environment);if(!Live(pane))return pane;
+            if(captureMode){Need(pane.Handle!=IntPtr.Zero&&pane.View.Handle!=IntPtr.Zero,"Hidden protocol window handles unavailable.");VerifyCapturedWindow(pane);}
+            else pane.Show();
+            await pane.View.EnsureCoreWebView2Async(environment);if(!Live(pane))return pane;
+            if(captureMode)VerifyCapturedWindow(pane);
             var core=pane.View.CoreWebView2;core.Settings.AreBrowserAcceleratorKeysEnabled=false;core.Settings.AreDefaultContextMenusEnabled=false;core.Settings.AreDevToolsEnabled=false;
             core.SetVirtualHostNameToFolderMapping("fishing-multi.localhost",Path.Combine(root,"page"),CoreWebView2HostResourceAccessKind.DenyCors);
             core.NavigationStarting+=delegate(object sender,CoreWebView2NavigationStartingEventArgs e){
@@ -104,8 +114,9 @@ sealed class MultiOutputContext : ApplicationContext
                         document=json.Deserialize<string>(raw);if(document!=null)break;await Task.Delay(25);
                     }
                     Need(document!=null,"Page module did not become ready.");
-                    if(!control)Need(pane.PolicyView==policyView&&pane.PolicyTopology==policyTopology&&outputPolicy.Observe(pane.Key,policyTopology,policyView,true,true,pane.SyntheticFullscreen,true),"Ready observation belongs to an old output view.");
-                    owner.Attach(pane.Ticket,document);pane.Ready=true;loadedDocuments++;ApplyOutputPolicy();
+                    if(!control)Need(pane.PolicyView==policyView&&pane.PolicyTopology==policyTopology&&outputPolicy.Observe(pane.Key,policyTopology,policyView,true,captureMode?CapturedLandscape(pane):true,pane.SyntheticFullscreen,true),"Ready observation belongs to an old output view.");
+                    if(captureMode)VerifyCapturedWindow(pane);
+                    Need(owner.Attach(pane.Ticket,document),"Current document did not attach.");pane.Ready=true;loadedDocuments++;ApplyOutputPolicy();
                     Send(pane,new{kind="role",documentId=document,role=control?"control":pane.Ticket.OutputKey});Broadcast();
                 }catch(Exception error){if(Live(pane)&&pane.Navigation==navigation&&pane.Generation==generation)Fail(error);}
             };
@@ -288,7 +299,7 @@ sealed class MultiOutputContext : ApplicationContext
     protected override void Dispose(bool disposing){if(disposing){Shutdown();Finish();deadline.Dispose();dispatcher.Dispose();}base.Dispose(disposing);}
     [STAThread] static int Main(string[] args)
     {
-        if(args.Length!=1||args[0]!="--self-test")return 5;
-        try{using(var guard=new HostInstanceGuard()){if(!guard.IsOwner)return 2;Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);using(var context=new MultiOutputContext()){Application.Run(context);return context.ExitCode;}}}catch(Exception){return 3;}
+        if(args.Length!=1||(args[0]!="--self-test"&&args[0]!="--captured-topology-self-test"))return 5;
+        try{using(var guard=new HostInstanceGuard()){if(!guard.IsOwner)return 2;Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);using(var context=new MultiOutputContext(args[0]=="--captured-topology-self-test")){Application.Run(context);return context.ExitCode;}}}catch(Exception){return 3;}
     }
 }

@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$CapturedTopology)
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '../dual-window/private-path.ps1')
 $taskRoot=Get-DualWindowPrivateRoot $OutputDirectory
@@ -12,14 +12,17 @@ $taskPage=Join-Path $taskRun 'page';New-Item -ItemType Directory -Path $taskPage
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'page.html') -Destination $taskPage
 $taskCompiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 $taskExecutable=Join-Path $taskRun 'MultiOutputProbe.exe'
+$taskManifest=if($CapturedTopology){Join-Path $PSScriptRoot '../output-topology/desktop.manifest'}else{Join-Path $PSScriptRoot '../dual-window/desktop.manifest'}
 $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:winexe','/platform:x64','/warnaserror+',
     '/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll',
     ('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.Core.dll')),('/r:'+(Join-Path $taskRun 'Microsoft.Web.WebView2.WinForms.dll')),
-    ('/win32manifest:'+(Join-Path $PSScriptRoot '../dual-window/desktop.manifest')),('/out:'+$taskExecutable),
-    (Join-Path $PSScriptRoot 'MultiOutputProbe.cs'),(Join-Path $PSScriptRoot 'OutputPolicy.cs'),(Join-Path $PSScriptRoot '../dual-window/DualWindowOwner.cs'),
+    ('/win32manifest:'+$taskManifest),('/out:'+$taskExecutable),
+    (Join-Path $PSScriptRoot 'MultiOutputProbe.cs'),(Join-Path $PSScriptRoot 'CapturedTopologyProbe.cs'),(Join-Path $PSScriptRoot 'OutputPolicy.cs'),
+    (Join-Path $PSScriptRoot 'TopologyPolicyBridge.cs'),(Join-Path $PSScriptRoot '../output-topology/OutputTopology.cs'),
+    (Join-Path $PSScriptRoot '../output-topology/Win32TopologyQuery.cs'),(Join-Path $PSScriptRoot '../dual-window/DualWindowOwner.cs'),
     (Join-Path $PSScriptRoot '../state-owner/DurableCounterStore.cs'),(Join-Path $PSScriptRoot '../state-owner/ViewAuthority.cs'),
     (Join-Path $PSScriptRoot '../host-policy/RunGate.cs'),(Join-Path $PSScriptRoot '../input-window/HostInstanceGuard.cs'))
 $taskCompile=@(& $taskCompiler @taskArgs);$taskExit=$LASTEXITCODE
 $taskCompile | Set-Content -LiteralPath (Join-Path $taskRun 'build-output.txt') -Encoding utf8
 if($taskExit -ne 0){$taskCompile | Out-Host;throw 'Logical multi-output probe did not compile.'}
-[pscustomobject]@{compiled=$true;started=$false;outputDirectory=$taskRun;executable=$taskExecutable}
+[pscustomobject]@{compiled=$true;started=$false;capturedTopologyMode=[bool]$CapturedTopology;outputDirectory=$taskRun;executable=$taskExecutable}

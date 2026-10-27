@@ -10,6 +10,8 @@
 
 ## 当前状态
 
+参考图准备见[全量资产清单](docs/ASSET_REFERENCE_CATALOG.md)：36种中国内陆/海洋鱼类与100项其他资产参考任务分批交接ZCode，含已存在的18鱼参考。3D付费生成仍暂停；这份规划不是模型完成数量。
+
 2026-10-27：按[整体开发计划](docs/DEVELOPMENT_PLAN.md)推进 P0 宿主、输入与性能路线，游戏界面和钓鱼流程仍暂停。本机三份界面草稿未发布；P1 尚未开始。
 
 [画布故障处理](diagnostics/three-scene/FAULT_POLICY.md)已接通独立owner暂停、输入拒绝和安全退出，真实故障/计数状态恢复检查通过；[原生环境查询](diagnostics/host-policy/NATIVE_QUERIES.md)25项纯检查通过。这些仍是独立诊断，不是游戏已接通或真实全屏/多屏验收。

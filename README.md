@@ -30,6 +30,8 @@
 
 [模块调查与反编译范围](docs/RF4_MODULE_RESEARCH.md)、[鼠标抛竿链路](docs/CASTING_FLOW_SPEC.md)、[浮漂装配](docs/FLOAT_RIG_ASSEMBLY_SPEC.md)、[库存与菜单交易](docs/INVENTORY_TRANSACTION_SPEC.md)、[单竿遛鱼](docs/FIGHTING_MODEL_SPEC.md)、[咬钩与漂相](docs/BITE_PRESENTATION_SPEC.md)、[竿架三竿](docs/MULTIROD_STAND_SPEC.md)、[技能成长与制作](docs/GROWTH_CRAFTING_SPEC.md)及[食品、穿戴和维修](docs/SUPPLIES_CLOTHING_REPAIR_SPEC.md)已形成研究/实现前置资料。这些规格尚不代表玩法已接通。研究文档按授权公开，原客户端、完整配置、伪代码、素材、个人存档和录屏不随文档发布。
 
+[底钓与饵笼](docs/BOTTOM_RIG_ASSEMBLY_SPEC.md)、[路亚装配与操控](docs/LURE_RIG_ASSEMBLY_SPEC.md)及[水域钓点与生态](docs/WATER_ECOLOGY_SPEC.md)另明确真实工作位置、共同活动时钟、压力/沉积与恢复边界，采用本项目原创规则；尚未实现这些后续玩法。
+
 当前版本为 **0.3.1 寻找鱼群试玩**，包含鼠标蓄力抛竿、等待、提竿、控线遛鱼、入护与卖鱼的完整基础循环。提供松风湖、芦苇湾、白桦河三处水域、九个可切换钓位、八种鱼，渔具/食品/服装商店，背包、图鉴、垂钓记录和本地进度保存。
 
 [简单底钓与饵笼](docs/BOTTOM_RIG_ASSEMBLY_SPEC.md)和[纺车轮路亚](docs/LURE_RIG_ASSEMBLY_SPEC.md)另已形成P5/P6前置合同，当前试玩尚未实现。R1整体仍部分完成，水域生态、玩家覆盖与平衡参数等继续补齐。

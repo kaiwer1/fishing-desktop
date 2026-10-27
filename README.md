@@ -12,7 +12,7 @@
 
 参考图准备见[全量资产清单](docs/ASSET_REFERENCE_CATALOG.md)：36种中国内陆/海洋鱼类与100项其他资产参考任务分批交接ZCode，含已存在的18鱼参考。3D付费生成仍暂停；这份规划不是模型完成数量。
 
-2026-10-27：按[整体开发计划](docs/DEVELOPMENT_PLAN.md)收敛单屏可玩主线，多输出准备暂冻结。[单竿数据核心](desktop/game-core/README.md)及[文件保存候选](desktop/game-core/STORAGE.md)已开始P1最小切片，32项事务、23项编解码、21项文件检查通过；尚未接游戏画面/原生输入，也不是P1或P0整体验收。本机三份旧界面草稿保留未发布。
+2026-10-27：按[整体开发计划](docs/DEVELOPMENT_PLAN.md)收敛单屏可玩主线，多输出准备暂冻结。[单竿数据核心](desktop/game-core/README.md)、[文件保存](desktop/game-core/STORAGE.md)及[独立游戏owner/重启退出](desktop/game-core/OWNER.md)已形成P1最小候选；32项事务、23项编解码、21项文件、29项owner及15项生命周期检查通过。页面重建保留会话，应用重启收回未完成一竿，已确认满护结果保留等待明确放流。尚未接游戏画面/原生输入，也不是P1或P0整体验收。本机三份旧界面草稿保留未发布。
 
 [画布故障处理](diagnostics/three-scene/FAULT_POLICY.md)已接通独立owner暂停、输入拒绝和安全退出，真实故障/计数状态恢复检查通过；[原生环境查询](diagnostics/host-policy/NATIVE_QUERIES.md)25项纯检查通过。这些仍是独立诊断，不是游戏已接通或真实全屏/多屏验收。
 

@@ -55,6 +55,19 @@ namespace FishingDesktop.GameCore
         {FloatGuard.Id(session,"session");FloatGuard.Id(fish,"fish");FloatGuard.Id(encounter,"encounter");FishId=fish;EncounterId=encounter;SpeciesKey=FloatGuard.Key(species);MassMg=massMg;}
         internal override string Detail{get{return FishId.ToString("N")+"|"+EncounterId.ToString("N")+"|"+SpeciesKey+"|"+FloatGuard.Number(MassMg);}}
     }
+    // Host lifecycle only; never accepted through the player command channel.
+    internal sealed class RecoverFloatSession : FloatCommand
+    {
+        internal readonly FloatRecoveryReason Reason;
+        internal RecoverFloatSession(Guid profile,Guid branch,Guid request,Guid terminalEvent,Guid session,long expectedSequence,long expectedRigRevision,long expectedRulesVersion,FloatRecoveryReason reason)
+            :base("recover-session",profile,branch,request,terminalEvent,session,expectedSequence,expectedRigRevision,expectedRulesVersion)
+        {
+            FloatGuard.Id(session,"session");
+            if(reason!=FloatRecoveryReason.StartupInterrupted&&reason!=FloatRecoveryReason.OwnerShutdown)throw new ArgumentOutOfRangeException("reason");
+            Reason=reason;
+        }
+        internal override string Detail{get{return FloatGuard.Number((int)Reason);}}
+    }
     public sealed class FloatReduction
     {
         public readonly string Code;
@@ -77,7 +90,7 @@ namespace FishingDesktop.GameCore
         static bool AssetExists(FloatGameState state,Guid id)
         {var ids=new HashSet<Guid>();state.Rig.AddAssets(ids);ids.Add(state.BaitStackId);foreach(var fish in state.Creel)ids.Add(fish.Id);return ids.Contains(id);}
         static string Code(FloatOutcome outcome)
-        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";default:return "sale-candidate";}}
+        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";default:return "sale-candidate";}}
         public static FloatReduction Reduce(FloatGameState state,FloatCommand command,FloatGameRules rules)
         {
             if(state==null)throw new ArgumentNullException("state");if(command==null)throw new ArgumentNullException("command");
@@ -101,6 +114,10 @@ namespace FishingDesktop.GameCore
                 }else if(command is ReleaseCurrentFloatFish){
                     if(session==null||session.Id!=command.SessionId||!session.CapacityBlocked)return Reject("pending-fish-not-current");
                     affected.Add(session.PendingFish.Id);encounterId=session.PendingFish.EncounterId;session=null;outcome=FloatOutcome.Released;
+                }else if(command is RecoverFloatSession){
+                    if(session==null||session.Id!=command.SessionId)return Reject("session-not-current");
+                    if(session.CapacityBlocked)return Reject("pending-result-requires-release");
+                    session=null;outcome=FloatOutcome.Recovered;
                 }else if(command is HostFloatFish){
                     var host=(HostFloatFish)command;
                     if(session==null||session.Id!=command.SessionId)return Reject("session-not-current");if(session.CapacityBlocked)return Reject("pending-fish-already-set");

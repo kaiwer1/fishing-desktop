@@ -90,19 +90,22 @@ namespace FishingDesktop.GameCore
             Id=id;ReleaseEventId=releaseEvent;RigRevision=rigRevision;RulesVersion=rulesVersion;PendingFish=pendingFish;
         }
     }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold }
+    public enum FloatRecoveryReason { StartupInterrupted=1,OwnerShutdown=2 }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered }
     public sealed class FloatReceipt
     {
         public readonly Guid RequestId,EventId,SessionId,EncounterId;
         public readonly long Sequence,RulesVersion,WalletBefore,WalletAfter;
         public readonly int StaminaBefore,StaminaAfter,BaitBefore,BaitAfter;
         public readonly FloatOutcome Outcome;
+        public readonly FloatRecoveryReason? RecoveryReason;
         public readonly ReadOnlyCollection<Guid> FishIds;
         internal readonly string Fingerprint;
-        internal bool Terminal{get{return Outcome==FloatOutcome.Recalled||Outcome==FloatOutcome.Landed||Outcome==FloatOutcome.Released;}}
+        internal bool Terminal{get{return Outcome==FloatOutcome.Recalled||Outcome==FloatOutcome.Landed||Outcome==FloatOutcome.Released||Outcome==FloatOutcome.Recovered;}}
         internal FloatReceipt(FloatCommand command,long sequence,long rulesVersion,FloatOutcome outcome,Guid encounterId,long walletBefore,long walletAfter,int staminaBefore,int staminaAfter,int baitBefore,int baitAfter,IEnumerable<Guid> fishIds)
         {
             RequestId=command.RequestId;EventId=command.EventId;SessionId=command.SessionId;EncounterId=encounterId;Sequence=sequence;RulesVersion=rulesVersion;Outcome=outcome;Fingerprint=command.Fingerprint;
+            var recovery=command as RecoverFloatSession;RecoveryReason=recovery==null?(FloatRecoveryReason?)null:recovery.Reason;
             WalletBefore=walletBefore;WalletAfter=walletAfter;StaminaBefore=staminaBefore;StaminaAfter=staminaAfter;BaitBefore=baitBefore;BaitAfter=baitAfter;
             var copy=new List<Guid>(fishIds);var unique=new HashSet<Guid>();foreach(var id in copy)FloatGuard.Unique(unique,id);FishIds=copy.AsReadOnly();
         }

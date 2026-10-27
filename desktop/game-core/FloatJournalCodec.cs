@@ -13,7 +13,7 @@ namespace FishingDesktop.GameCore
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
         const ushort Schema=1;
-        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5;
+        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -119,7 +119,7 @@ namespace FishingDesktop.GameCore
         static byte Type(FloatCommand command)
         {
             if(command is CastFloat)return Cast;if(command is RecallFloat)return Recall;if(command is ReleaseCurrentFloatFish)return Release;
-            if(command is SellFloatFish)return Sale;if(command is HostFloatFish)return HostFish;throw Invalid("Unsupported journal command type.");
+            if(command is SellFloatFish)return Sale;if(command is HostFloatFish)return HostFish;if(command is RecoverFloatSession)return Recovery;throw Invalid("Unsupported journal command type.");
         }
         static void SaleIds(IList<Guid> ids)
         {
@@ -134,6 +134,8 @@ namespace FishingDesktop.GameCore
                 writer.I64(command.ExpectedSequence);writer.I64(command.ExpectedRigRevision);writer.I64(command.ExpectedRulesVersion);
                 if(type==Sale){
                     if(command.SessionId!=Guid.Empty)throw Invalid("Sale command contains a session.");var ids=((SellFloatFish)command).FishIds;SaleIds(ids);writer.U16((ushort)ids.Count);foreach(var id in ids)writer.Guid(id);
+                }else if(type==Recovery){
+                    writer.Byte((byte)((RecoverFloatSession)command).Reason);
                 }else if(type==HostFish){
                     var host=(HostFloatFish)command;if(host.MassMg<=0)throw Invalid("Host fish mass is invalid.");writer.Guid(host.FishId);writer.Guid(host.EncounterId);writer.Text(host.SpeciesKey);writer.I64(host.MassMg);
                 }
@@ -142,12 +144,13 @@ namespace FishingDesktop.GameCore
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,reader=>{
-                byte type=reader.Byte();if(type<Cast||type>HostFish)throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(type<Cast||type>Recovery)throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
                 if(type==Cast)return (FloatCommand)new CastFloat(profile,branch,request,businessEvent,session,sequence,rig,rules);
                 if(type==Recall)return new RecallFloat(profile,branch,request,businessEvent,session,sequence,rig,rules);
                 if(type==Release)return new ReleaseCurrentFloatFish(profile,branch,request,businessEvent,session,sequence,rig,rules);
+                if(type==Recovery)return new RecoverFloatSession(profile,branch,request,businessEvent,session,sequence,rig,rules,(FloatRecoveryReason)reader.Byte());
                 if(type==Sale){
                     if(session!=Guid.Empty)throw Invalid("Sale command contains a session.");int count=reader.U16();if(count<1||count>MaximumSaleIds)throw Invalid("Sale identity count is invalid.");
                     var ids=new List<Guid>(count);for(int i=0;i<count;i++)ids.Add(reader.Guid());SaleIds(ids);return new SellFloatFish(profile,branch,request,businessEvent,ids,sequence,rig,rules);

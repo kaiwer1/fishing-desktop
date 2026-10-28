@@ -22,9 +22,10 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision;
-        internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision;
+        internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater;
         internal GameShopPending Shop;
+        internal GameEquipmentPending Equipment;
     }
     readonly Dictionary<ProbeWindow,GameBinding> gameViews = new Dictionary<ProbeWindow,GameBinding>();
     bool GameCanSimulate { get { return game == null || (game.Snapshot.CanSimulate && !GameFightTimeBlocked); } }
@@ -35,8 +36,8 @@ sealed partial class DualWindowContext
         string path = Path.Combine(root, "game.fltj");
         if (gameMode == "open") {
             var inspection=FloatJournalArchive.Inspect(path);
-            if(inspection.State.SchemaVersion!=2)throw new InvalidOperationException("This legacy profile requires an explicit backed-up candidate upgrade; opening did not change it.");
-            game=FloatGameOwner.OpenExisting(path,null,2);
+            if(inspection.State.SchemaVersion!=2&&inspection.State.SchemaVersion!=3)throw new InvalidOperationException("This legacy profile requires an explicit backed-up candidate upgrade; opening did not change it.");
+            game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion);
         }
         else if(GameSelfTest) game=FloatGameOwner.CreateNew(path,CreateGameFixture(),GameShopSaveFault);
         else if(gameMode=="new") game=FloatGameOwner.CreateNew(path,CreateGameFixture());
@@ -54,7 +55,33 @@ sealed partial class DualWindowContext
             new[]{new FloatSpeciesRule("carp",100000,10000000,120),new FloatSpeciesRule("crucian",50000,3000000,80)});
         var rig = new FixedFloatRig(Guid.NewGuid(),1,"float-starter",Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),50000,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid());
         var catalog=new FloatCommerceCatalog(1,"worm","landing-net","bread",2400,5,20,20,20,1000,1000,100);
-        return FloatGameState.CreateNewWithCommerce(Guid.NewGuid(),Guid.NewGuid(),12000,100,Guid.NewGuid(),"worm",12,rig,rules,catalog,Guid.NewGuid());
+        // Explicit original development definitions for a NEW private profile.
+        // This is not a migration policy or inferred old equipment durability.
+        var equipmentCatalog=new FloatEquipmentCatalog(1,"worm",new[]{
+            new FloatEquipmentDefinition("starter-rod",FloatEquipmentKind.Rod,150000,0,1000,25000),
+            new FloatEquipmentDefinition("starter-reel",FloatEquipmentKind.Reel,200000),
+            new FloatEquipmentDefinition("nylon-018",FloatEquipmentKind.Line,0,180),
+            new FloatEquipmentDefinition("single-hook",FloatEquipmentKind.Hook,200),
+            new FloatEquipmentDefinition("float-3g",FloatEquipmentKind.Bobber,3000,0,2000,3000),
+            new FloatEquipmentDefinition("sinker-2_5g",FloatEquipmentKind.Sinker,2500)},
+            new[]{new FloatEquipmentPairRule("starter-rod","starter-reel",true)},
+            new[]{new FloatEquipmentSpoolRule("starter-reel","nylon-018",180,50000)},
+            new[]{new FloatEquipmentPairRule("single-hook","worm",true)},
+            new[]{new FloatEquipmentLossRule("mainline-terminal",new[]{FloatEquipmentSlot.Hook,FloatEquipmentSlot.Bobber,FloatEquipmentSlot.Sinker})});
+        var equipment=new FloatEquipmentLedger(rig.Id,1,1,equipmentCatalog,new[]{
+            new FloatEquipmentInstance(rig.RodId,"starter-rod",FloatEquipmentKind.Rod,1,FloatEquipmentLocation.RigSlot(rig.Id,FloatEquipmentSlot.Rod)),
+            new FloatEquipmentInstance(rig.ReelId,"starter-reel",FloatEquipmentKind.Reel,1,FloatEquipmentLocation.RigSlot(rig.Id,FloatEquipmentSlot.Reel)),
+            new FloatEquipmentInstance(rig.LineId,"nylon-018",FloatEquipmentKind.Line,1,FloatEquipmentLocation.ReelSpool(rig.ReelId),50000,50000),
+            new FloatEquipmentInstance(rig.HookId,"single-hook",FloatEquipmentKind.Hook,1,FloatEquipmentLocation.RigSlot(rig.Id,FloatEquipmentSlot.Hook)),
+            new FloatEquipmentInstance(rig.BobberId,"float-3g",FloatEquipmentKind.Bobber,1,FloatEquipmentLocation.RigSlot(rig.Id,FloatEquipmentSlot.Bobber)),
+            new FloatEquipmentInstance(rig.SinkerId,"sinker-2_5g",FloatEquipmentKind.Sinker,1,FloatEquipmentLocation.RigSlot(rig.Id,FloatEquipmentSlot.Sinker))});
+        return FloatGameState.CreateNewWithEquipment(Guid.NewGuid(),Guid.NewGuid(),12000,100,Guid.NewGuid(),"worm",12,equipment,rules,catalog,Guid.NewGuid());
+    }
+    static long GameInstalledLineMm(FloatGameState state)
+    {
+        if(state==null||state.Rig==null||!state.Rig.LineLengthMm.HasValue||state.Rig.LineLengthMm.Value<=0)
+            throw new InvalidOperationException("An active simulation requires an actual installed line segment.");
+        return state.Rig.LineLengthMm.Value;
     }
     void GameOpen(ProbeWindow pane)
     {
@@ -67,14 +94,14 @@ sealed partial class DualWindowContext
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
         ClearGameFightInput(pane);
-        ClearGameShop(pane);
+        ClearGameShop(pane); ClearGameEquipment(pane);
         game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.Document=null;
     }
     void GameAttached(ProbeWindow pane)
     {
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
-        ClearGameShop(pane);
+        ClearGameShop(pane); ClearGameEquipment(pane);
         b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0; b.CastRevision=0; b.FlightRevision=0; b.BiteRevision=0; b.FightRevision=0; b.ShopRevision=0;
         if (pane.DesktopReadOnly && !desktopShown.Contains(pane)) {
             desktopShown.Add(pane); GuardPresentation(()=>pane.Show()); CheckDesktop(pane);
@@ -86,7 +113,7 @@ sealed partial class DualWindowContext
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
         ClearGameFightInput(pane);
-        ClearGameShop(pane);
+        ClearGameShop(pane); ClearGameEquipment(pane);
         game.CloseView(b.View); gameViews.Remove(pane);
     }
     void GameLease(ProbeWindow pane,string wireLease)
@@ -95,8 +122,8 @@ sealed partial class DualWindowContext
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
         ClearGameFightInput(pane);
-        ClearGameShop(pane);
-        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0;
+        ClearGameShop(pane); ClearGameEquipment(pane);
+        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0; b.EquipmentHighWater=0;
         var state=game.Snapshot;
         if (wireLease == null || b.Document == null || state.Faulted || state.HostPaused || state.ShutdownConfirmed) return;
         b.Lease=game.GrantControl(b.View,b.Document); b.WireLease=wireLease;
@@ -106,7 +133,7 @@ sealed partial class DualWindowContext
         if (game == null) return;
         var snapshot=game.Snapshot;
         if (!snapshot.Faulted && !snapshot.ShutdownConfirmed) game.SetHostPaused(!owner.ActivityState().CanRun);
-        if(game.Snapshot.HostPaused||game.Snapshot.Faulted||game.Snapshot.ShutdownConfirmed)ClearGameShop();
+        if(game.Snapshot.HostPaused||game.Snapshot.Faulted||game.Snapshot.ShutdownConfirmed){ClearGameShop(); ClearGameEquipment();}
         if (!game.Snapshot.CanSimulate) { CancelGameCast(); ClearGameFightInput(); }
     }
     async Task StartGamePresentation()
@@ -137,7 +164,7 @@ sealed partial class DualWindowContext
         SendGameFlight(pane);
         SendGameBite(pane);
         SendGameFight(pane);
-        SendGameShop(pane);
+        SendGameShop(pane); SendGameEquipment(pane);
     }
     bool GameAuthorized(ProbeWindow pane,string document,string lease,out GameBinding b)
     {
@@ -169,6 +196,7 @@ sealed partial class DualWindowContext
         if (kind=="game-strike") { ReceiveGameStrike(pane,b,m,transport); return; }
         if (kind=="game-fight") { ReceiveGameFight(pane,b,m,transport); return; }
         if (kind=="game-shop") { ReceiveGameShop(pane,b,m,document,lease,transport); return; }
+        if (kind=="game-equipment") { ReceiveGameEquipment(pane,b,m,document,lease,transport); return; }
         if (kind=="game-menu") {
             object open;
             if (m.Count!=5 || !m.TryGetValue("open",out open) || !(open is bool)) { GameReply(pane,transport,"invalid-intent"); return; }
@@ -194,7 +222,7 @@ sealed partial class DualWindowContext
         if (game == null || gameShutdownAttempted) return;
         CancelGameCast();
         ClearGameFightInput();
-        ClearGameShop();
+        ClearGameShop(); ClearGameEquipment();
         gameShutdownAttempted=true;
         try {
             var state=game.Snapshot;

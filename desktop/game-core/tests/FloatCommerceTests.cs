@@ -84,11 +84,11 @@ static class FloatCommerceTests
             Throws<ArgumentException>(()=>new FloatCommerceCatalog(1,"worm","worm","bread",1,1,1,1,1,10,10,1));Throws<ArgumentException>(()=>new FloatCommerceCatalog(1,"worm","net","bread",1,1,1,1,1,10,10,101));
         });
         Test("schema2 creation rejects food identity collision and incompatible bait policy",()=>{
-            var s=New(false);Throws<ArgumentException>(()=>FloatGameState.CreateNewWithCommerce(s.ProfileId,s.BranchId,0,0,s.BaitStackId,"worm",0,s.Rig,s.Rules,Catalog(),s.Rig.Id));
+            var s=New(false);Throws<ArgumentException>(()=>FloatGameState.CreateNewWithCommerce(s.ProfileId,s.BranchId,0,0,s.BaitStackId,"worm",0,s.LegacyRig,s.Rules,Catalog(),s.Rig.Id));
             Throws<ArgumentException>(()=>New(catalog:Catalog(maximumBait:5)));
         });
         Test("upgrade preserves zero resources rig history and profile while switching branch",()=>{
-            var s=New(false,0,0,0);var c=Upgrade(s);var n=Apply(s,c);Need(n.SchemaVersion==2&&n.ProfileId==s.ProfileId&&n.BranchId==c.NewBranchId&&n.Rig==s.Rig&&n.Sequence==1&&n.WalletMinor==0&&n.Stamina==0&&n.BaitCount==0&&n.FoodCount==0&&n.OwnedNet==null&&n.EquippedNetId==Guid.Empty,"Upgrade granted or lost assets.");
+            var s=New(false,0,0,0);var c=Upgrade(s);var n=Apply(s,c);Need(n.SchemaVersion==2&&n.ProfileId==s.ProfileId&&n.BranchId==c.NewBranchId&&n.LegacyRig==s.LegacyRig&&n.Sequence==1&&n.WalletMinor==0&&n.Stamina==0&&n.BaitCount==0&&n.FoodCount==0&&n.OwnedNet==null&&n.EquippedNetId==Guid.Empty,"Upgrade granted or lost assets.");
             Need(n.UpgradeOrigin.SourceBranchId==s.BranchId&&n.UpgradeOrigin.SourceSequence==0&&n.Receipts[0].Outcome==FloatOutcome.ProfileUpgraded,"Upgrade origin missing.");
         });
         Test("upgrade preserves active cast and its debits until explicit new-branch recall",()=>{
@@ -106,7 +106,7 @@ static class FloatCommerceTests
             var altered=new CastFloat(n.ProfileId,n.BranchId,old.RequestId,old.EventId,old.SessionId,n.Sequence,n.Rig.Revision,n.RulesVersion);Refused(n,altered,"request-conflict");
         });
         Test("upgrade rejects reused owned or historical fish food-stack identities",()=>{
-            var s=Land(New(false));Guid oldFish=s.Creel[0].Id;s=Apply(s,Sell(s));Refused(s,Upgrade(s,food:oldFish),"asset-identity-used");Refused(s,Upgrade(s,food:s.Rig.HookId),"asset-identity-used");Refused(s,Upgrade(s,catalog:Catalog(maximumBait:1)),"commerce-configuration-mismatch");
+            var s=Land(New(false));Guid oldFish=s.Creel[0].Id;s=Apply(s,Sell(s));Refused(s,Upgrade(s,food:oldFish),"asset-identity-used");Refused(s,Upgrade(s,food:s.Rig.HookId.Value),"asset-identity-used");Refused(s,Upgrade(s,catalog:Catalog(maximumBait:1)),"commerce-configuration-mismatch");
         });
         Test("net purchase charges once and does not equip automatically",()=>{
             var s=New();var buy=Buy(s,FloatSupplyProduct.Net);var n=Apply(s,buy);Need(n.WalletMinor==9600&&n.OwnedNet.Id==buy.NewNetId&&n.EquippedNetId==Guid.Empty&&n.FoodCount==0&&n.BaitCount==12,"Net purchase side effects.");
@@ -149,7 +149,7 @@ static class FloatCommerceTests
             var units=New(catalog:Catalog(baitPack:Int32.MaxValue));Throws<OverflowException>(()=>FloatPurchaseQuote.Create(units,FloatSupplyProduct.Bait,2));
         });
         Test("purchase validates net identity against all assets and historical fish",()=>{
-            var s=Land(New());Guid historical=s.Creel[0].Id;s=Apply(s,Sell(s));foreach(var id in new[]{s.Rig.Id,s.Rig.LineId,s.BaitStackId,s.FoodStackId,historical})Refused(s,Buy(s,FloatSupplyProduct.Net,net:id),"asset-identity-used");
+            var s=Land(New());Guid historical=s.Creel[0].Id;s=Apply(s,Sell(s));foreach(var id in new[]{s.Rig.Id,s.Rig.LineId.Value,s.BaitStackId,s.FoodStackId,historical})Refused(s,Buy(s,FloatSupplyProduct.Net,net:id),"asset-identity-used");
             var q=FloatPurchaseQuote.Create(s,FloatSupplyProduct.Net,1);Refused(s,new BuyFloatSupply(s.ProfileId,s.BranchId,G(),G(),q,Guid.Empty,s.Sequence,1,1),"asset-identity-used");Refused(s,Buy(s,FloatSupplyProduct.Bait,net:G()),"purchase-asset-invalid");
         });
         Test("stock limits and arithmetic overflow reject without charging",()=>{
@@ -173,7 +173,7 @@ static class FloatCommerceTests
             foreach(var c in new FloatCommand[]{Buy(s,FloatSupplyProduct.Food),Equip(s,G()),Food(s),Upgrade(New(false))}){byte[] full=FloatJournalCodec.EncodeCommand(c);for(int n=0;n<full.Length;n++){var b=Prefix(full,n);Throws<InvalidDataException>(()=>FloatJournalCodec.DecodeCommand(b));}}
         });
         Test("malformed schema2 versions supply enums session metadata and trailing bytes reject",()=>{
-            var s=New();byte[] b=FloatJournalCodec.EncodeCommand(Buy(s,FloatSupplyProduct.Food));byte[] bad=(byte[])b.Clone();bad[4]=3;Throws<InvalidDataException>(()=>FloatJournalCodec.DecodeCommand(bad));bad=(byte[])b.Clone();bad[72]=1;Throws<InvalidDataException>(()=>FloatJournalCodec.DecodeCommand(bad));
+            var s=New();byte[] b=FloatJournalCodec.EncodeCommand(Buy(s,FloatSupplyProduct.Food));byte[] bad=(byte[])b.Clone();bad[4]=4;Throws<InvalidDataException>(()=>FloatJournalCodec.DecodeCommand(bad));bad=(byte[])b.Clone();bad[72]=1;Throws<InvalidDataException>(()=>FloatJournalCodec.DecodeCommand(bad));
             var extra=new byte[b.Length+1];Array.Copy(b,extra,b.Length);Throws<InvalidDataException>(()=>FloatJournalCodec.DecodeCommand(extra));
             bad=(byte[])b.Clone();bad[160]=99;Throws<InvalidDataException>(()=>FloatJournalCodec.DecodeCommand(bad));
         });
@@ -235,7 +235,7 @@ static class FloatCommerceTests
         Test("upgrade at simulated transaction budget rejects without resetting history",()=>{
             string path=PathFor("capacity-transactions");using(var store=FloatGameStore.CreateNew(path,New(false,0,0,0))){byte[] before=Bytes(path);var original=store.State;var history=new List<FloatReceipt>();
                 for(int i=0;i<FloatGameStore.MaximumTransactions;i+=2){Guid session=G();var cast=new CastFloat(original.ProfileId,original.BranchId,G(),G(),session,i,1,1);var recall=new RecallFloat(original.ProfileId,original.BranchId,G(),G(),session,i+1,1,1);history.Add(new FloatReceipt(cast,i+1,1,FloatOutcome.CastCommitted,Guid.Empty,0,0,2,0,1,0,new Guid[0]));history.Add(new FloatReceipt(recall,i+2,1,FloatOutcome.Recalled,Guid.Empty,0,0,0,0,0,0,new Guid[0]));}
-                var full=new FloatGameState(original.ProfileId,original.BranchId,history.Count,0,0,original.BaitStackId,"worm",0,original.Rig,null,new FloatFish[0],history,original.Rules);typeof(FloatGameStore).GetField("_state",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(store,full);
+                var full=new FloatGameState(original.ProfileId,original.BranchId,history.Count,0,0,original.BaitStackId,"worm",0,original.LegacyRig,null,new FloatFish[0],history,original.Rules);typeof(FloatGameStore).GetField("_state",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(store,full);
                 var r=store.AppendUpgrade(Upgrade(full,Hash(before),Tip(before),before.Length));Need(r.Code=="save-capacity"&&!r.Written&&!r.Committed&&store.State.Sequence==10000&&store.State.Receipts.Count==10000&&Same(before,Bytes(path)),"Transaction cap reset old history.");
             }
         });

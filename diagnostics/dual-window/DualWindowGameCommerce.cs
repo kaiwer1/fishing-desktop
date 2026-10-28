@@ -48,6 +48,7 @@ sealed partial class DualWindowContext
     }
     void GameShopSaveFault(FloatSaveFaultPoint point)
     {
+        GameEquipmentSaveFault(point);
         if(GameSelfTest&&GameFailureCase!=null&&gameFailureCommitInProgress&&gameFailureBoundaryFault==point){
             gameFailureBoundaryFault=null;throw new IOException("Controlled private failure boundary: "+GameFailureCase);
         }
@@ -81,7 +82,7 @@ sealed partial class DualWindowContext
     {
         if(binding.Shop==null)return;
         if(state==null||!ShopBindingCurrent(binding,binding.Shop)||state.Sequence!=binding.Shop.Command.ExpectedSequence||
-            state.SchemaVersion!=2||state.CommerceCatalog==null||
+            (state.SchemaVersion!=2&&state.SchemaVersion!=3)||state.CommerceCatalog==null||
             (binding.Shop.Quote!=null&&binding.Shop.Quote.CatalogVersion!=state.CommerceCatalog.Version))binding.Shop=null;
     }
     GameShopPending PrepareGameShop(GameBinding binding,FloatCommand command,string action,FloatPurchaseQuote quote=null)
@@ -99,7 +100,7 @@ sealed partial class DualWindowContext
         // intents. Only current authorization may see an opaque pending ID.
         if(!authorized)binding.Shop=null;else ReconcileGameShop(binding,state);
         var pending=authorized?binding.Shop:null;
-        string reason=snapshot.Faulted?"save-outcome-unknown":snapshot.ShutdownConfirmed?"owner-stopped":state==null||state.SchemaVersion!=2?"commerce-upgrade-required":!authorized?"control-required":state.Session!=null?"session-busy":null;
+        string reason=snapshot.Faulted?"save-outcome-unknown":snapshot.ShutdownConfirmed?"owner-stopped":state==null||(state.SchemaVersion!=2&&state.SchemaVersion!=3)?"commerce-upgrade-required":!authorized?"control-required":state.Session!=null?"session-busy":null;
         object quote=null,retry=null;
         if(pending!=null){
             if(pending.Retry)retry=new{operationId=pending.Id,action=pending.Action};
@@ -137,7 +138,7 @@ sealed partial class DualWindowContext
             binding.Shop=null;ShopReply(pane,transport,"control-required");return;
         }
         var state=game.Snapshot.State;ReconcileGameShop(binding,state);
-        if(state==null||state.SchemaVersion!=2||state.CommerceCatalog==null){ShopReply(pane,transport,"commerce-upgrade-required");return;}
+        if(state==null||(state.SchemaVersion!=2&&state.SchemaVersion!=3)||state.CommerceCatalog==null){ShopReply(pane,transport,"commerce-upgrade-required");return;}
         if(action=="cancel"){binding.Shop=null;ShopReply(pane,transport,"shop-cancelled");return;}
         if(state.Session!=null){ShopReply(pane,transport,"session-busy");return;}
         if(action=="buy"||action=="retry"){

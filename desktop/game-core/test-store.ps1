@@ -7,7 +7,7 @@ New-Item -ItemType Directory -Path $taskRun | Out-Null
 $taskCompiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 $taskExecutable=Join-Path $taskRun 'FloatGameStoreTests.exe'
 $taskArgs=@('/nologo','/utf8output','/target:exe','/platform:x64','/warnaserror+',('/out:'+$taskExecutable))
-foreach($taskName in @('FloatGameState.cs','FloatGameReducer.cs','FloatJournalCodec.cs','FloatGameStore.cs','tests/FloatGameStoreTests.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+foreach($taskName in @('FloatEquipmentLedger.cs','FloatEquipmentCodec.cs','FloatGameState.cs','FloatGameReducer.cs','FloatJournalCodec.cs','FloatGameStore.cs','tests/FloatGameStoreTests.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
 $taskBuild=@(& $taskCompiler @taskArgs);$taskBuildExit=$LASTEXITCODE
 $taskBuild|Set-Content -LiteralPath (Join-Path $taskRun 'build-output.txt') -Encoding utf8
 if($taskBuildExit -ne 0){$taskBuild|Out-Host;throw 'Float file store checks did not compile.'}

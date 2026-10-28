@@ -6,7 +6,7 @@ $taskRun=Join-Path $taskRoot ('float-journal-codec-'+[Guid]::NewGuid().ToString(
 New-Item -ItemType Directory -Path $taskRun|Out-Null
 $taskCompiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 $taskExecutable=Join-Path $taskRun 'FloatJournalCodecTests.exe'
-$taskBuild=@(& $taskCompiler /nologo /utf8output /target:exe /platform:x64 /warnaserror+ ('/out:'+$taskExecutable) (Join-Path $PSScriptRoot 'FloatGameState.cs') (Join-Path $PSScriptRoot 'FloatGameReducer.cs') (Join-Path $PSScriptRoot 'FloatJournalCodec.cs') (Join-Path $PSScriptRoot 'tests/FloatJournalCodecTests.cs'))
+$taskBuild=@(& $taskCompiler /nologo /utf8output /target:exe /platform:x64 /warnaserror+ ('/out:'+$taskExecutable) (Join-Path $PSScriptRoot 'FloatEquipmentLedger.cs') (Join-Path $PSScriptRoot 'FloatEquipmentCodec.cs') (Join-Path $PSScriptRoot 'FloatGameState.cs') (Join-Path $PSScriptRoot 'FloatGameReducer.cs') (Join-Path $PSScriptRoot 'FloatJournalCodec.cs') (Join-Path $PSScriptRoot 'tests/FloatJournalCodecTests.cs'))
 $taskBuildExit=$LASTEXITCODE
 $taskBuild|Set-Content -LiteralPath (Join-Path $taskRun 'build-output.txt') -Encoding utf8
 if($taskBuildExit -ne 0){$taskBuild|Out-Host;throw 'Strict float journal codec did not compile.'}

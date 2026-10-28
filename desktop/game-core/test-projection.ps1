@@ -7,7 +7,7 @@ New-Item -ItemType Directory -Path $taskRun | Out-Null
 $taskCompiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 $taskExecutable=Join-Path $taskRun 'FloatPageProjectionTests.exe'
 $taskArgs=@('/nologo','/utf8output','/target:exe','/platform:x64','/warnaserror+','/r:System.Web.Extensions.dll',('/out:'+$taskExecutable))
-foreach($taskName in @('FloatGameState.cs','FloatGameReducer.cs','FloatJournalCodec.cs','FloatGameStore.cs','FloatGameLifecycle.cs','FloatGameOwner.cs','FloatPageProjection.cs','tests/FloatPageProjectionTests.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+foreach($taskName in @('FloatEquipmentLedger.cs','FloatEquipmentCodec.cs','FloatGameState.cs','FloatGameReducer.cs','FloatJournalCodec.cs','FloatGameStore.cs','FloatGameLifecycle.cs','FloatGameOwner.cs','FloatPageProjection.cs','tests/FloatPageProjectionTests.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
 $taskBuild=@(& $taskCompiler @taskArgs);$taskBuildExit=$LASTEXITCODE
 $taskBuild|Set-Content -LiteralPath (Join-Path $taskRun 'build-output.txt') -Encoding utf8
 if($taskBuildExit -ne 0){$taskBuild|Out-Host;throw 'Float page projection checks did not compile.'}

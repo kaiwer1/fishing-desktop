@@ -15,7 +15,7 @@ New-Item -ItemType Directory -Path $taskRun | Out-Null
 $taskCompiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 $taskExecutable=Join-Path $taskRun 'FloatProfileUpgradeTool.exe'
 $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:exe','/platform:x64','/warnaserror+','/r:System.Web.Extensions.dll',('/out:'+$taskExecutable))
-foreach($taskName in @('FloatGameState.cs','FloatGameReducer.cs','FloatJournalCodec.cs','FloatGameStore.cs','FloatJournalArchive.cs','FloatProfileUpgrade.cs','FloatProfileUpgradeTool.cs')){
+foreach($taskName in @('FloatEquipmentLedger.cs','FloatEquipmentCodec.cs','FloatGameState.cs','FloatGameReducer.cs','FloatJournalCodec.cs','FloatGameStore.cs','FloatJournalArchive.cs','FloatProfileUpgrade.cs','FloatProfileUpgradeTool.cs')){
   $taskArgs+=(Join-Path $PSScriptRoot $taskName)
 }
 $taskBuild=@(& $taskCompiler @taskArgs);$taskBuildExit=$LASTEXITCODE

@@ -278,7 +278,7 @@ sealed partial class DualWindowContext : ApplicationContext
         Send(pane,new{kind="lease",documentId=pane.Ticket.DocumentId,revision=owner.NextRevision(pane.Ticket),cancellationEpoch=pane.Ticket.Epoch,lease=lease,reason=reason});
         // Commerce handles and availability belong to this precise grant.
         // Publish after its lease message so a reactivated menu can use them.
-        SendGameShop(pane);
+        SendGameShop(pane); SendGameEquipment(pane);
     }
     void Send(ProbeWindow pane,object value)
     {

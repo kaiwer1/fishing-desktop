@@ -4,6 +4,8 @@ import { FlightView } from './flight-view.mjs';
 import { BiteView, StrikeInput } from './bite-view.mjs';
 import { FightView, FightInput } from './fight-view.mjs';
 import { ShopView, ShopInput, formatMinor } from './shop-view.mjs';
+import { EquipmentView, EquipmentInput } from './equipment-view.mjs';
+import { EquipmentPanel } from './equipment-panel.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -16,6 +18,7 @@ const flightView = new FlightView(documentId);
 const biteView = new BiteView(documentId);
 const fightView = new FightView(documentId);
 const shopView = new ShopView(documentId);
+const equipmentView = new EquipmentView(documentId);
 let saveFaulted = false;
 let speedKeyHeld = false;
 const selected = new Set();
@@ -23,7 +26,7 @@ const $ = id => document.getElementById(id);
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
 const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
-const canPrepare = () => canControl() && !inflight && !shopBusy() && !snapshot.SessionId && !snapshot.MenuOpen;
+const canPrepare = () => canControl() && !inflight && !shopBusy() && !equipmentBusy() && !snapshot.SessionId && !snapshot.MenuOpen;
 const castInput = new CastInput({ readContext: () => ({ lease: authority.state().lease, allowed: canPrepare() }), post: send, newTransportId: () => crypto.randomUUID() });
 function strikeContext() {
   const bite = biteView.state();
@@ -50,6 +53,19 @@ function shopContext() {
 }
 const shopInput = new ShopInput({ readContext: shopContext, post: send, newTransportId: () => crypto.randomUUID() });
 function shopBusy() { const s = shopInput.state(); return Boolean(s.inflight || s.awaitingState); }
+function equipmentContext() {
+  return { documentId, lease: authority.state().lease, allowed: canControl() && !inflight,
+    schemaVersion: equipmentView.state()?.schemaVersion, menuOpen: Boolean(snapshot?.MenuOpen), sessionId: snapshot?.SessionId ?? null,
+    pendingResult: Boolean(snapshot?.PendingResult), faulted: Boolean(saveFaulted || snapshot?.Faulted) };
+}
+const equipmentInput = new EquipmentInput({ readContext: equipmentContext, post: send, newTransportId: () => crypto.randomUUID() });
+function equipmentBusy() { const s = equipmentInput.state(); return Boolean(s.inflight || s.awaitingState); }
+// Another menu operation blocks new intent, not delivery of a current host
+// projection. Otherwise the fixed shop/equipment send order loses readiness.
+const canUseShop = () => !equipmentBusy() && !equipmentInput.state().retry;
+const canUseEquipment = () => !shopBusy() && !shopInput.state().retry;
+const equipmentPanel = new EquipmentPanel({ view: equipmentView, input: equipmentInput, snapshot: () => snapshot,
+  canAct: canUseEquipment, changed: () => updateButtons() });
 const names = { carp: '鲤鱼', crucian: '鲫鱼', worm: '蚯蚓' };
 function decimal(value, scale = 2) {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) return '—';
@@ -62,6 +78,7 @@ function render() {
   fightInput.reconcile();
   const previousShopLease = shopInput.state().lease;
   shopInput.reconcile();
+  equipmentInput.reconcile();
   if (!shopContext().allowed || previousShopLease !== shopInput.state().lease) shopView.clearReferences();
   if (!fightContext().allowed) speedKeyHeld = false;
   $('status').textContent = snapshot?.Faulted || saveFaulted ? '保存结果待核验，请退出后重新打开原存档。' : snapshot?.HostPaused ? '当前暂停' : readOnly ? '观赏窗口' : canControl() ? '交互已开启' : '请从窗口顶部开启交互';
@@ -86,7 +103,7 @@ function render() {
     }));
     if (!rows.length) { const item = document.createElement('li'); item.textContent = '鱼护为空'; $('creel').append(item); }
   }
-  renderCast(); renderBite(); renderFight(); renderShop(); updateButtons();
+  renderCast(); renderBite(); renderFight(); renderShop(); equipmentPanel.render(); updateButtons();
 }
 function renderCast() {
   const labels = { idle: '尚未蓄力', charging: '正在蓄力，松开左键出手', prepared: '已松开，等待确认出手', committed: '已确认出手', cancelled: '蓄力已取消，重新按下才能开始', rejected: '本次出手未完成', unknown: '保存结果待核验，请退出后重新打开原存档' };
@@ -187,7 +204,7 @@ function renderShop() {
   $('shop-cancel').hidden = !input.quote && !input.retry;
 }
 function updateButtons() {
-  const active = canControl() && !inflight && !shopBusy();
+  const active = canControl() && !inflight && !shopBusy() && !equipmentBusy();
   const input = castInput.state();
   $('cast').disabled = !canPrepare() || Boolean(input);
   $('cast-release').disabled = !canPrepare() || input?.phase !== 'charging' || input.source !== 'button';
@@ -211,7 +228,7 @@ function updateButtons() {
   $('sell').disabled = !active || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || !selected.size;
   $('previous').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset <= 0;
   $('next').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset + (snapshot.Creel?.length ?? 0) >= snapshot.CreelCount;
-  const shop = shopContext(), shopState = shopInput.state(), shopping = shop.allowed && shopState.ready && !shopBusy() && !shopState.faulted;
+  const shop = shopContext(), shopState = shopInput.state(), shopping = shop.allowed && shopState.ready && !shopBusy() && !shopState.faulted && canUseShop();
   const newShopAction = shopping && !shopState.retry;
   $('quote-net').disabled = !newShopAction || shop.netOwned;
   $('quote-bait').disabled = !newShopAction; $('quote-food').disabled = !newShopAction;
@@ -222,6 +239,7 @@ function updateButtons() {
   $('shop-buy').disabled = !shopping || !shopState.quote;
   $('shop-retry-confirm').disabled = !shopping || !shopState.retry;
   $('shop-cancel').disabled = !shopping || !shopState.quote && !shopState.retry;
+  equipmentPanel.render();
 }
 function revoke(reason) {
   castInput.cancel();
@@ -231,7 +249,7 @@ function revoke(reason) {
   render();
 }
 function intent(action) {
-  if (!canControl() || inflight || shopBusy() || action === 'recall' && failurePending()) return;
+  if (!canControl() || inflight || shopBusy() || equipmentBusy() || action === 'recall' && failurePending()) return;
   fightInput.cancel();
   const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : snapshot.SessionId,
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
@@ -257,6 +275,12 @@ Object.assign(codes, { 'failure-pending': '失败结果尚未保存确认，请�
   'failure-save-unknown': '失败结果的保存状态未知，已停止全部操作，请退出后核验原存档。', 'failure-retry-unavailable': '当前不能重试失败结果。',
   'failure-result-required': '请先确认当前失败结果，不能用收回来跳过。', 'slack-unhooked': '已确认松线脱钩，本竿结束；不退饵、不退体力，装备无损失。',
   'unhooked-candidate': '已确认松线脱钩，本竿结束；没有鱼入护，装备无损失。' });
+Object.assign(codes, { 'assembly-candidate': '装备变更已保存。', 'line-move-candidate': '鱼线位置已保存，长度保持不变。',
+  'equipment-not-written': '换件确认未写入，请重试原操作或取消。', 'equipment-retry-required': '请先处理上一次未写入的换件。', 'equipment-cancelled': '已取消未写入的换件。',
+  'equipment-schema-required': '此存档尚未支持装备编辑。', 'equipment-intent-not-current': '这次换件操作已失效，请重新选择。',
+  'menu-required': '请先打开菜单。', 'result-pending': '请先处理当前尚未确认的结果。',
+  'equipment-version-conflict': '装备已更新，请重新选择。', 'missing-component': '钓组缺少部件，请先在菜单装配。', 'missing-line': '当前渔轮没有鱼线，请先装线。',
+  'insufficient-line': '已装鱼线长度不足。', 'assembly-unchanged': '当前装备未变化。', 'line-unchanged': '鱼线位置未变化。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
   if (m.kind === 'game-flight-state') {
@@ -284,6 +308,13 @@ window.chrome.webview.addEventListener('message', event => {
     }
     return;
   }
+  if (m.kind === 'game-equipment-state') {
+    if (equipmentView.apply(m)) {
+      if (m.state.reason === 'save-outcome-unknown') saveFaulted = true;
+      equipmentInput.hostState(m); equipmentPanel.render(); updateButtons();
+    }
+    return;
+  }
   if (m.kind === 'prepare-activation') {
     if (!landscape() || (!m.allowUnfocused && (document.hidden || !document.hasFocus()))) return;
     lastActivation = { requestId: m.requestId };
@@ -296,7 +327,7 @@ window.chrome.webview.addEventListener('message', event => {
   }
   if (m.kind === 'game-snapshot' && Number.isSafeInteger(m.revision) && m.revision > revision) { snapshot = m.snapshot; revision = m.revision; }
   if (m.kind === 'game-reply') {
-    lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m);
+    lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m); equipmentInput.reply(m);
     if (['save-outcome-unknown', 'failure-save-unknown', 'landing-save-unknown'].includes(m.code)) saveFaulted = true;
     if (inflight === m.transportId) inflight = null; $('notice').textContent = codes[m.code] ?? `操作未完成：${m.code}`;
   }
@@ -335,13 +366,14 @@ $('recall').addEventListener('click', () => intent('recall'));
 $('release').addEventListener('click', () => intent('release-current'));
 $('sell').addEventListener('click', () => intent('sell'));
 $('menu').addEventListener('click', () => {
-  if (!canControl() || inflight || shopBusy()) return;
+  if (!canControl() || inflight || shopBusy() || equipmentBusy()) return;
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
   if (snapshot.MenuOpen) shopInput.cancel();
   inflight = crypto.randomUUID(); send({ kind: 'game-menu', lease: authority.state().lease, transportId: inflight, open: !snapshot.MenuOpen }); render();
 });
 function requestShopQuote(product) {
+  if (!canUseShop()) return;
   const packs = product === 'net' ? 1 : $(product === 'bait' ? 'bait-packs' : 'food-packs').valueAsNumber;
   if (!Number.isInteger(packs) || packs < 1 || packs > (shopView.state()?.maxPacks ?? 0)) { $('notice').textContent = '请输入当前上限以内的整数数量。'; return; }
   shopInput.quote(product, packs); renderShop(); updateButtons();
@@ -351,7 +383,7 @@ for (const [id, action] of [
   ['shop-buy', () => shopInput.buy()], ['shop-cancel', () => shopInput.cancel()], ['shop-retry-confirm', () => shopInput.retry()],
   ['net-equip', () => shopInput.equip(true)], ['net-unequip', () => shopInput.equip(false)], ['food-eat', () => shopInput.eat()],
 ]) {
-  $(id).addEventListener('click', event => { if (event.detail > 1) return; action(); renderShop(); updateButtons(); });
+  $(id).addEventListener('click', event => { if (event.detail > 1 || !canUseShop()) return; action(); renderShop(); updateButtons(); });
   $(id).addEventListener('keydown', event => { if (event.repeat && ['Space', 'Enter'].includes(event.code)) event.preventDefault(); });
 }
 function page(offset) { send({ kind: 'game-page', lease: '', transportId: crypto.randomUUID(), offset }); }
@@ -445,6 +477,7 @@ const visual = { start() {}, stop() {}, pause() {}, resume() {}, state: () => ({
 window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision,
   biteState: biteView.state(), biteRevision: biteView.revision, strikeInputState: strikeInput.state(),
   fightState: fightView.state(), fightRevision: fightView.revision, fightInputState: fightInput.state(),
-  shopState: shopView.state(), shopRevision: shopView.revision, shopInputState: shopInput.state() }),
+  shopState: shopView.state(), shopRevision: shopView.revision, shopInputState: shopInput.state(),
+  equipmentState: equipmentView.state(), equipmentRevision: equipmentView.revision, equipmentInputState: equipmentInput.state() }),
   sendRaw: message => window.chrome.webview.postMessage(message), cancel: () => revoke('test-cancel') };
 render(); renderFlight();

@@ -17,6 +17,13 @@ test('shop accepts only current document newer validated revisions', () => {
   for (const p of [packet(), packet(0), { ...packet(2), documentId: 'old' }, { ...packet(2), kind: 'game-snapshot' }]) assert.equal(view.apply(p), false);
   assert.equal(view.revision, 1); assert.equal(view.apply(packet(2)), true);
 });
+test('schema3 equipment profiles retain the same supply menu authority rules', () => {
+  const view = new ShopView('current'); assert.equal(view.apply(packet(1, { schemaVersion: 3 })), true);
+  const f = fixture(); f.context.schemaVersion = 3; f.input.hostState(state({ schemaVersion: 3 }));
+  assert.equal(f.input.quote('bait', 1), true); assert.equal(f.input.quote('bait', 1), false);
+  f.complete({ schemaVersion: 3, quote: quote({ packs: 1, units: 5, totalPriceMinor: '20' }) });
+  f.context.allowed = false; assert.equal(f.input.buy(), false);
+});
 test('all money and catalogue versions keep exact Int64 strings', () => {
   const view = new ShopView('current'); assert.equal(view.apply(packet(1, { walletMinor: '9223372036854775807', catalogVersion: '9007199254740993', netPriceMinor: '9223372036854775807' })), true);
   assert.equal(view.state().walletMinor, '9223372036854775807'); assert.equal(formatMinor(view.state().walletMinor), '92233720368547758.07');
@@ -24,7 +31,7 @@ test('all money and catalogue versions keep exact Int64 strings', () => {
 });
 test('malformed schema values strings counts ownership and pricing refuse without consuming revision', () => {
   const view = new ShopView('current');
-  for (const bad of [{ schemaVersion: 3 }, { available: 1 }, { available: false }, { reason: 'oops' }, { walletMinor: 100 }, { walletMinor: '00' },
+  for (const bad of [{ schemaVersion: 4 }, { available: 1 }, { available: false }, { reason: 'oops' }, { walletMinor: 100 }, { walletMinor: '00' },
     { walletMinor: '9223372036854775808' }, { netPriceMinor: '0' }, { foodPriceMinor: null }, { catalogVersion: '0' },
     { baitCount: -1 }, { foodCount: 2147483648 }, { netOwned: false, netEquipped: true }, { baitPackUnits: 0 }, { foodStaminaRestore: NaN }, { maxPacks: 101 }]) assert.equal(view.apply(packet(1, bad)), false);
   assert.equal(view.revision, 0); assert.equal(view.apply(packet()), true);

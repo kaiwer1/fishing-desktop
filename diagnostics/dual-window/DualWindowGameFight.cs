@@ -28,10 +28,11 @@ sealed partial class DualWindowContext
         // Only the private scripted escape case starts with extra already-owned
         // line paid out and a resting fish. Ordinary play uses its real landing.
         bool failureFixture=GameSelfTest&&gameFailureFixture;
-        double initialLine=failureFixture?Math.Min(state.Rig.LineLengthMm/1000.0,distance+2):distance;
+        long installedLineMm=GameInstalledLineMm(state);
+        double initialLine=failureFixture?Math.Min(installedLineMm/1000.0,distance+2):distance;
         // Original development equipment/flat-depth slice. The extra depth
         // uses the real existing spool budget; this is not new inventory line.
-        var setup=new FloatFightSetup(bite.SessionId,bite.EncounterId,bite.Target,state.Rig.Revision,anchor,fish,state.Rig.LineLengthMm,initialLine,
+        var setup=new FloatFightSetup(bite.SessionId,bite.EncounterId,bite.Target,state.Rig.Revision,anchor,fish,installedLineMm,initialLine,
             new FloatFightWater(0,-2,-40,40,3,80),new FloatFightRigRules(80,1,40,200,1,20,.2,1.6,40,3,3,5,5),
             new FloatFightFishRules(bite.Target.SpeciesId=="carp"?3:2,2,20,.05,.005,10,failureFixture?FloatFightBehavior.Rest:FloatFightBehavior.Seeded),
             new FloatLandingRules(state.OwnedNet!=null && state.EquippedNetId==state.OwnedNet.Id,5,1,1,.5),GameSelfTest?91u:BitConverter.ToUInt32(bite.EncounterId.ToByteArray(),0),

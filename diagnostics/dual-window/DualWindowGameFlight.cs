@@ -30,7 +30,7 @@ sealed partial class DualWindowContext
             throw new InvalidOperationException("Flight requires the newly confirmed active cast.");
         var target=cast.Target;
         var launch=new FloatFlightLaunch(gameFlightOrigin,new FloatFlightPoint(target.Xmm,target.Ymm,target.Zmm),
-            gameFlightWater,gameFlightRules,cast.PowerPermille,state.Rig.LineLengthMm);
+            gameFlightWater,gameFlightRules,cast.PowerPermille,GameInstalledLineMm(state));
         gameFlight=new FloatFlightSimulation(cast.SessionId,launch);
         gameFlightMillisecondRemainder=0;gameFlightTrailAt=0;
         gameFlightTrail.Clear();gameFlightTrail.Add(FlightPoint(gameFlight.Snapshot));

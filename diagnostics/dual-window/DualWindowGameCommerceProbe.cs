@@ -56,13 +56,13 @@ sealed partial class DualWindowContext
     {
         Require(GameSelfTest,"Commerce probe requires a new private self-test fixture.");
         var start=game.Snapshot.State;long sequence=start.Sequence,wallet=start.WalletMinor;int baits=start.BaitCount,flights=gameFlightEmissions;
-        Require(start.SchemaVersion==2&&start.Session==null&&start.OwnedNet==null&&start.FoodCount==0&&start.EquippedNetId==Guid.Empty,"Commerce probe did not start with unowned supplies.");
+        Require(start.SchemaVersion==3&&start.Session==null&&start.OwnedNet==null&&start.FoodCount==0&&start.EquippedNetId==Guid.Empty,"Commerce probe did not start with unowned supplies.");
         Require(start.Stamina>=80&&start.Stamina<100,"Fixture stamina must allow one food portion to reach the cap.");
         await GameMenu(control,lease,true);var page=await GameShopReady(control);
         Require(!(bool)Field(page,"shopState")["netOwned"]&&Number(Field(page,"shopState"),"foodCount")==0,"Page manufactured starter supplies.");
         var readPage=await Wait(read,s=>Field(s,"shopState")!=null);
         Require(Field(Field(readPage,"shopState"),"quote")==null&&Field(Field(readPage,"shopState"),"retry")==null,"Observer received an opaque shopping handle.");
-        checks.Add("schema2 menu starts with no owned net or food and observer receives only supply display state");
+        checks.Add("schema3 menu starts with no owned net or food and observer receives only supply display state");
 
         string untouched=GameShopJournalDigest();
         foreach(var extra in new[]{"totalPriceMinor","newNetId","foodStackId"}){

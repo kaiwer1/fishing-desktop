@@ -100,7 +100,7 @@ static class FloatPageProjectionTests
             var allowed = new HashSet<string>(new[] { "HasConfirmedState", "Faulted", "HostPaused", "ShutdownConfirmed", "MenuOpen", "PendingResult", "CanSimulate", "Sequence", "RulesVersion", "RigRevision", "WalletMinor", "RigDefinitionKey", "BaitDefinitionKey", "SessionId", "SessionStatus", "Stamina", "BaitCount", "CreelCount", "CreelCapacity", "CreelOffset", "Creel", "PendingFish" });
             Need(values.Count == allowed.Count, "Unexpected page field count."); foreach (var key in values.Keys) Need(allowed.Contains(key), "Unexpected page field: " + key);
             var fish = ObjectJson(page.Creel[0]); Need(fish.Count == 4 && fish.ContainsKey("Id") && fish.ContainsKey("SpeciesKey") && fish.ContainsKey("MassMg") && fish.ContainsKey("SaleValueMinor"), "Fish leaked internal metadata.");
-            foreach (var id in new[] { state.ProfileId, state.BranchId, state.BaitStackId, state.Rig.Id, state.Rig.RodId, state.Rig.ReelId, state.Creel[0].EncounterId, state.Receipts[0].RequestId, state.Receipts[0].EventId })
+            foreach (var id in new[] { state.ProfileId, state.BranchId, state.BaitStackId, state.Rig.Id, state.Rig.RodId.Value, state.Rig.ReelId.Value, state.Creel[0].EncounterId, state.Receipts[0].RequestId, state.Receipts[0].EventId })
                 Need(!wire.Contains(id.ToString("D")) && !wire.Contains(id.ToString("N")), "Private identity leaked.");
         });
         Test("faulted snapshots hide even supplied stale confirmed business data", () => {

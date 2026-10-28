@@ -91,7 +91,7 @@ sealed partial class DualWindowContext
         checks.Add("host pause freezes flight and resume retains one runtime with a new control grant");
 
         await GameWaitForWater(pane);
-        Require(game.Snapshot.State.Sequence==sequence && game.Snapshot.State.Creel.Count==0 && runtime.Snapshot.LineUsedMm<=game.Snapshot.State.Rig.LineLengthMm,"Water contact created rewards or exceeded line.");
+        Require(game.Snapshot.State.Sequence==sequence && game.Snapshot.State.Creel.Count==0 && runtime.Snapshot.LineUsedMm<=GameInstalledLineMm(game.Snapshot.State),"Water contact created rewards or exceeded line.");
         await pane.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('flight').scrollIntoView()");
         using(var preview=File.Create(Path.Combine(root,"game-flight-panel.png")))
             await pane.View.CoreWebView2.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png,preview);
@@ -284,6 +284,7 @@ sealed partial class DualWindowContext
             checks.Add("page cancellation invalidates game lease and fresh authorized retry preserves old sale receipt");
 
             lease=await GameFailureProbe(read,control,lease);
+            lease=await GameEquipmentProbe(read,control,lease);
 
             await GameCastAndWait(control,lease);
             await Wait(read,s=>Number(s,"flightCount")==gameFlightEmissions);
@@ -307,7 +308,9 @@ sealed partial class DualWindowContext
                 castPreparationConnected=true,gameFlightEmissions=gameFlightEmissions,flatWaterFlightConnected=true,realWaterAndFlight=false,
                 biteSimulationConnected=true,gameHookedEmissions=gameHookedEmissions,naturalFishLanded=true,controlledBiteSeed=true,
                 fightSimulationConnected=true,gameNaturalLandings=gameNaturalLandings,fixtureNetCapability=false,equipmentDamageImplemented=false,
-                commerceConnected=true,ownedNetEquipped=game.Snapshot.State.OwnedNet!=null && game.Snapshot.State.EquippedNetId==game.Snapshot.State.OwnedNet.Id,
+                commerceConnected=true,equipmentMenuConnected=true,schemaVersion=game.Snapshot.State.SchemaVersion,
+                equipmentInstances=game.Snapshot.State.Equipment.Instances.Count,remainingLineMm=game.Snapshot.State.Equipment.RemainingLineMm,
+                ownedNetEquipped=game.Snapshot.State.OwnedNet!=null && game.Snapshot.State.EquippedNetId==game.Snapshot.State.OwnedNet.Id,
                 foodCount=game.Snapshot.State.FoodCount,baitCount=game.Snapshot.State.BaitCount,stamina=game.Snapshot.State.Stamina,
                 slackUnhookConnected=true,controlledSlackSetup=true,gameUnhookedConfirmations=gameUnhookedConfirmations}),Encoding.UTF8);
             Shutdown();

@@ -52,7 +52,7 @@ static class FloatGameReducerTests
         Test("cast produces one candidate debit without changing its confirmed input",()=>{
             var s=New();var c=Cast(s);var r=Run(s,c);Need(r.HasCandidate&&r.RequiresConfirmation&&r.OperationSucceeded&&r.Receipt.Outcome==FloatOutcome.CastCommitted,"Cast not a confirmable candidate.");
             Need(s.Sequence==0&&s.BaitCount==50&&s.Stamina==1000&&s.Session==null&&s.Receipts.Count==0,"Reducer changed its input.");
-            Need(r.Candidate.Sequence==1&&r.Candidate.BaitCount==49&&r.Candidate.Stamina==996&&r.Candidate.Session.Id==c.SessionId&&r.Candidate.Rig==s.Rig,"Cast duplicated equipment or mischarged.");
+            Need(r.Candidate.Sequence==1&&r.Candidate.BaitCount==49&&r.Candidate.Stamina==996&&r.Candidate.Session.Id==c.SessionId&&r.Candidate.LegacyRig==s.LegacyRig,"Cast duplicated equipment or mischarged.");
         });
         Test("discarded candidate does not consume assets and retry is deterministic",()=>{
             var s=New();var c=Cast(s);var first=Run(s,c);var retry=Run(s,c);
@@ -104,7 +104,7 @@ static class FloatGameReducerTests
         });
         Test("host terminal fish locks original facts and value without public arbitrary-price fields",()=>{
             var initial=New();var active=AcceptForNextInput(Run(initial,Cast(initial)));var host=Host(active);var s=AcceptForNextInput(Run(active,host));var fish=s.Creel[0];
-            Need(s.Session==null&&fish.Id==host.FishId&&fish.EncounterId==host.EncounterId&&fish.MassMg==500000&&fish.SaleValueMinor==500&&s.WalletMinor==100&&s.Rig==initial.Rig,"Fish facts/value or equipment changed incorrectly.");
+            Need(s.Session==null&&fish.Id==host.FishId&&fish.EncounterId==host.EncounterId&&fish.MassMg==500000&&fish.SaleValueMinor==500&&s.WalletMinor==100&&s.LegacyRig==initial.LegacyRig,"Fish facts/value or equipment changed incorrectly.");
             Need(Run(s,host).IsReplay,"Host terminal repeated instead of replaying.");
         });
         Test("host fish cannot reuse an owned equipment identity",()=>{

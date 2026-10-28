@@ -11,6 +11,7 @@
 #fight-layout{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}#fight-diagram{width:480px;max-width:100%;height:250px;flex:1 1 380px;background:#253e40;border:1px solid #596358;cursor:crosshair;touch-action:none;user-select:none}#fight-diagram text{fill:#bac7bf;font:12px system-ui,sans-serif}#fight-copy{flex:1 1 320px}#fight-status{font-size:18px;color:#d3df8a}#fight-metrics{font-variant-numeric:tabular-nums}#fight-energy{width:130px;height:16px;accent-color:#a8c37d;vertical-align:middle}#fight-controls{display:flex;gap:18px;flex-wrap:wrap}#fight-controls button{padding:2px 12px;margin:6px}#fight-controls span{display:inline-block;min-width:55px;text-align:center}#fight-clipped{color:#e0b778}#reel-hold{touch-action:none;user-select:none}
 #shop-products{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}#shop-products article{background:#30392f;border:1px solid #69765b;padding:16px}#shop-products h3{font-size:18px;margin:0 0 8px}#shop-products input{width:75px;margin:8px;padding:6px;background:#202821;color:#f1f0df;border:1px solid #8c9872;font:inherit}#shop-wallet{font-size:18px;font-variant-numeric:tabular-nums}#shop-status{color:#d3df8a}#shop-quote,#shop-retry{margin:16px 0;padding:14px 18px;border:1px solid #a6b577;background:#3b4331}#shop [hidden]{display:none}#shop-cancel{margin-top:8px}
 @media(min-width:900px){#cast-workbench{display:grid;grid-template-columns:minmax(300px,.85fr) minmax(0,1.15fr);gap:20px}#cast-workbench section{min-width:0}}
+#equipment-slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}#equipment-slots article{background:#30392f;padding:12px;border:1px solid #69765b}#equipment-slots h3{font-size:16px;margin:0 0 8px}#equipment select{font:inherit;max-width:100%;padding:8px;margin:0 8px 8px 0;background:#202821;color:#f1f0df;border:1px solid #8c9872}#equipment-slot-rod,#equipment-slot-reel,#equipment-slot-hook,#equipment-slot-bobber,#equipment-slot-sinker{width:100%}#equipment-status,#equipment-readiness{color:#d3df8a}#equipment [hidden]{display:none}
 </style></head>
 <body><div id="portrait">请横屏游玩</div><main>
 <header><h1>钓鱼桌面 · 单竿操作预览</h1><p class="muted">开发预览：左键蓄力后松开出手，右键提竿，中鱼后按住左键收线。当前为简化水域与受力训练，真实地形、渔具模型与挥竿动作尚未接入。</p><p id="status">等待宿主载入进度…</p></header>
@@ -84,6 +85,12 @@
 <div id="shop-retry" hidden><p id="shop-retry-text"></p><button id="shop-retry-confirm" class="interactive" disabled>重试原操作</button></div>
 <button id="shop-cancel" class="interactive" hidden disabled>取消本次操作</button>
 </section>
+<section id="equipment" hidden><h2>钓组与背包</h2><p id="equipment-status" role="status">等待装备信息</p><p id="equipment-readiness"></p>
+<div id="equipment-slots"></div><p id="equipment-line-status"></p>
+<div class="interactive"><label>鱼线 <select id="equipment-line" disabled></select></label><label>放到 <select id="equipment-reel" disabled></select></label><button id="equipment-move-line" disabled>移动整段鱼线</button></div>
+<p id="equipment-inventory"></p><p id="equipment-lost" class="muted"></p>
+<p class="muted">卸下渔轮时，鱼线仍在线杯内。缺少必需部件时不能抛竿；目前可更换已拥有的部件。</p>
+<div id="equipment-retry-controls" hidden><button id="equipment-retry" class="interactive" disabled>重试原换件操作</button><button id="equipment-cancel" class="interactive" disabled>取消未写入操作</button></div></section>
 <section><h2>鱼护 <span id="capacity"></span></h2><ul id="creel"></ul><div class="interactive"><button id="sell" disabled>出售选中的鱼</button></div><button id="previous" disabled>上一页</button><button id="next" disabled>下一页</button></section>
 <p class="muted">从窗口顶部开启交互。收回不退还已经使用的鱼饵；切出窗口后需重新开启交互。</p>
 </main><script type="module" src="page.mjs"></script></body></html>

@@ -48,7 +48,7 @@ sealed partial class DualWindowContext
         await GameWaitForFight(pane,FloatFightPhase.Escaped);
         var saved=game.Snapshot.State;var receipt=saved.Receipts[saved.Receipts.Count-1];
         Require(saved.Sequence==paid.Sequence+1&&saved.Session==null&&saved.WalletMinor==paid.WalletMinor&&saved.BaitCount==paid.BaitCount&&
-            saved.Stamina==paid.Stamina&&saved.Creel.Count==paid.Creel.Count&&saved.Rig==paid.Rig&&saved.OwnedNet==paid.OwnedNet&&saved.FoodCount==paid.FoodCount&&
+            saved.Stamina==paid.Stamina&&saved.Creel.Count==paid.Creel.Count&&saved.Equipment==paid.Equipment&&saved.LegacyRig==paid.LegacyRig&&saved.Rig.Revision==paid.Rig.Revision&&saved.Rig.LineLengthMm==paid.Rig.LineLengthMm&&saved.OwnedNet==paid.OwnedNet&&saved.FoodCount==paid.FoodCount&&
             receipt.Outcome==FloatOutcome.Unhooked&&receipt.SessionId==paid.Session.Id&&receipt.EncounterId==target.EncounterId&&receipt.EventId==failure.EventId&&gameUnhookedConfirmations==1,
             "Confirmed unhook changed resources, target, identities or count.");
         checks.Add("real reload retains failure ticket and explicit retry button confirms one original escape with no refund fish or equipment loss");

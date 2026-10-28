@@ -28,13 +28,13 @@ export class ShopView {
     if (!message || message.kind !== 'game-shop-state' || message.documentId !== this.#documentId ||
         !Number.isSafeInteger(message.revision) || message.revision <= this.#revision) return false;
     const s = message.state;
-    if (!s || !integer(s.schemaVersion, 0, 2) || typeof s.available !== 'boolean' ||
+    if (!s || !integer(s.schemaVersion, 0, 3) || typeof s.available !== 'boolean' ||
         !(s.reason === null || typeof s.reason === 'string' && s.reason.length > 0 && s.reason.length <= 128) ||
         (s.available ? s.reason !== null : s.reason === null) ||
         !integer(s.baitCount, 0, 2147483647) || !integer(s.foodCount, 0, 2147483647) ||
         typeof s.netOwned !== 'boolean' || typeof s.netEquipped !== 'boolean' || s.netEquipped && !s.netOwned) return false;
     if (s.schemaVersion === 0 ? s.walletMinor !== null : !number(s.walletMinor)) return false;
-    if (s.schemaVersion === 2) {
+    if ((s.schemaVersion === 2 || s.schemaVersion === 3)) {
       if (!['catalogVersion', 'netPriceMinor', 'baitPackPriceMinor', 'foodPriceMinor'].every(k => number(s[k], true)) ||
           !integer(s.baitPackUnits, 1, 2147483647) || !integer(s.foodStaminaRestore, 1, 2147483647) || !integer(s.maxPacks, 1, 100)) return false;
     } else if (s.available || ['catalogVersion', 'netPriceMinor', 'baitPackPriceMinor', 'foodPriceMinor'].some(k => s[k] !== null) ||
@@ -77,13 +77,13 @@ export class ShopInput {
   hostState(s) {
     if (s.reason === 'save-outcome-unknown') this.#faulted = true;
     this.reconcile();
-    this.#hostAvailable = Boolean(this.#lease && s.available && s.schemaVersion === 2 && !this.#faulted);
+    this.#hostAvailable = Boolean(this.#lease && s.available && (s.schemaVersion === 2 || s.schemaVersion === 3) && !this.#faulted);
     if (!this.#hostAvailable) { this.#quote = null; this.#retry = null; return; }
     this.#quote = copyQuote(s.quote); this.#retry = copyRetry(s.retry); this.#awaitingState = false;
   }
   #ready() {
     this.reconcile(); const c = this.#context();
-    return c.allowed && this.#lease === c.lease && this.#hostAvailable && !this.#faulted && !this.#inflight && !this.#awaitingState && c.schemaVersion === 2;
+    return c.allowed && this.#lease === c.lease && this.#hostAvailable && !this.#faulted && !this.#inflight && !this.#awaitingState && (c.schemaVersion === 2 || c.schemaVersion === 3);
   }
   #send(action, fields = {}) {
     const m = { kind: 'game-shop', lease: this.#lease, transportId: this.#id(), action, ...fields };

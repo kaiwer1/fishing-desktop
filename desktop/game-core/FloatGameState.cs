@@ -38,6 +38,27 @@ namespace FishingDesktop.GameCore
         internal void AddAssets(HashSet<Guid> ids)
         {foreach(var item in new[]{Id,RodId,ReelId,LineId,HookId,BobberId,SinkerId})FloatGuard.Unique(ids,item);}
     }
+    // A derived description, never a second inventory or a journal input.
+    public sealed class FloatRigDescriptor
+    {
+        public readonly Guid Id;
+        public readonly long Revision;
+        public readonly string DefinitionKey;
+        public readonly Guid? RodId,ReelId,LineId,HookId,BobberId,SinkerId;
+        public readonly long? LineLengthMm;
+        internal FloatRigDescriptor(FixedFloatRig rig)
+        {Id=rig.Id;Revision=rig.Revision;DefinitionKey=rig.DefinitionKey;RodId=rig.RodId;ReelId=rig.ReelId;LineId=rig.LineId;HookId=rig.HookId;BobberId=rig.BobberId;SinkerId=rig.SinkerId;LineLengthMm=rig.LineLengthMm;}
+        internal FloatRigDescriptor(FloatEquipmentLedger equipment,string definition)
+        {
+            Id=equipment.RigId;Revision=equipment.RigRevision;DefinitionKey=definition;
+            RodId=Item(equipment,FloatEquipmentSlot.Rod);ReelId=Item(equipment,FloatEquipmentSlot.Reel);
+            HookId=Item(equipment,FloatEquipmentSlot.Hook);BobberId=Item(equipment,FloatEquipmentSlot.Bobber);SinkerId=Item(equipment,FloatEquipmentSlot.Sinker);
+            var line=ReelId.HasValue?equipment.Spool(ReelId.Value):null;
+            LineId=line==null?(Guid?)null:line.Id;LineLengthMm=line==null?(long?)null:line.RemainingLineMm;
+        }
+        static Guid? Item(FloatEquipmentLedger equipment,FloatEquipmentSlot slot)
+        {var item=equipment.Equipped(slot);return item==null?(Guid?)null:item.Id;}
+    }
     public sealed class FloatSpeciesRule
     {
         public readonly string SpeciesKey;
@@ -87,13 +108,17 @@ namespace FishingDesktop.GameCore
     {
         public readonly Guid Id,ReleaseEventId;
         public readonly long RigRevision,RulesVersion;
+        public readonly long EquipmentInventoryRevision,EquipmentRulesVersion,RequiredLineMm;
         public readonly FloatFish PendingFish;
         public bool CapacityBlocked{get{return PendingFish!=null;}}
-        internal FloatSession(Guid id,Guid releaseEvent,long rigRevision,long rulesVersion,FloatFish pendingFish=null)
+        internal FloatSession(Guid id,Guid releaseEvent,long rigRevision,long rulesVersion,FloatFish pendingFish=null,long equipmentInventoryRevision=0,long equipmentRulesVersion=0,long requiredLineMm=0)
         {
             FloatGuard.Id(id,"id");FloatGuard.Id(releaseEvent,"releaseEvent");if(rigRevision<=0||rulesVersion<=0)throw new ArgumentOutOfRangeException("rigRevision");
             if(pendingFish!=null&&pendingFish.SessionId!=id)throw new ArgumentException("Pending fish belongs to another session.");
+            if(equipmentInventoryRevision<0||equipmentRulesVersion<0||requiredLineMm<0||
+                ((equipmentInventoryRevision==0||equipmentRulesVersion==0||requiredLineMm==0)&&!(equipmentInventoryRevision==0&&equipmentRulesVersion==0&&requiredLineMm==0)))throw new ArgumentException("Incomplete equipment session binding.");
             Id=id;ReleaseEventId=releaseEvent;RigRevision=rigRevision;RulesVersion=rulesVersion;PendingFish=pendingFish;
+            EquipmentInventoryRevision=equipmentInventoryRevision;EquipmentRulesVersion=equipmentRulesVersion;RequiredLineMm=requiredLineMm;
         }
     }
     // Independent commerce policy: changing it cannot reprice existing fish or
@@ -130,7 +155,7 @@ namespace FishingDesktop.GameCore
         }
     }
     public enum FloatRecoveryReason { StartupInterrupted=1,OwnerShutdown=2 }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved }
     public sealed class FloatReceipt
     {
         public readonly Guid RequestId,EventId,SessionId,EncounterId;
@@ -158,7 +183,9 @@ namespace FishingDesktop.GameCore
         public readonly long Sequence,RulesVersion,WalletMinor;
         public readonly int Stamina,BaitCount;
         public readonly string BaitDefinitionKey;
-        public readonly FixedFloatRig Rig;
+        public readonly FloatRigDescriptor Rig;
+        internal readonly FixedFloatRig LegacyRig;
+        internal readonly FloatEquipmentLedger Equipment;
         public readonly FloatSession Session;
         public readonly ReadOnlyCollection<FloatFish> Creel;
         public readonly ReadOnlyCollection<FloatReceipt> Receipts;
@@ -168,16 +195,21 @@ namespace FishingDesktop.GameCore
         public readonly FloatCommerceCatalog CommerceCatalog;
         public readonly FloatUpgradeOrigin UpgradeOrigin;
         internal readonly FloatGameRules Rules;
-        internal FloatGameState(Guid profile,Guid branch,long sequence,long wallet,int stamina,Guid baitStack,string baitDefinition,int baitCount,FixedFloatRig rig,FloatSession session,IEnumerable<FloatFish> creel,IEnumerable<FloatReceipt> receipts,FloatGameRules rules,int schemaVersion=1,FloatCommerceCatalog catalog=null,Guid foodStack=default(Guid),int foodCount=0,FloatOwnedNet ownedNet=null,Guid equippedNet=default(Guid),FloatUpgradeOrigin origin=null)
+        internal FloatGameState(Guid profile,Guid branch,long sequence,long wallet,int stamina,Guid baitStack,string baitDefinition,int baitCount,FixedFloatRig rig,FloatSession session,IEnumerable<FloatFish> creel,IEnumerable<FloatReceipt> receipts,FloatGameRules rules,int schemaVersion=1,FloatCommerceCatalog catalog=null,Guid foodStack=default(Guid),int foodCount=0,FloatOwnedNet ownedNet=null,Guid equippedNet=default(Guid),FloatUpgradeOrigin origin=null,FloatEquipmentLedger equipment=null)
         {
             FloatGuard.Id(profile,"profile");FloatGuard.Id(branch,"branch");FloatGuard.Id(baitStack,"baitStack");
-            if(rules==null||rig==null||creel==null||receipts==null)throw new ArgumentNullException("state component");
+            if(rules==null||creel==null||receipts==null)throw new ArgumentNullException("state component");
+            if(schemaVersion==3){
+                if(rig!=null||equipment==null||origin!=null)throw new ArgumentException("Schema3 requires one equipment owner and no implicit upgrade.");
+                if(equipment.Catalog.BaitDefinitionKey!=baitDefinition||!equipment.ValidateAssembly().Valid)throw new ArgumentException("Invalid equipment assembly or bait configuration.");
+            }else if((schemaVersion!=1&&schemaVersion!=2)||rig==null||equipment!=null)throw new ArgumentException("Legacy profiles require only their fixed rig.");
+            var description=schemaVersion==3?new FloatRigDescriptor(equipment,rules.RigDefinitionKey):new FloatRigDescriptor(rig);
             if(sequence<0||wallet<0||wallet>rules.MaximumWalletMinor||stamina<0||stamina>rules.MaximumStamina||baitCount<0)throw new ArgumentOutOfRangeException("state values");
-            if(rig.DefinitionKey!=rules.RigDefinitionKey||FloatGuard.Key(baitDefinition)!=rules.BaitDefinitionKey)throw new ArgumentException("Unsupported fixed assembly or bait.");
+            if(description.DefinitionKey!=rules.RigDefinitionKey||FloatGuard.Key(baitDefinition)!=rules.BaitDefinitionKey)throw new ArgumentException("Unsupported assembly or bait.");
             var fish=new List<FloatFish>(creel);var history=new List<FloatReceipt>(receipts);if(fish.Count>rules.CreelCapacity||sequence!=(long)history.Count)throw new ArgumentException("Capacity or sequence mismatch.");
-            var assets=new HashSet<Guid>();rig.AddAssets(assets);FloatGuard.Unique(assets,baitStack);
+            var assets=new HashSet<Guid>();if(rig!=null)rig.AddAssets(assets);else{FloatGuard.Unique(assets,equipment.RigId);foreach(var item in equipment.Instances)FloatGuard.Unique(assets,item.Id);}FloatGuard.Unique(assets,baitStack);
             if(schemaVersion==1){if(catalog!=null||foodStack!=Guid.Empty||foodCount!=0||ownedNet!=null||equippedNet!=Guid.Empty||origin!=null)throw new ArgumentException("Legacy profiles have no commerce state.");}
-            else if(schemaVersion==2){
+            else if(schemaVersion==2||schemaVersion==3){
                 if(catalog==null||catalog.BaitDefinitionKey!=baitDefinition||baitCount>catalog.MaximumBaitCount||foodCount<0||foodCount>catalog.MaximumFoodCount)throw new ArgumentException("Invalid commerce state.");
                 FloatGuard.Unique(assets,foodStack);
                 if(ownedNet!=null){if(ownedNet.DefinitionKey!=catalog.NetDefinitionKey)throw new ArgumentException("Unsupported owned net.");FloatGuard.Unique(assets,ownedNet.Id);}
@@ -194,10 +226,14 @@ namespace FishingDesktop.GameCore
             foreach(var id in casts)if(!terminals.Contains(id)&&(session==null||session.Id!=id))throw new ArgumentException("Unaccounted active cast.");
             foreach(var id in terminals)if(!casts.Contains(id))throw new ArgumentException("Terminal without cast.");
             if(session!=null){
-                if(!casts.Contains(session.Id)||terminals.Contains(session.Id)||session.RigRevision!=rig.Revision||session.RulesVersion!=rules.Version)throw new ArgumentException("Invalid current session.");
+                if(!casts.Contains(session.Id)||terminals.Contains(session.Id)||session.RigRevision!=description.Revision||session.RulesVersion!=rules.Version)throw new ArgumentException("Invalid current session.");
+                if(schemaVersion==3){
+                    if(session.EquipmentInventoryRevision!=equipment.InventoryRevision||session.EquipmentRulesVersion!=equipment.RulesVersion||session.RequiredLineMm<1||
+                        !equipment.EvaluateCastReadiness(FloatEquipmentGate.Idle,session.RequiredLineMm,1,rules.CastStaminaCost,rules.CastStaminaCost).Valid||assets.Contains(session.Id))throw new ArgumentException("Invalid equipment session binding.");
+                }else if(session.EquipmentInventoryRevision!=0||session.EquipmentRulesVersion!=0||session.RequiredLineMm!=0)throw new ArgumentException("Legacy session contains equipment data.");
                 if(session.PendingFish!=null){if(session.PendingFish.RulesVersion!=rules.Version)throw new ArgumentException("Invalid pending rules.");FloatGuard.Unique(assets,session.PendingFish.Id);}
             }
-            ProfileId=profile;BranchId=branch;Sequence=sequence;RulesVersion=rules.Version;WalletMinor=wallet;Stamina=stamina;BaitStackId=baitStack;BaitDefinitionKey=baitDefinition;BaitCount=baitCount;Rig=rig;Session=session;Creel=fish.AsReadOnly();Receipts=history.AsReadOnly();Rules=rules;
+            ProfileId=profile;BranchId=branch;Sequence=sequence;RulesVersion=rules.Version;WalletMinor=wallet;Stamina=stamina;BaitStackId=baitStack;BaitDefinitionKey=baitDefinition;BaitCount=baitCount;Rig=description;LegacyRig=rig;Equipment=equipment;Session=session;Creel=fish.AsReadOnly();Receipts=history.AsReadOnly();Rules=rules;
             SchemaVersion=schemaVersion;CommerceCatalog=catalog;FoodStackId=foodStack;FoodCount=foodCount;OwnedNet=ownedNet;EquippedNetId=equippedNet;UpgradeOrigin=origin;
         }
         // No import/restore fallback and no default money, bait or equipment.
@@ -205,5 +241,9 @@ namespace FishingDesktop.GameCore
         {return new FloatGameState(profile,branch,0,walletMinor,stamina,baitStack,baitDefinition,baitCount,rig,null,new FloatFish[0],new FloatReceipt[0],rules);}
         public static FloatGameState CreateNewWithCommerce(Guid profile,Guid branch,long walletMinor,int stamina,Guid baitStack,string baitDefinition,int baitCount,FixedFloatRig rig,FloatGameRules rules,FloatCommerceCatalog catalog,Guid foodStackId)
         {return new FloatGameState(profile,branch,0,walletMinor,stamina,baitStack,baitDefinition,baitCount,rig,null,new FloatFish[0],new FloatReceipt[0],rules,2,catalog,foodStackId);}
+        internal static FloatGameState CreateNewWithEquipment(Guid profile,Guid branch,long walletMinor,int stamina,Guid baitStack,string baitDefinition,int baitCount,FloatEquipmentLedger equipment,FloatGameRules rules,FloatCommerceCatalog catalog,Guid foodStackId)
+        {return new FloatGameState(profile,branch,0,walletMinor,stamina,baitStack,baitDefinition,baitCount,null,null,new FloatFish[0],new FloatReceipt[0],rules,3,catalog,foodStackId,0,null,Guid.Empty,null,equipment);}
+        internal void AddEquipmentAssets(HashSet<Guid> ids)
+        {if(LegacyRig!=null)LegacyRig.AddAssets(ids);else{FloatGuard.Unique(ids,Equipment.RigId);foreach(var item in Equipment.Instances)FloatGuard.Unique(ids,item.Id);}}
     }
 }

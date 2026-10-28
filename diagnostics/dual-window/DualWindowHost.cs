@@ -28,7 +28,7 @@ sealed class ProbeWindow : Form
     {
         Ticket=ticket;this.automated=automated;this.context=context;DesktopReadOnly=desktop && !ticket.CanControl;
         DisplayGeneration=context.DisplayGeneration;
-        Text=context.GameMode?"钓鱼桌面 · 数据接入预览":ticket.CanControl?"Fishing Dual Window - Interaction":"Fishing Dual Window - Read Only";
+        Text=context.GameMode?"钓鱼桌面 · 鼠标抛竿接入预览":ticket.CanControl?"Fishing Dual Window - Interaction":"Fishing Dual Window - Read Only";
         Size=new Size(650,570);StartPosition=FormStartPosition.Manual;
         if(context.GameMode)Size=new Size(1000,650);
         Location=new Point(ticket.CanControl?720:60,120);
@@ -37,14 +37,14 @@ sealed class ProbeWindow : Form
         if(context.ManualUnattended && ticket.CanControl){Opacity=0;ShowInTaskbar=false;}
         if(DesktopReadOnly){FormBorderStyle=FormBorderStyle.None;AutoScaleMode=AutoScaleMode.None;Size=Screen.PrimaryScreen.Bounds.Size;}
         var bar=new FlowLayoutPanel {Dock=DockStyle.Top,AutoSize=true,WrapContents=true};
-        AddButton(bar,context.ManualMode?"打开桌面页":"Open read only",delegate{context.OpenFromUser(false);});
-        AddButton(bar,context.ManualMode?"打开交互窗":"Open interaction",delegate{context.OpenFromUser(true);});
+        AddButton(bar,context.ManualMode || context.GameMode?"打开桌面页":"Open read only",delegate{context.OpenFromUser(false);});
+        AddButton(bar,context.ManualMode || context.GameMode?"打开交互窗":"Open interaction",delegate{context.OpenFromUser(true);});
         if(ticket.CanControl){
-            AddButton(bar,context.ManualMode?"开启交互":"Enable interaction",delegate{context.GrantFromUser(this);});
-            AddButton(bar,context.ManualMode?"关闭交互":"Observe / cancel",delegate{context.Revoke(this);});
+            AddButton(bar,context.ManualMode || context.GameMode?"开启交互":"Enable interaction",delegate{context.GrantFromUser(this);});
+            AddButton(bar,context.ManualMode || context.GameMode?"关闭交互":"Observe / cancel",delegate{context.Revoke(this);});
         }
-        AddButton(bar,context.ManualMode?"重载记录":"Reload page",delegate{context.Reload(this);});
-        AddButton(bar,context.ManualMode?"退出本轮测试":"Exit both + owner",delegate{context.Shutdown();});
+        AddButton(bar,context.ManualMode?"重载记录":context.GameMode?"重新加载页面":"Reload page",delegate{context.Reload(this);});
+        AddButton(bar,context.ManualMode?"退出本轮测试":context.GameMode?"退出钓鱼桌面":"Exit both + owner",delegate{context.Shutdown();});
         Controls.Add(View);if(!DesktopReadOnly)Controls.Add(bar);else bar.Dispose();
         Deactivate+=delegate{context.Revoke(this,"host-deactivate");};
         FormClosing+=delegate{context.Retire(this);};
@@ -116,10 +116,10 @@ sealed partial class DualWindowContext : ApplicationContext
         InitializeSceneWatchdog();
         if(!automated && !ManualUnattended){
             var menu=new ContextMenuStrip();
-            menu.Items.Add("Open read only",null,delegate{OpenFromUser(false);});
-            menu.Items.Add("Open interaction",null,delegate{OpenFromUser(true);});
-            menu.Items.Add("Exit both windows and owner",null,delegate{Shutdown();});
-            tray=new NotifyIcon {Icon=SystemIcons.Application,Text="Fishing dual-window diagnostic",ContextMenuStrip=menu,Visible=true};
+            menu.Items.Add(GameMode?"打开桌面页":"Open read only",null,delegate{OpenFromUser(false);});
+            menu.Items.Add(GameMode?"打开交互窗":"Open interaction",null,delegate{OpenFromUser(true);});
+            menu.Items.Add(GameMode?"退出钓鱼桌面":"Exit both windows and owner",null,delegate{Shutdown();});
+            tray=new NotifyIcon {Icon=SystemIcons.Application,Text=GameMode?"钓鱼桌面 · 鼠标抛竿接入预览":"Fishing dual-window diagnostic",ContextMenuStrip=menu,Visible=true};
             tray.DoubleClick+=delegate{OpenFromUser(true);};
         }
         dispatcher.BeginInvoke(new Action(Start));

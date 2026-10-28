@@ -21,7 +21,8 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset;
+        internal int Revision, Offset, CastRevision;
+        internal long CastHighWater;
     }
     readonly Dictionary<ProbeWindow,GameBinding> gameViews = new Dictionary<ProbeWindow,GameBinding>();
     bool GameCanSimulate { get { return game == null || game.Snapshot.CanSimulate; } }
@@ -33,6 +34,7 @@ sealed partial class DualWindowContext
         if (gameMode == "open") game = FloatGameOwner.OpenExisting(path);
         else if (gameMode == "new" || GameSelfTest) game = FloatGameOwner.CreateNew(path, CreateGameFixture());
         else throw new ArgumentException("Unknown game mode.");
+        InitializeGameCast();
         // This opt-in build uses only its private fixture save. Opening never
         // falls back to creating new funds, bait or equipment.
         desktopAllowForegroundChanges = true;
@@ -54,13 +56,14 @@ sealed partial class DualWindowContext
     {
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
+        CancelGameCast(pane);
         game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.Document=null;
     }
     void GameAttached(ProbeWindow pane)
     {
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
-        b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0;
+        b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0; b.CastRevision=0;
         if (pane.DesktopReadOnly && !desktopShown.Contains(pane)) {
             desktopShown.Add(pane); GuardPresentation(()=>pane.Show()); CheckDesktop(pane);
         }
@@ -69,13 +72,15 @@ sealed partial class DualWindowContext
     {
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
+        CancelGameCast(pane);
         game.CloseView(b.View); gameViews.Remove(pane);
     }
     void GameLease(ProbeWindow pane,string wireLease)
     {
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
-        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null;
+        CancelGameCast(pane);
+        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0;
         var state=game.Snapshot;
         if (wireLease == null || b.Document == null || state.Faulted || state.HostPaused || state.ShutdownConfirmed) return;
         b.Lease=game.GrantControl(b.View,b.Document); b.WireLease=wireLease;
@@ -85,6 +90,7 @@ sealed partial class DualWindowContext
         if (game == null) return;
         var snapshot=game.Snapshot;
         if (!snapshot.Faulted && !snapshot.ShutdownConfirmed) game.SetHostPaused(!owner.ActivityState().CanRun);
+        if (!game.Snapshot.CanSimulate) CancelGameCast();
     }
     async Task StartGamePresentation()
     {
@@ -93,8 +99,8 @@ sealed partial class DualWindowContext
         var read=windows[false];
         if (read.DesktopReadOnly && !desktopShown.Contains(read)) { desktopShown.Add(read); GuardPresentation(()=>read.Show()); CheckDesktop(read); }
         rendererEnabled=true; RendererPageReady(read);
-        // Static data view only: no simulated fishing clock or fish are driven
-        // by the WebView. A game action runtime will be connected separately.
+        // Only host preparation time is connected. There is no water/flight or
+        // fish simulation in this fixed-target input integration candidate.
         await Task.FromResult(0);
         Broadcast();
     }
@@ -107,6 +113,7 @@ sealed partial class DualWindowContext
         if (b.Offset>count) b.Offset=0;
         var projected=FloatPageProjection.Create(snapshot,b.Offset,50);
         Send(pane,new {kind="game-snapshot",documentId=pane.Ticket.DocumentId,revision=checked(++b.Revision),snapshot=projected});
+        SendGameCast(pane);
     }
     bool GameAuthorized(ProbeWindow pane,string document,string lease,out GameBinding b)
     {
@@ -134,11 +141,14 @@ sealed partial class DualWindowContext
             b.Offset=(int)offset; SendGameSnapshot(pane); return;
         }
         if (!GameAuthorized(pane,document,lease,out b)) { GameReply(pane,transport,"control-required"); return; }
+        if (kind=="game-cast") { ReceiveGameCast(pane,b,m,transport); return; }
         if (kind=="game-menu") {
             object open;
             if (m.Count!=5 || !m.TryGetValue("open",out open) || !(open is bool)) { GameReply(pane,transport,"invalid-intent"); return; }
+            AdvanceActivity();
+            if ((bool)open) CancelGameCast();
             game.SetMenuOpen((bool)open);
-            activityClock.Advance(activityWatch.Elapsed.TotalSeconds,owner.ActivityState().CanRun && GameCanSimulate);
+            AdvanceActivity();
             GameReply(pane,transport,"menu-updated"); Broadcast(); return;
         }
         object raw; FloatCommand command;
@@ -146,12 +156,15 @@ sealed partial class DualWindowContext
             !FloatPageCommands.TryParse(raw as Dictionary<string,object>,game.Snapshot.State,out command)) {
             GameReply(pane,transport,"invalid-intent"); return;
         }
+        if (command is CastFloat) { GameReply(pane,transport,"cast-preparation-required"); return; }
+        AdvanceActivity();
         var reply=game.ExecuteUser(b.View,b.Document,b.Lease,command);
         GameReply(pane,transport,reply.Code,reply); Broadcast();
     }
     void PrepareGameShutdown()
     {
         if (game == null || gameShutdownAttempted) return;
+        CancelGameCast();
         gameShutdownAttempted=true;
         try {
             var state=game.Snapshot;

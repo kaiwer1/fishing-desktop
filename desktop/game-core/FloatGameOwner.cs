@@ -181,7 +181,7 @@ namespace FishingDesktop.GameCore
         internal FloatCommitResult ExecuteHost(FloatCommand command)
         {
             Entry(); Operational();
-            if (!(command is HostFloatFish) && !(command is RecoverFloatSession) && !(command is HostFloatUnhooked)) return Refused("host-command-not-allowed");
+            if (!(command is HostFloatFish) && !(command is RecoverFloatSession) && !(command is HostFloatUnhooked) && !(command is HostFloatTerminalLoss)) return Refused("host-command-not-allowed");
             if (!Current().CanSimulate && !HasRecordedRequest(command)) return Refused("simulation-paused");
             return Run(() => _store.Execute(command));
         }

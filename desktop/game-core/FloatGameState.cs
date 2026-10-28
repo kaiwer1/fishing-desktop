@@ -155,7 +155,21 @@ namespace FishingDesktop.GameCore
         }
     }
     public enum FloatRecoveryReason { StartupInterrupted=1,OwnerShutdown=2 }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost }
+    public sealed class FloatEquipmentLossSummary
+    {
+        public readonly Guid LineId;
+        public readonly long RemainingLineBeforeMm,RemainingLineAfterMm,LostLineMm;
+        public readonly ReadOnlyCollection<Guid> LostItemIds;
+        internal FloatEquipmentLossSummary(Guid lineId,long before,long after,long lost,IEnumerable<Guid> lostItems)
+        {
+            FloatGuard.Id(lineId,"line");if(before<1||before>FloatEquipmentGuard.MaximumLineMm||after<0||after>before||lost!=before-after)throw new ArgumentOutOfRangeException("line loss summary");
+            if(lostItems==null)throw new ArgumentNullException("lostItems");var copy=new List<Guid>(lostItems);if(copy.Count<1||copy.Count>4)throw new ArgumentException("Invalid lost item count.");
+            var unique=new HashSet<Guid>();foreach(var id in copy)FloatGuard.Unique(unique,id);copy.Sort();
+            if(unique.Contains(lineId)!=(after==0))throw new ArgumentException("Line tombstone mismatch.");
+            LineId=lineId;RemainingLineBeforeMm=before;RemainingLineAfterMm=after;LostLineMm=lost;LostItemIds=copy.AsReadOnly();
+        }
+    }
     public sealed class FloatReceipt
     {
         public readonly Guid RequestId,EventId,SessionId,EncounterId;
@@ -166,15 +180,17 @@ namespace FishingDesktop.GameCore
         public readonly FloatOutcome Outcome;
         public readonly FloatRecoveryReason? RecoveryReason;
         public readonly ReadOnlyCollection<Guid> FishIds;
+        public readonly FloatEquipmentLossSummary EquipmentLoss;
         internal readonly string Fingerprint;
-        internal bool Terminal{get{return Outcome==FloatOutcome.Recalled||Outcome==FloatOutcome.Landed||Outcome==FloatOutcome.Released||Outcome==FloatOutcome.Recovered||Outcome==FloatOutcome.Unhooked;}}
-        internal FloatReceipt(FloatCommand command,long sequence,long rulesVersion,FloatOutcome outcome,Guid encounterId,long walletBefore,long walletAfter,int staminaBefore,int staminaAfter,int baitBefore,int baitAfter,IEnumerable<Guid> fishIds,int foodBefore=0,int foodAfter=0,Guid ownedNetBefore=default(Guid),Guid ownedNetAfter=default(Guid),Guid equippedNetBefore=default(Guid),Guid equippedNetAfter=default(Guid))
+        internal bool Terminal{get{return Outcome==FloatOutcome.Recalled||Outcome==FloatOutcome.Landed||Outcome==FloatOutcome.Released||Outcome==FloatOutcome.Recovered||Outcome==FloatOutcome.Unhooked||Outcome==FloatOutcome.TerminalLost;}}
+        internal FloatReceipt(FloatCommand command,long sequence,long rulesVersion,FloatOutcome outcome,Guid encounterId,long walletBefore,long walletAfter,int staminaBefore,int staminaAfter,int baitBefore,int baitAfter,IEnumerable<Guid> fishIds,int foodBefore=0,int foodAfter=0,Guid ownedNetBefore=default(Guid),Guid ownedNetAfter=default(Guid),Guid equippedNetBefore=default(Guid),Guid equippedNetAfter=default(Guid),FloatEquipmentLossSummary equipmentLoss=null)
         {
             RequestId=command.RequestId;EventId=command.EventId;SessionId=command.SessionId;EncounterId=encounterId;Sequence=sequence;RulesVersion=rulesVersion;Outcome=outcome;Fingerprint=command.Fingerprint;
             var recovery=command as RecoverFloatSession;RecoveryReason=recovery==null?(FloatRecoveryReason?)null:recovery.Reason;
             WalletBefore=walletBefore;WalletAfter=walletAfter;StaminaBefore=staminaBefore;StaminaAfter=staminaAfter;BaitBefore=baitBefore;BaitAfter=baitAfter;
             FoodBefore=foodBefore;FoodAfter=foodAfter;OwnedNetBefore=ownedNetBefore;OwnedNetAfter=ownedNetAfter;EquippedNetBefore=equippedNetBefore;EquippedNetAfter=equippedNetAfter;
             var copy=new List<Guid>(fishIds);var unique=new HashSet<Guid>();foreach(var id in copy)FloatGuard.Unique(unique,id);FishIds=copy.AsReadOnly();
+            if((outcome==FloatOutcome.TerminalLost)!=(equipmentLoss!=null)||(equipmentLoss!=null&&copy.Count!=0))throw new ArgumentException("Invalid equipment loss receipt.");EquipmentLoss=equipmentLoss;
         }
     }
     public sealed class FloatGameState

@@ -60,6 +60,23 @@ namespace FishingDesktop.GameCore
         {FloatGuard.Id(session,"session");if(requiredLineMm<1||requiredLineMm>FloatEquipmentGuard.MaximumLineMm)throw new ArgumentOutOfRangeException("requiredLineMm");RequiredLineMm=requiredLineMm;}
         internal override string Detail{get{return EquipmentDetail+"|"+FloatGuard.Number(RequiredLineMm);}}
     }
+    // Host evidence only. This transaction does not decide when a physical break
+    // occurred; it atomically applies one explicit rule to the locked assembly.
+    internal sealed class HostFloatTerminalLoss : FloatEquipmentCommand
+    {
+        internal readonly Guid EncounterId,LineId;
+        internal readonly long ExpectedLineRevision,OutLineMm,CutDistanceFromReelMm;
+        internal readonly string LossRuleKey;
+        internal readonly int LossModelVersion;
+        internal HostFloatTerminalLoss(Guid profile,Guid branch,Guid request,Guid businessEvent,Guid session,Guid encounter,Guid lineId,long expectedLineRevision,string lossRuleKey,long outLineMm,long cutDistanceFromReelMm,long expectedSequence,long expectedRigRevision,long expectedRulesVersion,long expectedInventoryRevision,long expectedEquipmentVersion,int lossModelVersion)
+            :base("host-terminal-loss",profile,branch,request,businessEvent,session,expectedSequence,expectedRigRevision,expectedRulesVersion,expectedInventoryRevision,expectedEquipmentVersion)
+        {
+            FloatGuard.Id(session,"session");FloatGuard.Id(encounter,"encounter");FloatGuard.Id(lineId,"line");
+            if(expectedLineRevision<1||outLineMm<1||outLineMm>FloatEquipmentGuard.MaximumLineMm||cutDistanceFromReelMm<0||cutDistanceFromReelMm>outLineMm||lossModelVersion!=1)throw new ArgumentOutOfRangeException("terminal loss values");
+            EncounterId=encounter;LineId=lineId;ExpectedLineRevision=expectedLineRevision;LossRuleKey=FloatEquipmentGuard.Key(lossRuleKey);OutLineMm=outLineMm;CutDistanceFromReelMm=cutDistanceFromReelMm;LossModelVersion=lossModelVersion;
+        }
+        internal override string Detail{get{return EquipmentDetail+"|"+EncounterId.ToString("N")+"|"+LineId.ToString("N")+"|"+FloatGuard.Number(ExpectedLineRevision)+"|"+LossRuleKey+"|"+FloatGuard.Number(OutLineMm)+"|"+FloatGuard.Number(CutDistanceFromReelMm)+"|"+FloatGuard.Number(LossModelVersion);}}
+    }
     public sealed class ReleaseCurrentFloatFish : FloatCommand
     {
         public ReleaseCurrentFloatFish(Guid profile,Guid branch,Guid request,Guid terminalEvent,Guid session,long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
@@ -197,11 +214,19 @@ namespace FishingDesktop.GameCore
         static bool FishWasCreated(FloatGameState state,Guid id)
         {foreach(var row in state.Receipts)if(row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected)foreach(var fish in row.FishIds)if(fish==id)return true;return false;}
         static bool EncounterWasUsed(FloatGameState state,Guid id)
-        {foreach(var row in state.Receipts)if((row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected||row.Outcome==FloatOutcome.Unhooked)&&row.EncounterId==id)return true;return false;}
+        {foreach(var row in state.Receipts)if(((row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected||row.Outcome==FloatOutcome.Unhooked||row.Outcome==FloatOutcome.TerminalLost)&&row.EncounterId==id)||(row.Outcome==FloatOutcome.TerminalLost&&row.EventId==id))return true;return false;}
+        // New loss identities are durable reservations. Only histories containing
+        // this new outcome acquire the rule; old journals replay identically.
+        static bool TerminalLossIdentityWasUsed(FloatGameState state,Guid id)
+        {foreach(var row in state.Receipts)if(row.Outcome==FloatOutcome.TerminalLost&&(row.EventId==id||row.EncounterId==id))return true;return false;}
+        static bool EventWasUsed(FloatGameState state,Guid id)
+        {foreach(var row in state.Receipts)if(row.EventId==id)return true;return false;}
+        static bool RequestWasUsed(FloatGameState state,Guid id)
+        {foreach(var row in state.Receipts)if(row.RequestId==id)return true;return false;}
         static bool AssetExists(FloatGameState state,Guid id)
-        {var ids=new HashSet<Guid>();state.AddEquipmentAssets(ids);ids.Add(state.BaitStackId);if(state.FoodStackId!=Guid.Empty)ids.Add(state.FoodStackId);if(state.OwnedNet!=null)ids.Add(state.OwnedNet.Id);foreach(var fish in state.Creel)ids.Add(fish.Id);if(state.Session!=null&&state.Session.PendingFish!=null)ids.Add(state.Session.PendingFish.Id);return ids.Contains(id);}
+        {var ids=new HashSet<Guid>();state.AddEquipmentAssets(ids);ids.Add(state.BaitStackId);if(state.FoodStackId!=Guid.Empty)ids.Add(state.FoodStackId);if(state.OwnedNet!=null)ids.Add(state.OwnedNet.Id);foreach(var fish in state.Creel)ids.Add(fish.Id);if(state.Session!=null&&state.Session.PendingFish!=null)ids.Add(state.Session.PendingFish.Id);return ids.Contains(id)||TerminalLossIdentityWasUsed(state,id);}
         static string Code(FloatOutcome outcome)
-        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";case FloatOutcome.ProfileUpgraded:return "upgrade-candidate";case FloatOutcome.SuppliesPurchased:return "purchase-candidate";case FloatOutcome.NetEquipped:return "equip-candidate";case FloatOutcome.FoodUsed:return "food-candidate";case FloatOutcome.Unhooked:return "unhooked-candidate";case FloatOutcome.SlotReplaced:return "assembly-candidate";case FloatOutcome.LineMoved:return "line-move-candidate";default:return "sale-candidate";}}
+        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";case FloatOutcome.ProfileUpgraded:return "upgrade-candidate";case FloatOutcome.SuppliesPurchased:return "purchase-candidate";case FloatOutcome.NetEquipped:return "equip-candidate";case FloatOutcome.FoodUsed:return "food-candidate";case FloatOutcome.Unhooked:return "unhooked-candidate";case FloatOutcome.SlotReplaced:return "assembly-candidate";case FloatOutcome.LineMoved:return "line-move-candidate";case FloatOutcome.TerminalLost:return "terminal-loss-candidate";default:return "sale-candidate";}}
         public static FloatReduction Reduce(FloatGameState state,FloatCommand command,FloatGameRules rules)
         {
             if(state==null)throw new ArgumentNullException("state");if(command==null)throw new ArgumentNullException("command");
@@ -209,7 +234,9 @@ namespace FishingDesktop.GameCore
             string fingerprint=command.Fingerprint;
             foreach(var row in state.Receipts)if(row.RequestId==command.RequestId)
                 return row.Fingerprint==fingerprint?new FloatReduction(Code(row.Outcome),receipt:row,replay:true):Reject("request-conflict");
+            if(TerminalLossIdentityWasUsed(state,command.RequestId))return Reject("request-identity-used");
             foreach(var row in state.Receipts)if(row.EventId==command.EventId)return Reject("event-already-used");
+            if(TerminalLossIdentityWasUsed(state,command.EventId))return Reject("event-identity-used");
             if((command is CastFloat||command is CastFloatWithEquipment)&&UsedSession(state,command.SessionId))return Reject("session-already-used");
             if(command.ExpectedSequence!=state.Sequence||command.ExpectedRigRevision!=state.Rig.Revision||command.ExpectedRulesVersion!=state.RulesVersion)return Reject("version-conflict");
             if(rules==null)return Reject("configuration-missing");
@@ -221,7 +248,7 @@ namespace FishingDesktop.GameCore
             }
             long wallet=state.WalletMinor;int stamina=state.Stamina,baits=state.BaitCount;var fish=new List<FloatFish>(state.Creel);var session=state.Session;var affected=new List<Guid>();Guid encounterId=Guid.Empty;FloatOutcome outcome;
             int schema=state.SchemaVersion,foods=state.FoodCount;Guid branch=state.BranchId,foodStack=state.FoodStackId,equipped=state.EquippedNetId;var net=state.OwnedNet;var catalog=state.CommerceCatalog;var origin=state.UpgradeOrigin;
-            var equipment=state.Equipment;
+            var equipment=state.Equipment;FloatEquipmentLossSummary equipmentLoss=null;
             try{
                 if(command is UpgradeFloatProfile){
                     var upgrade=(UpgradeFloatProfile)command;
@@ -283,6 +310,19 @@ namespace FishingDesktop.GameCore
                     if(session==null||session.Id!=command.SessionId)return Reject("session-not-current");
                     if(session.CapacityBlocked)return Reject("pending-result-requires-release");
                     session=null;outcome=FloatOutcome.Recovered;
+                }else if(command is HostFloatTerminalLoss){
+                    var loss=(HostFloatTerminalLoss)command;
+                    if(session==null||session.Id!=command.SessionId)return Reject("session-not-current");
+                    if(session.CapacityBlocked)return Reject("pending-fish-already-set");
+                    if(command.EventId==command.RequestId||command.EventId==state.ProfileId||command.EventId==state.BranchId||command.EventId==loss.EncounterId||RequestWasUsed(state,command.EventId)||UsedSession(state,command.EventId)||EncounterWasUsed(state,command.EventId)||AssetExists(state,command.EventId)||FishWasCreated(state,command.EventId))return Reject("loss-identity-invalid");
+                    if(loss.EncounterId==command.RequestId||loss.EncounterId==state.ProfileId||loss.EncounterId==state.BranchId||RequestWasUsed(state,loss.EncounterId)||UsedSession(state,loss.EncounterId)||EventWasUsed(state,loss.EncounterId)||AssetExists(state,loss.EncounterId)||FishWasCreated(state,loss.EncounterId)||EncounterWasUsed(state,loss.EncounterId))return Reject("encounter-identity-used");
+                    var reel=equipment.Equipped(FloatEquipmentSlot.Reel);var line=reel==null?null:equipment.Spool(reel.Id);
+                    if(line==null||line.Id!=loss.LineId||line.Revision!=loss.ExpectedLineRevision)return Reject("session-line-not-current");
+                    var locked=equipment.LockForSession(session.Id);
+                    var change=equipment.PlanTerminalLoss(FloatEquipmentGate.ActiveSession,locked,command.EventId,loss.LossRuleKey,loss.OutLineMm,loss.CutDistanceFromReelMm);
+                    if(!change.Accepted)return Reject(change.Code);
+                    equipmentLoss=new FloatEquipmentLossSummary(line.Id,line.RemainingLineMm,change.Candidate.Find(line.Id).RemainingLineMm,change.LostLineMm,change.LostItemIds);
+                    equipment=change.Candidate;encounterId=loss.EncounterId;session=null;outcome=FloatOutcome.TerminalLost;
                 }else if(command is HostFloatUnhooked){
                     var unhooked=(HostFloatUnhooked)command;
                     if(schema!=2&&schema!=3)return Reject("unhook-upgrade-required");
@@ -312,7 +352,7 @@ namespace FishingDesktop.GameCore
                     fish.RemoveAll(row=>selected.Contains(row.Id));outcome=FloatOutcome.Sold;
                 }else return Reject("command-unsupported");
                 long sequence=checked(state.Sequence+1);
-                var receipt=new FloatReceipt(command,sequence,rules.Version,outcome,encounterId,state.WalletMinor,wallet,state.Stamina,stamina,state.BaitCount,baits,affected,state.FoodCount,foods,state.OwnedNet==null?Guid.Empty:state.OwnedNet.Id,net==null?Guid.Empty:net.Id,state.EquippedNetId,equipped);
+                var receipt=new FloatReceipt(command,sequence,rules.Version,outcome,encounterId,state.WalletMinor,wallet,state.Stamina,stamina,state.BaitCount,baits,affected,state.FoodCount,foods,state.OwnedNet==null?Guid.Empty:state.OwnedNet.Id,net==null?Guid.Empty:net.Id,state.EquippedNetId,equipped,equipmentLoss);
                 var history=new List<FloatReceipt>(state.Receipts);history.Add(receipt);
                 var candidate=new FloatGameState(state.ProfileId,branch,sequence,wallet,stamina,state.BaitStackId,state.BaitDefinitionKey,baits,state.LegacyRig,session,fish,history,rules,schema,catalog,foodStack,foods,net,equipped,origin,equipment);
                 return new FloatReduction(Code(outcome),candidate,receipt);

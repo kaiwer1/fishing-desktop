@@ -12,7 +12,7 @@ namespace FishingDesktop.GameCore
     {
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
-        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14;
+        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -129,7 +129,7 @@ namespace FishingDesktop.GameCore
             if(command is CastFloat)return Cast;if(command is RecallFloat)return Recall;if(command is ReleaseCurrentFloatFish)return Release;
             if(command is SellFloatFish)return Sale;if(command is HostFloatFish)return HostFish;if(command is RecoverFloatSession)return Recovery;
             if(command is UpgradeFloatProfile)return Upgrade;if(command is BuyFloatSupply)return Purchase;if(command is EquipFloatNet)return Equip;if(command is UseFloatFood)return Food;if(command is HostFloatUnhooked)return Unhooked;
-            if(command is ReplaceFloatSlot)return ReplaceSlot;if(command is MoveFloatLine)return MoveLine;if(command is CastFloatWithEquipment)return EquipmentCast;throw Invalid("Unsupported journal command type.");
+            if(command is ReplaceFloatSlot)return ReplaceSlot;if(command is MoveFloatLine)return MoveLine;if(command is CastFloatWithEquipment)return EquipmentCast;if(command is HostFloatTerminalLoss)return TerminalLoss;throw Invalid("Unsupported journal command type.");
         }
         static void Catalog(Writer writer,FloatCommerceCatalog catalog)
         {
@@ -169,7 +169,9 @@ namespace FishingDesktop.GameCore
                 }else if(type==Equip)writer.Guid(((EquipFloatNet)command).NetId);
                 else if(type==Food)writer.Guid(((UseFloatFood)command).FoodStackId);
                 else if(type==Unhooked){var unhooked=(HostFloatUnhooked)command;writer.Guid(unhooked.EncounterId);writer.I32(unhooked.FightModelVersion);}
-                else if(type>=ReplaceSlot){
+                else if(type==TerminalLoss){
+                    var loss=(HostFloatTerminalLoss)command;writer.I64(loss.ExpectedInventoryRevision);writer.I64(loss.ExpectedEquipmentVersion);writer.Guid(loss.EncounterId);writer.Guid(loss.LineId);writer.I64(loss.ExpectedLineRevision);writer.Text(loss.LossRuleKey);writer.I64(loss.OutLineMm);writer.I64(loss.CutDistanceFromReelMm);writer.I32(loss.LossModelVersion);
+                }else if(type>=ReplaceSlot&&type<=EquipmentCast){
                     var equipment=(FloatEquipmentCommand)command;writer.I64(equipment.ExpectedInventoryRevision);writer.I64(equipment.ExpectedEquipmentVersion);
                     if(type==ReplaceSlot){var replace=(ReplaceFloatSlot)command;writer.Byte((byte)replace.Slot);writer.Byte(replace.ItemId.HasValue?(byte)1:(byte)0);if(replace.ItemId.HasValue)writer.Guid(replace.ItemId.Value);}
                     else if(type==MoveLine){var move=(MoveFloatLine)command;writer.Guid(move.LineId);writer.Byte(move.ReelId.HasValue?(byte)1:(byte)0);if(move.ReelId.HasValue)writer.Guid(move.ReelId.Value);}
@@ -180,10 +182,14 @@ namespace FishingDesktop.GameCore
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,(reader,schema)=>{
-                byte type=reader.Byte();if(type<Cast||type>EquipmentCast||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(type<Cast||type>TerminalLoss||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
-                if(type>=ReplaceSlot){
+                if(type==TerminalLoss){
+                    long inventory=reader.I64(),equipment=reader.I64();Guid lossEncounter=reader.Guid(),line=reader.Guid();long lineRevision=reader.I64();string lossRule=reader.Text();long outLine=reader.I64(),cut=reader.I64();int model=reader.I32();
+                    return new HostFloatTerminalLoss(profile,branch,request,businessEvent,session,lossEncounter,line,lineRevision,lossRule,outLine,cut,sequence,rig,rules,inventory,equipment,model);
+                }
+                if(type>=ReplaceSlot&&type<=EquipmentCast){
                     long inventory=reader.I64(),equipment=reader.I64();
                     if(type==EquipmentCast)return new CastFloatWithEquipment(profile,branch,request,businessEvent,session,reader.I64(),sequence,rig,rules,inventory,equipment);
                     if(session!=Guid.Empty)throw Invalid("Equipment edit contains a session.");

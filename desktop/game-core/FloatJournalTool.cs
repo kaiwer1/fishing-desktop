@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Web.Script.Serialization;
 using FishingDesktop.GameCore;
 
@@ -7,6 +9,23 @@ using FishingDesktop.GameCore;
 // startup lifecycle: inspecting a cast must never secretly retrieve it.
 static class FloatJournalTool
 {
+    static object EquipmentSummary(FloatGameState state)
+    {
+        if(state.Equipment==null)return null;
+        var equipment=state.Equipment;var missing=new List<string>();
+        foreach(FloatEquipmentSlot slot in Enum.GetValues(typeof(FloatEquipmentSlot)))
+            if(equipment.Equipped(slot)==null)missing.Add(slot.ToString().ToLowerInvariant());
+        if(!state.Rig.LineId.HasValue)missing.Add("line");
+        int lost=0,confirmedLosses=0;
+        foreach(var item in equipment.Instances)if(item.Location.Place==FloatEquipmentPlace.Lost)lost++;
+        foreach(var receipt in state.Receipts)if(receipt.Outcome==FloatOutcome.TerminalLost)confirmedLosses++;
+        return new {instances=equipment.Instances.Count,lostInstances=lost,confirmedLosses=confirmedLosses,
+            initialLineMm=equipment.InitialLineMm.ToString(CultureInfo.InvariantCulture),
+            remainingLineMm=equipment.RemainingLineMm.ToString(CultureInfo.InvariantCulture),
+            lostLineMm=equipment.LostLineMm.ToString(CultureInfo.InvariantCulture),
+            installedLineMm=state.Rig.LineLengthMm.HasValue?state.Rig.LineLengthMm.Value.ToString(CultureInfo.InvariantCulture):null,
+            missingSlots=missing.ToArray()};
+    }
     static int Main(string[] args)
     {
         var json=new JavaScriptSerializer();
@@ -18,7 +37,8 @@ static class FloatJournalTool
                 Console.WriteLine(json.Serialize(new {success=true,action="inspect",source=source.SourcePath,length=source.Length,
                     sha256=source.Sha256,tipSha256=source.TipSha256,sequence=source.Sequence.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     profileId=source.ProfileId.ToString("D"),branchId=source.BranchId.ToString("D"),hasActiveSession=source.HasActiveSession,
-                    hasPendingFish=source.HasPendingFish,sourceModified=false,backupConfirmed=false,restored=false}));
+                    hasPendingFish=source.HasPendingFish,schemaVersion=source.State.SchemaVersion,equipment=EquipmentSummary(source.State),
+                    sourceModified=false,backupConfirmed=false,restored=false}));
             }else{
                 var backup=FloatJournalArchive.Backup(source,args[2]);
                 Console.WriteLine(json.Serialize(new {success=true,action="backup",source=source.SourcePath,destination=backup.DestinationPath,

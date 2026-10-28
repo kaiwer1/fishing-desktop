@@ -94,6 +94,8 @@ namespace FishingDesktop.GameCore
             return !_hostPaused && !_faulted && !_shutdown && lease != null && Object.ReferenceEquals(lease, _lease) &&
                 Object.ReferenceEquals(view, _interaction) && DocumentMatches(view, document);
         }
+        internal bool CanControl(FloatViewTicket view, FloatDocumentTicket document, FloatControlLease lease)
+        { Entry(); return Authorized(view, document, lease); }
         static FloatCommitResult Refused(string code)
         {
             // A rejected authority never receives an old transaction or the

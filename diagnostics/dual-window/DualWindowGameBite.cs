@@ -86,9 +86,9 @@ sealed partial class DualWindowContext
         if(!game.CanControl(binding.View,binding.Document,binding.Lease) || !game.Snapshot.CanSimulate){GameReply(pane,transport,"domain-paused");return;}
         if(!GameReadyForFish() || gameBite==null){GameReply(pane,transport,"bite-not-ready");return;}
         var result=gameBite.Strike(session,encounter);
-        // The next stage consumes this same locked encounter. A strike does
-        // not grant a fish, make an inventory transaction or auto-reel.
-        if(result.ShouldStartFight)gameHookedEmissions=checked(gameHookedEmissions+1);
+        // A strike starts exactly this locked encounter with no held input.
+        // It does not grant a fish or make an inventory transaction.
+        if(result.ShouldStartFight){StartGameFight(result.Snapshot);gameHookedEmissions=checked(gameHookedEmissions+1);}
         GameReply(pane,transport,result.Code);BroadcastGameBite();
     }
 }

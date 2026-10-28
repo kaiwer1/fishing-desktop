@@ -262,11 +262,13 @@ sealed partial class DualWindowContext
             // The probe above revokes/regrants; explicitly acquire the current lease.
             lease=await Activate(control);
             await GameBiteFailureProbe(control,lease);
-            for(int index=0;index<3;index++) { await GameCastAndWait(control,lease); await GameWaitForWater(control); GameFixtureLand(); }
+            for(int index=0;index<3;index++)lease=await GameNaturalLanding(read,control,lease,index==0,index==2);
             Require(game.Snapshot.PendingResult && !game.Snapshot.CanSimulate,"Full-creel result was not paused.");
             Require(gameFlight.Snapshot.Phase==FloatFlightPhase.Ended,"Pending fish kept an active flight runtime.");
             await Wait(control,s=>(bool)Field(s,"snapshot")["PendingResult"]);
-            Require(await control.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('session').textContent.includes('鲤鱼 · 1.000000 kg')")=="true","Pending fish identity was not shown before release.");
+            var pendingFish=game.Snapshot.State.Session.PendingFish;
+            string pendingText=(pendingFish.SpeciesKey=="carp"?"鲤鱼":"鲫鱼")+" · "+(pendingFish.MassMg/1000000.0).ToString("F6",System.Globalization.CultureInfo.InvariantCulture)+" kg";
+            Require(await control.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('session').textContent.includes("+json.Serialize(pendingText)+")")=="true","Pending fish identity was not shown before release.");
             GameCode(await GameWire(control,lease,GameIntent("release-current")),"released-candidate",true);
             Require(game.Snapshot.State.Session==null && game.Snapshot.State.Creel.Count==2,"Release lost owned fish.");
             checks.Add("menu blocks a new cast and full creel requires explicit release without deleting old fish");
@@ -299,7 +301,8 @@ sealed partial class DualWindowContext
                 sequence=game.Snapshot.State.Sequence,value=game.Snapshot.State.WalletMinor,realWebViewMessages=true,independentWindows=true,
                 nativeInputTested=false,desktopLayer=false,nativeFullscreenTested=false,gameSimulationImplemented=false,controlledFishFacts=true,personalSaveRead=false,
                 castPreparationConnected=true,gameFlightEmissions=gameFlightEmissions,flatWaterFlightConnected=true,realWaterAndFlight=false,
-                biteSimulationConnected=true,gameHookedEmissions=gameHookedEmissions,naturalFishLanded=false,controlledBiteSeed=true}),Encoding.UTF8);
+                biteSimulationConnected=true,gameHookedEmissions=gameHookedEmissions,naturalFishLanded=true,controlledBiteSeed=true,
+                fightSimulationConnected=true,gameNaturalLandings=gameNaturalLandings,fixtureNetCapability=true,equipmentDamageImplemented=false}),Encoding.UTF8);
             Shutdown();
         } catch(Exception error) { Fail(error); }
     }

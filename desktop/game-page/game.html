@@ -8,15 +8,16 @@
 #cast-target{border:1px solid #8c9872;background:#2b342b;padding:20px;margin:14px 0;min-height:130px;user-select:none;touch-action:none;cursor:crosshair}#cast-target[aria-disabled=true]{opacity:.55;cursor:default}#cast-power{width:min(65%,420px);height:20px;vertical-align:middle;accent-color:#bdcd7a;margin-right:12px}#cast-status{min-height:25px}
 #flight-diagram{display:block;width:100%;max-height:250px;background:#252d2b;border:1px solid #596358}#flight-diagram text{fill:#bac7bf;font:12px system-ui,sans-serif}#flight-diagram .axis{stroke:#576963;stroke-width:1}#flight-diagram .water{stroke:#82b4bb;stroke-width:1.5}#flight-metrics{font-variant-numeric:tabular-nums}#flight-status{min-height:25px}#flight-clipped{color:#e0b778}
 #bite-layout{display:flex;gap:24px;align-items:center;flex-wrap:wrap}#bite-diagram{width:360px;max-width:100%;height:250px;flex:0 1 360px;border:1px solid #596358;background:#252d2b;cursor:crosshair;user-select:none;touch-action:none}#bite-diagram text{fill:#bac7bf;font:13px system-ui,sans-serif}#bite-copy{flex:1 1 280px}#bite-status{color:#d3df8a;font-size:18px}#bite-bait{color:#bac1b0}
+#fight-layout{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}#fight-diagram{width:480px;max-width:100%;height:250px;flex:1 1 380px;background:#253e40;border:1px solid #596358;cursor:crosshair;touch-action:none;user-select:none}#fight-diagram text{fill:#bac7bf;font:12px system-ui,sans-serif}#fight-copy{flex:1 1 320px}#fight-status{font-size:18px;color:#d3df8a}#fight-metrics{font-variant-numeric:tabular-nums}#fight-energy{width:130px;height:16px;accent-color:#a8c37d;vertical-align:middle}#fight-controls{display:flex;gap:18px;flex-wrap:wrap}#fight-controls button{padding:2px 12px;margin:6px}#fight-controls span{display:inline-block;min-width:55px;text-align:center}#fight-clipped{color:#e0b778}#reel-hold{touch-action:none;user-select:none}
 @media(min-width:900px){#cast-workbench{display:grid;grid-template-columns:minmax(300px,.85fr) minmax(0,1.15fr);gap:20px}#cast-workbench section{min-width:0}}
 </style></head>
 <body><div id="portrait">请横屏游玩</div><main>
-<header><h1>钓鱼桌面 · 单竿操作预览</h1><p class="muted">开发预览：左键蓄力后松开出手，落水后观察浮漂，右键提竿。当前使用简化水域和漂相示意，遛鱼、真实地形与挥竿动作尚未接入。</p><p id="status">等待宿主载入进度…</p></header>
+<header><h1>钓鱼桌面 · 单竿操作预览</h1><p class="muted">开发预览：左键蓄力后松开出手，右键提竿，中鱼后按住左键收线。当前为简化水域与受力训练，真实地形、渔具模型与挥竿动作尚未接入。</p><p id="status">等待宿主载入进度…</p></header>
 <div id="stats"></div>
 <p id="session">等待进度</p>
 <div id="cast-workbench">
 <section id="casting"><h2>抛竿准备</h2><p id="cast-status" role="status">尚未蓄力</p><progress id="cast-power" max="1000" value="0" aria-label="宿主确认的蓄力"></progress><span id="cast-percent">0%</span>
-<div id="cast-target" class="interactive" role="group" aria-label="临时抛竿操作区"><strong>临时抛竿操作区</strong><p>左键按住蓄力，松开出手。准备时右键取消；落水后右键提竿。</p><p class="muted">固定朝向的简化水域，尚无真实场景。</p></div>
+<div id="cast-target" class="interactive" role="group" aria-label="临时抛竿操作区"><strong>临时抛竿操作区</strong><p>左键按住蓄力，松开出手。准备时右键取消；落水后右键提竿；中鱼后左键按住收线。</p><p class="muted">固定朝向的简化水域，尚无真实场景。</p></div>
 <div class="interactive"><button id="cast" disabled>开始蓄力</button><button id="cast-release" disabled>松开出手</button><button id="cast-cancel" disabled>取消蓄力</button></div></section>
 <section id="flight"><h2>飞行与落水 · 固定平面示意</h2><p id="flight-status">等待确认出手</p>
 <svg id="flight-diagram" viewBox="0 0 720 240" role="img" aria-labelledby="flight-title flight-description">
@@ -47,6 +48,24 @@
 <div class="interactive"><button id="strike" disabled>提竿</button></div>
 <p class="muted">右键每次按下只提竿一次。菜单、暂停和失去交互时冻结鱼口，恢复后需要重新按下。</p></div>
 </div></section>
+<section id="fight"><h2>手动遛鱼 · 受力训练</h2><div id="fight-layout">
+<svg id="fight-diagram" viewBox="0 0 480 250" role="img" aria-labelledby="fight-title fight-description">
+<title id="fight-title">鱼的位置与鱼线</title><desc id="fight-description">俯视示意：岸边在下方，圆点表示宿主确认的鱼的位置，线连接固定竿根。按住左键收线，滚轮调整泄力，按住 R 使用滚轮调整速度。</desc>
+<rect x="40" y="28" width="400" height="192" fill="#304d50"/>
+<path d="M40 28H440M40 76H440M40 124H440M40 172H440M40 220H440M140 28V220M240 28V220M340 28V220" fill="none" stroke="#507879" stroke-width="1"/>
+<path d="M40 220H440" stroke="#c5b48b" stroke-width="3"/><text x="9" y="32">80m</text><text x="9" y="128">40m</text><text x="9" y="223">岸边</text>
+<text x="38" y="243">-40m</text><text x="236" y="243">0</text><text x="415" y="243">40m</text>
+<g id="fight-marks" visibility="hidden"><line id="fight-line" x1="240" y1="220" x2="240" y2="220" stroke="#d3dfb7" stroke-width="1.5"/>
+<circle cx="240" cy="220" r="4" fill="#e3dcc3"/><circle id="fight-fish" cx="240" cy="180" r="6" fill="#e8a85b" stroke="#f4eedb" stroke-width="1.5"/></g>
+</svg>
+<div id="fight-copy"><p id="fight-status" role="status">中鱼后开始遛鱼</p><p id="fight-detail">左键按住收线；松开停止绞入，鱼仍可能向外拉线。</p>
+<p><span id="fight-reeling">未收线</span> · 鱼体力 <progress id="fight-energy" max="1000" value="0" aria-label="鱼体力"></progress> <span id="fight-energy-value">—</span></p>
+<div class="interactive"><button id="reel-hold" disabled>按住收线</button><button id="land" disabled>抄鱼 · 空格</button><button id="retry-land" hidden disabled>重试原收鱼结果</button>
+<div id="fight-controls"><label>泄力<button id="drag-minus" disabled aria-label="降低泄力">−</button><span id="drag-level">0 / 10</span><button id="drag-plus" disabled aria-label="提高泄力">+</button></label>
+<label>收线速度<button id="reel-minus" disabled aria-label="降低收线速度">−</button><span id="reel-level">0 / 10</span><button id="reel-plus" disabled aria-label="提高收线速度">+</button></label></div></div>
+<p class="muted">在操作区滚轮调泄力，R＋滚轮调速度。靠近后满足条件才可抄鱼；当前使用训练抄网能力，尚未接入背包中的抄网装备。</p></div></div>
+<p id="fight-metrics" class="muted">出线 — · 线杯余量 — · 张力 —</p><p id="fight-clipped" hidden>鱼的位置超出示意图范围，边缘标记仅表示方向。</p>
+<p class="muted">这是原创简化受力模型；张力以牛顿显示，尚无断线损耗、脱钩和真实抄网动画。</p></section>
 <div class="interactive"><button id="recall" disabled>收回这一竿</button><button id="release" disabled>放流当前鱼</button><button id="menu" disabled>打开鱼护菜单</button></div>
 <p id="notice" role="status"></p>
 <section><h2>鱼护 <span id="capacity"></span></h2><ul id="creel"></ul><div class="interactive"><button id="sell" disabled>出售选中的鱼</button></div><button id="previous" disabled>上一页</button><button id="next" disabled>下一页</button></section>

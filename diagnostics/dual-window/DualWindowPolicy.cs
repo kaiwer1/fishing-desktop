@@ -37,6 +37,7 @@ sealed partial class DualWindowContext
         AdvanceGameCast(step);
         AdvanceGameFlight(step);
         AdvanceGameBite(step);
+        AdvanceGameFight(step);
     }
     void ApplyPolicy(RunTransition transition)
     {

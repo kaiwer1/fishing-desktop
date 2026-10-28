@@ -138,7 +138,7 @@ sealed partial class DualWindowContext : ApplicationContext
             await Open(false);var interaction=await Open(true);
             if(ManualMode && !ManualUnattended && Live(interaction)){GuardPresentation(()=>{interaction.Hide();interaction.Show();});}
             if(GameMode && !stopping)await StartGamePresentation();
-            if(automated && !stopping){if(GameSelfTest)RunGameProbe();else RunProbe();}
+            if(automated && !stopping){if(GameFailureCase!=null)RunGameFailureBoundaryProbe();else if(GameSelfTest)RunGameProbe();else RunProbe();}
         }catch(Exception e){Fail(e);}
     }
     bool Live(ProbeWindow pane)
@@ -378,7 +378,11 @@ sealed partial class DualWindowContext : ApplicationContext
     {
         string gameMode=null;
         if(args.Length==1){if(args[0]=="--game-new")gameMode="new";else if(args[0]=="--game-open")gameMode="open";else if(args[0]=="--game-self-test")gameMode="self-test";}
-        bool gameUser=gameMode=="new" || gameMode=="open",gameSelfTest=gameMode=="self-test";
+        if(args.Length==2 && args[0]=="--game-failure-self-test"){
+            if(args[1]!="known-close" && args[1]!="after-flush" && args[1]!="after-prefix")return 5;
+            gameMode="failure-"+args[1];
+        }
+        bool gameUser=gameMode=="new" || gameMode=="open",gameSelfTest=gameMode=="self-test" || (gameMode!=null && gameMode.StartsWith("failure-",StringComparison.Ordinal));
         int manualSeconds=0;bool manualUnattended=args.Length>0 && args[0]=="--manual-desktop-timeout-probe";
         bool manual=manualUnattended || (args.Length>0 && args[0]=="--manual-desktop-probe");
         if(manual && (args.Length!=2 || !Int32.TryParse(args[1],out manualSeconds) || manualSeconds<60 || manualSeconds>600))return 5;

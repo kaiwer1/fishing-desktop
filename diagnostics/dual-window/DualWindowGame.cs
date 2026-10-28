@@ -11,7 +11,8 @@ sealed partial class DualWindowContext
 {
     readonly string gameMode;
     internal bool GameMode { get { return gameMode != null; } }
-    bool GameSelfTest { get { return gameMode == "self-test"; } }
+    bool GameSelfTest { get { return gameMode == "self-test" || GameFailureCase!=null; } }
+    string GameFailureCase { get { return gameMode!=null && gameMode.StartsWith("failure-",StringComparison.Ordinal)?gameMode.Substring(8):null; } }
     FloatGameOwner game;
     bool gameShutdownAttempted;
     string gameShutdownCode;

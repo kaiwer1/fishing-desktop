@@ -68,6 +68,70 @@ namespace FishingDesktop.GameCore
         }
         internal override string Detail{get{return FloatGuard.Number((int)Reason);}}
     }
+    public enum FloatSupplyProduct { Net=1,Bait=2,Food=3 }
+    // The host freezes this object. Pages later receive an opaque quote ID,
+    // never authority to set prices, catalogue policy or resulting asset IDs.
+    public sealed class FloatPurchaseQuote
+    {
+        public readonly Guid ProfileId,BranchId;
+        public readonly long StateSequence,CatalogVersion,TotalPriceMinor;
+        public readonly FloatSupplyProduct Product;
+        public readonly int PackCount,Units;
+        internal readonly string CatalogSignature;
+        internal FloatPurchaseQuote(Guid profile,Guid branch,long sequence,long catalogVersion,FloatSupplyProduct product,int packs,int units,long total,string signature)
+        {
+            FloatGuard.Id(profile,"profile");FloatGuard.Id(branch,"branch");
+            if(sequence<0||catalogVersion<=0||packs<=0||packs>100||units<=0||total<=0||String.IsNullOrEmpty(signature)||signature.Length>1024)throw new ArgumentException("Invalid frozen quote.");
+            if(product!=FloatSupplyProduct.Net&&product!=FloatSupplyProduct.Bait&&product!=FloatSupplyProduct.Food)throw new ArgumentOutOfRangeException("product");
+            ProfileId=profile;BranchId=branch;StateSequence=sequence;CatalogVersion=catalogVersion;Product=product;PackCount=packs;Units=units;TotalPriceMinor=total;CatalogSignature=signature;
+        }
+        internal static FloatPurchaseQuote Create(FloatGameState state,FloatSupplyProduct product,int packCount)
+        {
+            if(state==null||state.SchemaVersion!=2||state.CommerceCatalog==null)throw new ArgumentException("A schema2 profile is required.");
+            var catalog=state.CommerceCatalog;if(packCount<=0||packCount>catalog.MaximumPurchasePacks)throw new ArgumentOutOfRangeException("packCount");
+            if(product!=FloatSupplyProduct.Net&&product!=FloatSupplyProduct.Bait&&product!=FloatSupplyProduct.Food)throw new ArgumentOutOfRangeException("product");
+            if(product==FloatSupplyProduct.Net&&packCount!=1)throw new ArgumentException("Only one net can be purchased.");
+            int units=checked(packCount*(product==FloatSupplyProduct.Bait?catalog.BaitPackUnits:1));
+            long total=checked(packCount*(product==FloatSupplyProduct.Net?catalog.NetPriceMinor:product==FloatSupplyProduct.Bait?catalog.BaitPackPriceMinor:catalog.FoodPriceMinor));
+            return new FloatPurchaseQuote(state.ProfileId,state.BranchId,state.Sequence,catalog.Version,product,packCount,units,total,catalog.Signature);
+        }
+        internal string Fingerprint{get{return ProfileId.ToString("N")+"|"+BranchId.ToString("N")+"|"+FloatGuard.Number(StateSequence)+"|"+FloatGuard.Number(CatalogVersion)+"|"+FloatGuard.Number((int)Product)+"|"+FloatGuard.Number(PackCount)+"|"+FloatGuard.Number(Units)+"|"+FloatGuard.Number(TotalPriceMinor)+"|"+CatalogSignature;}}
+    }
+    internal sealed class UpgradeFloatProfile : FloatCommand
+    {
+        internal readonly Guid NewBranchId,FoodStackId;
+        internal readonly FloatUpgradeOrigin Origin;
+        internal readonly FloatCommerceCatalog Catalog;
+        internal UpgradeFloatProfile(Guid profile,Guid oldBranch,Guid request,Guid businessEvent,Guid newBranch,Guid foodStack,string sourceSha256,string sourceTipSha256,long sourceLength,long expectedSequence,long expectedRigRevision,long expectedRulesVersion,FloatCommerceCatalog catalog)
+            :base("upgrade-profile",profile,oldBranch,request,businessEvent,Guid.Empty,expectedSequence,expectedRigRevision,expectedRulesVersion)
+        {
+            FloatGuard.Id(newBranch,"newBranch");FloatGuard.Id(foodStack,"foodStack");if(newBranch==oldBranch||catalog==null)throw new ArgumentException("A new branch and explicit catalogue are required.");
+            NewBranchId=newBranch;FoodStackId=foodStack;Catalog=catalog;Origin=new FloatUpgradeOrigin(oldBranch,sourceSha256,sourceTipSha256,sourceLength,expectedSequence);
+        }
+        internal override string Detail{get{return NewBranchId.ToString("N")+"|"+FoodStackId.ToString("N")+"|"+Origin.SourceSha256+"|"+Origin.SourceTipSha256+"|"+FloatGuard.Number(Origin.SourceLength)+"|"+Catalog.Signature;}}
+    }
+    public sealed class BuyFloatSupply : FloatCommand
+    {
+        public readonly FloatPurchaseQuote Quote;public readonly Guid NewNetId;
+        public BuyFloatSupply(Guid profile,Guid branch,Guid request,Guid businessEvent,FloatPurchaseQuote quote,Guid newNetId,long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
+            :base("buy-supply",profile,branch,request,businessEvent,Guid.Empty,expectedSequence,expectedRigRevision,expectedRulesVersion)
+        {if(quote==null)throw new ArgumentNullException("quote");Quote=quote;NewNetId=newNetId;}
+        internal override string Detail{get{return Quote.Fingerprint+"|"+NewNetId.ToString("N");}}
+    }
+    public sealed class EquipFloatNet : FloatCommand
+    {
+        public readonly Guid NetId;
+        public EquipFloatNet(Guid profile,Guid branch,Guid request,Guid businessEvent,Guid netId,long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
+            :base("equip-net",profile,branch,request,businessEvent,Guid.Empty,expectedSequence,expectedRigRevision,expectedRulesVersion){NetId=netId;}
+        internal override string Detail{get{return NetId.ToString("N");}}
+    }
+    public sealed class UseFloatFood : FloatCommand
+    {
+        public readonly Guid FoodStackId;
+        public UseFloatFood(Guid profile,Guid branch,Guid request,Guid businessEvent,Guid foodStackId,long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
+            :base("use-food",profile,branch,request,businessEvent,Guid.Empty,expectedSequence,expectedRigRevision,expectedRulesVersion){FloatGuard.Id(foodStackId,"foodStackId");FoodStackId=foodStackId;}
+        internal override string Detail{get{return FoodStackId.ToString("N");}}
+    }
     public sealed class FloatReduction
     {
         public readonly string Code;
@@ -88,9 +152,9 @@ namespace FishingDesktop.GameCore
         static bool EncounterWasUsed(FloatGameState state,Guid id)
         {foreach(var row in state.Receipts)if((row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected)&&row.EncounterId==id)return true;return false;}
         static bool AssetExists(FloatGameState state,Guid id)
-        {var ids=new HashSet<Guid>();state.Rig.AddAssets(ids);ids.Add(state.BaitStackId);foreach(var fish in state.Creel)ids.Add(fish.Id);return ids.Contains(id);}
+        {var ids=new HashSet<Guid>();state.Rig.AddAssets(ids);ids.Add(state.BaitStackId);if(state.FoodStackId!=Guid.Empty)ids.Add(state.FoodStackId);if(state.OwnedNet!=null)ids.Add(state.OwnedNet.Id);foreach(var fish in state.Creel)ids.Add(fish.Id);if(state.Session!=null&&state.Session.PendingFish!=null)ids.Add(state.Session.PendingFish.Id);return ids.Contains(id);}
         static string Code(FloatOutcome outcome)
-        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";default:return "sale-candidate";}}
+        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";case FloatOutcome.ProfileUpgraded:return "upgrade-candidate";case FloatOutcome.SuppliesPurchased:return "purchase-candidate";case FloatOutcome.NetEquipped:return "equip-candidate";case FloatOutcome.FoodUsed:return "food-candidate";default:return "sale-candidate";}}
         public static FloatReduction Reduce(FloatGameState state,FloatCommand command,FloatGameRules rules)
         {
             if(state==null)throw new ArgumentNullException("state");if(command==null)throw new ArgumentNullException("command");
@@ -104,8 +168,42 @@ namespace FishingDesktop.GameCore
             if(rules==null)return Reject("configuration-missing");
             if(rules.Signature!=state.Rules.Signature)return Reject("configuration-mismatch");
             long wallet=state.WalletMinor;int stamina=state.Stamina,baits=state.BaitCount;var fish=new List<FloatFish>(state.Creel);var session=state.Session;var affected=new List<Guid>();Guid encounterId=Guid.Empty;FloatOutcome outcome;
+            int schema=state.SchemaVersion,foods=state.FoodCount;Guid branch=state.BranchId,foodStack=state.FoodStackId,equipped=state.EquippedNetId;var net=state.OwnedNet;var catalog=state.CommerceCatalog;var origin=state.UpgradeOrigin;
             try{
-                if(command is CastFloat){
+                if(command is UpgradeFloatProfile){
+                    var upgrade=(UpgradeFloatProfile)command;
+                    if(schema!=1)return Reject("profile-already-upgraded");
+                    if(upgrade.Catalog.BaitDefinitionKey!=state.BaitDefinitionKey||baits>upgrade.Catalog.MaximumBaitCount)return Reject("commerce-configuration-mismatch");
+                    if(AssetExists(state,upgrade.FoodStackId)||FishWasCreated(state,upgrade.FoodStackId))return Reject("asset-identity-used");
+                    schema=2;catalog=upgrade.Catalog;origin=upgrade.Origin;branch=upgrade.NewBranchId;foodStack=upgrade.FoodStackId;outcome=FloatOutcome.ProfileUpgraded;
+                }else if(command is BuyFloatSupply||command is EquipFloatNet||command is UseFloatFood){
+                    if(schema!=2||catalog==null)return Reject("commerce-upgrade-required");if(session!=null)return Reject("session-busy");
+                    if(command is BuyFloatSupply){
+                        var buy=(BuyFloatSupply)command;var quote=buy.Quote;
+                        if(quote.ProfileId!=state.ProfileId||quote.BranchId!=state.BranchId||quote.StateSequence!=state.Sequence)return Reject("quote-stale");
+                        if(quote.CatalogVersion!=catalog.Version||quote.CatalogSignature!=catalog.Signature||quote.PackCount>catalog.MaximumPurchasePacks)return Reject("quote-invalid");
+                        if(quote.Product==FloatSupplyProduct.Net&&quote.PackCount!=1)return Reject("quote-invalid");
+                        int units=checked(quote.PackCount*(quote.Product==FloatSupplyProduct.Bait?catalog.BaitPackUnits:1));
+                        long total=checked(quote.PackCount*(quote.Product==FloatSupplyProduct.Net?catalog.NetPriceMinor:quote.Product==FloatSupplyProduct.Bait?catalog.BaitPackPriceMinor:catalog.FoodPriceMinor));
+                        if(quote.Units!=units||quote.TotalPriceMinor!=total)return Reject("quote-invalid");
+                        if(quote.Product==FloatSupplyProduct.Net){
+                            if(net!=null)return Reject("net-already-owned");if(buy.NewNetId==Guid.Empty||AssetExists(state,buy.NewNetId)||FishWasCreated(state,buy.NewNetId))return Reject("asset-identity-used");
+                            net=new FloatOwnedNet(buy.NewNetId,catalog.NetDefinitionKey);
+                        }else{
+                            if(buy.NewNetId!=Guid.Empty)return Reject("purchase-asset-invalid");
+                            if(quote.Product==FloatSupplyProduct.Bait){baits=checked(baits+units);if(baits>catalog.MaximumBaitCount)return Reject("bait-limit-exceeded");}
+                            else{foods=checked(foods+units);if(foods>catalog.MaximumFoodCount)return Reject("food-limit-exceeded");}
+                        }
+                        if(wallet<total)return Reject("wallet-insufficient");wallet=checked(wallet-total);outcome=FloatOutcome.SuppliesPurchased;
+                    }else if(command is EquipFloatNet){
+                        Guid desired=((EquipFloatNet)command).NetId;
+                        if(desired!=Guid.Empty&&(net==null||net.Id!=desired))return Reject("net-not-owned");
+                        if(equipped==desired)return Reject("net-equipment-unchanged");equipped=desired;outcome=FloatOutcome.NetEquipped;
+                    }else{
+                        if(((UseFloatFood)command).FoodStackId!=foodStack)return Reject("food-not-owned");if(foods<=0)return Reject("food-empty");if(stamina>=rules.MaximumStamina)return Reject("stamina-full");
+                        stamina=(int)Math.Min((long)rules.MaximumStamina,(long)stamina+catalog.FoodStaminaRestore);foods=checked(foods-1);outcome=FloatOutcome.FoodUsed;
+                    }
+                }else if(command is CastFloat){
                     if(session!=null)return Reject("session-busy");if(baits<1)return Reject("bait-empty");if(stamina<rules.CastStaminaCost)return Reject("stamina-insufficient");
                     baits=checked(baits-1);stamina=checked(stamina-rules.CastStaminaCost);session=new FloatSession(command.SessionId,command.EventId,state.Rig.Revision,rules.Version);outcome=FloatOutcome.CastCommitted;
                 }else if(command is RecallFloat){
@@ -140,9 +238,9 @@ namespace FishingDesktop.GameCore
                     fish.RemoveAll(row=>selected.Contains(row.Id));outcome=FloatOutcome.Sold;
                 }else return Reject("command-unsupported");
                 long sequence=checked(state.Sequence+1);
-                var receipt=new FloatReceipt(command,sequence,rules.Version,outcome,encounterId,state.WalletMinor,wallet,state.Stamina,stamina,state.BaitCount,baits,affected);
+                var receipt=new FloatReceipt(command,sequence,rules.Version,outcome,encounterId,state.WalletMinor,wallet,state.Stamina,stamina,state.BaitCount,baits,affected,state.FoodCount,foods,state.OwnedNet==null?Guid.Empty:state.OwnedNet.Id,net==null?Guid.Empty:net.Id,state.EquippedNetId,equipped);
                 var history=new List<FloatReceipt>(state.Receipts);history.Add(receipt);
-                var candidate=new FloatGameState(state.ProfileId,state.BranchId,sequence,wallet,stamina,state.BaitStackId,state.BaitDefinitionKey,baits,state.Rig,session,fish,history,rules);
+                var candidate=new FloatGameState(state.ProfileId,branch,sequence,wallet,stamina,state.BaitStackId,state.BaitDefinitionKey,baits,state.Rig,session,fish,history,rules,schema,catalog,foodStack,foods,net,equipped,origin);
                 return new FloatReduction(Code(outcome),candidate,receipt);
             }catch(OverflowException){return Reject("arithmetic-overflow");}
         }

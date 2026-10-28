@@ -41,7 +41,7 @@ namespace FishingDesktop.GameCore
         internal byte[] CopyTipHash(){return (byte[])tipHash.Clone();}
     }
 
-    // Bounded, append-only schema-1 candidate. There is no import, automatic
+    // Bounded, append-only typed journal. There is no import, automatic
     // repair, tail trimming, compaction, checkpoint fallback or reset-to-new.
     public sealed class FloatGameStore : IDisposable
     {
@@ -128,12 +128,15 @@ namespace FishingDesktop.GameCore
                     if (!result.HasCandidate)
                         return new FloatCommitResult(result.Code, _state, result.Receipt, result.IsReplay, false, result.IsReplay);
 
-                    byte[] payload = FloatJournalCodec.EncodeCommand(command);
+                    byte[] payload = FloatJournalCodec.EncodeCommand(command,result.Candidate.SchemaVersion);
                     long frameSize = FrameOverhead + (long)payload.Length;
                     // No write has started: this is a definite rejection.
                     // Old receipts remain queryable at the capacity boundary.
                     if (_state.Sequence >= MaximumTransactions || _length > MaximumFileBytes - frameSize)
                         return new FloatCommitResult("save-capacity", _state, null, false, false, false);
+                    var upgrade=command as UpgradeFloatProfile;
+                    if(upgrade!=null&&!UpgradeMatchesPrefix(upgrade,_file,_length,_lastHash))
+                        return new FloatCommitResult("upgrade-source-mismatch",_state,null,false,false,false);
 
                     AppendFrame(result.Candidate.Sequence, payload);
                     // Publish only after the full frame and Flush(true) succeed.
@@ -143,6 +146,26 @@ namespace FishingDesktop.GameCore
                 }
                 finally { _executing = false; }
             }
+        }
+
+        // Migration service only: callers copy a validated legacy prefix into
+        // a new candidate first. Execute enforces the same proof, so bypassing
+        // this convenience method cannot bypass prefix verification.
+        internal FloatCommitResult AppendUpgrade(UpgradeFloatProfile command)
+        {if(command==null)throw new ArgumentNullException("command");return Execute(command);}
+
+        static string Hex(byte[] bytes){return BitConverter.ToString(bytes).Replace("-","").ToLowerInvariant();}
+        static bool UpgradeMatchesPrefix(UpgradeFloatProfile upgrade,Stream input,long prefixLength,byte[] tip)
+        {
+            if(upgrade.Origin.SourceLength!=prefixLength||upgrade.Origin.SourceTipSha256!=Hex(tip))return false;
+            long resume=input.Position;
+            try{
+                input.Position=0;long remaining=prefixLength;byte[] buffer=new byte[8192];
+                using(var sha=SHA256.Create()){
+                    while(remaining>0){int count=input.Read(buffer,0,(int)Math.Min(buffer.Length,remaining));if(count==0)throw new EndOfStreamException("Truncated upgrade source prefix.");sha.TransformBlock(buffer,0,count,buffer,0);remaining-=count;}
+                    sha.TransformFinalBlock(new byte[0],0,0);return upgrade.Origin.SourceSha256==Hex(sha.Hash);
+                }
+            }finally{input.Position=resume;}
         }
 
         static byte[] FrameBody(long sequence, byte[] previousHash, byte[] payload)
@@ -225,7 +248,7 @@ namespace FishingDesktop.GameCore
             if(!input.CanRead||!input.CanSeek||input.Position!=0)throw new ArgumentException("A readable seekable journal at byte zero is required.","input");
             long size = input.Length;
             if (size > MaximumFileBytes || size < Magic.Length + FrameOverhead + 1)
-                throw new InvalidDataException("Save length is invalid or exceeds the schema-1 limit.");
+                throw new InvalidDataException("Save length is invalid or exceeds the journal limit.");
             FloatGameState state=null;byte[] lastHash=new byte[32];
             using (var reader = new BinaryReader(input, Encoding.UTF8, true))
             {
@@ -234,6 +257,7 @@ namespace FishingDesktop.GameCore
                 long expectedSequence = 0;
                 while (input.Position < size)
                 {
+                    long frameStart=input.Position;
                     if (size - input.Position < FrameOverhead + 1 || expectedSequence > MaximumTransactions)
                         throw new InvalidDataException("Truncated or excessive save frames.");
                     int length = reader.ReadInt32();
@@ -251,6 +275,11 @@ namespace FishingDesktop.GameCore
                     else
                     {
                         var command = FloatJournalCodec.DecodeCommand(payload);
+                        int schema=FloatJournalCodec.CommandSchema(payload);var upgrade=command as UpgradeFloatProfile;
+                        if(schema!=state.SchemaVersion&&!(state.SchemaVersion==1&&schema==2&&upgrade!=null))
+                            throw new InvalidDataException("Journal payload schema changed without an explicit upgrade.");
+                        if(upgrade!=null&&!UpgradeMatchesPrefix(upgrade,input,frameStart,lastHash))
+                            throw new InvalidDataException("Upgrade source does not match the journal prefix.");
                         var reduction = FloatGameReducer.Reduce(state, command, state.Rules);
                         // Every stored command must add exactly one new state.
                         // An extra duplicate/rejected command is not a commit.

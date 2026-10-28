@@ -55,6 +55,21 @@ namespace FishingDesktop.GameCore
         {FloatGuard.Id(session,"session");FloatGuard.Id(fish,"fish");FloatGuard.Id(encounter,"encounter");FishId=fish;EncounterId=encounter;SpeciesKey=FloatGuard.Key(species);MassMg=massMg;}
         internal override string Detail{get{return FishId.ToString("N")+"|"+EncounterId.ToString("N")+"|"+SpeciesKey+"|"+FloatGuard.Number(MassMg);}}
     }
+    // Fixed host-observed slack escape, not a player-selected loss or a fish
+    // reward. The model version is explicit and part of durable identity.
+    internal sealed class HostFloatUnhooked : FloatCommand
+    {
+        internal readonly Guid EncounterId;
+        internal readonly int FightModelVersion;
+        internal HostFloatUnhooked(Guid profile,Guid branch,Guid request,Guid terminalEvent,Guid session,Guid encounter,long expectedSequence,long expectedRigRevision,long expectedRulesVersion,int fightModelVersion)
+            :base("host-unhooked",profile,branch,request,terminalEvent,session,expectedSequence,expectedRigRevision,expectedRulesVersion)
+        {
+            FloatGuard.Id(session,"session");FloatGuard.Id(encounter,"encounter");
+            if(fightModelVersion!=2)throw new ArgumentOutOfRangeException("fightModelVersion");
+            EncounterId=encounter;FightModelVersion=fightModelVersion;
+        }
+        internal override string Detail{get{return EncounterId.ToString("N")+"|"+FloatGuard.Number(FightModelVersion);}}
+    }
     // Host lifecycle only; never accepted through the player command channel.
     internal sealed class RecoverFloatSession : FloatCommand
     {
@@ -150,11 +165,11 @@ namespace FishingDesktop.GameCore
         static bool FishWasCreated(FloatGameState state,Guid id)
         {foreach(var row in state.Receipts)if(row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected)foreach(var fish in row.FishIds)if(fish==id)return true;return false;}
         static bool EncounterWasUsed(FloatGameState state,Guid id)
-        {foreach(var row in state.Receipts)if((row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected)&&row.EncounterId==id)return true;return false;}
+        {foreach(var row in state.Receipts)if((row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected||row.Outcome==FloatOutcome.Unhooked)&&row.EncounterId==id)return true;return false;}
         static bool AssetExists(FloatGameState state,Guid id)
         {var ids=new HashSet<Guid>();state.Rig.AddAssets(ids);ids.Add(state.BaitStackId);if(state.FoodStackId!=Guid.Empty)ids.Add(state.FoodStackId);if(state.OwnedNet!=null)ids.Add(state.OwnedNet.Id);foreach(var fish in state.Creel)ids.Add(fish.Id);if(state.Session!=null&&state.Session.PendingFish!=null)ids.Add(state.Session.PendingFish.Id);return ids.Contains(id);}
         static string Code(FloatOutcome outcome)
-        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";case FloatOutcome.ProfileUpgraded:return "upgrade-candidate";case FloatOutcome.SuppliesPurchased:return "purchase-candidate";case FloatOutcome.NetEquipped:return "equip-candidate";case FloatOutcome.FoodUsed:return "food-candidate";default:return "sale-candidate";}}
+        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";case FloatOutcome.ProfileUpgraded:return "upgrade-candidate";case FloatOutcome.SuppliesPurchased:return "purchase-candidate";case FloatOutcome.NetEquipped:return "equip-candidate";case FloatOutcome.FoodUsed:return "food-candidate";case FloatOutcome.Unhooked:return "unhooked-candidate";default:return "sale-candidate";}}
         public static FloatReduction Reduce(FloatGameState state,FloatCommand command,FloatGameRules rules)
         {
             if(state==null)throw new ArgumentNullException("state");if(command==null)throw new ArgumentNullException("command");
@@ -216,6 +231,13 @@ namespace FishingDesktop.GameCore
                     if(session==null||session.Id!=command.SessionId)return Reject("session-not-current");
                     if(session.CapacityBlocked)return Reject("pending-result-requires-release");
                     session=null;outcome=FloatOutcome.Recovered;
+                }else if(command is HostFloatUnhooked){
+                    var unhooked=(HostFloatUnhooked)command;
+                    if(schema!=2)return Reject("unhook-upgrade-required");
+                    if(session==null||session.Id!=command.SessionId)return Reject("session-not-current");
+                    if(session.CapacityBlocked)return Reject("pending-fish-already-set");
+                    if(EncounterWasUsed(state,unhooked.EncounterId))return Reject("encounter-identity-used");
+                    encounterId=unhooked.EncounterId;session=null;outcome=FloatOutcome.Unhooked;
                 }else if(command is HostFloatFish){
                     var host=(HostFloatFish)command;
                     if(session==null||session.Id!=command.SessionId)return Reject("session-not-current");if(session.CapacityBlocked)return Reject("pending-fish-already-set");

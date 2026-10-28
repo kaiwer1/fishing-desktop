@@ -48,6 +48,9 @@ sealed partial class DualWindowContext
     }
     void GameShopSaveFault(FloatSaveFaultPoint point)
     {
+        if(GameSelfTest&&gameFailureCommitInProgress&&gameFailurePrewriteArmed&&point==FloatSaveFaultPoint.BeforeWrite){
+            gameFailurePrewriteArmed=false;throw new IOException("Controlled unhook write-before-start failure.");
+        }
         if(GameSelfTest&&gameShopCommitting&&gameShopPrewriteFaultArmed&&point==FloatSaveFaultPoint.BeforeWrite){
             gameShopPrewriteFaultArmed=false;throw new IOException("Scripted self-test shop failure before any frame write.");
         }

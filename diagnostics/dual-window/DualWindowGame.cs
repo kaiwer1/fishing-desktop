@@ -184,6 +184,7 @@ sealed partial class DualWindowContext
         }
         if (command is CastFloat) { GameReply(pane,transport,"cast-preparation-required"); return; }
         AdvanceActivity();
+        if(GameFailureUnconfirmed){GameReply(pane,transport,"failure-result-required");Broadcast();return;}
         var reply=game.ExecuteUser(b.View,b.Document,b.Lease,command);
         GameReply(pane,transport,reply.Code,reply); Broadcast();
     }
@@ -196,6 +197,7 @@ sealed partial class DualWindowContext
         gameShutdownAttempted=true;
         try {
             var state=game.Snapshot;
+            if(GameFailureUnconfirmed){ExitCode=4;gameShutdownCode="unconfirmed-failure-no-settlement";return;}
             if (ExitCode!=0 || state.Faulted) { gameShutdownCode="fault-exit-no-settlement"; return; }
             var result=game.Shutdown(); gameShutdownCode=result.Code;
             ReconcileGameFlight();

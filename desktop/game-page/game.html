@@ -61,12 +61,13 @@
 </svg>
 <div id="fight-copy"><p id="fight-status" role="status">中鱼后开始遛鱼</p><p id="fight-detail">左键按住收线；松开停止绞入，鱼仍可能向外拉线。</p>
 <p><span id="fight-reeling">未收线</span> · 鱼体力 <progress id="fight-energy" max="1000" value="0" aria-label="鱼体力"></progress> <span id="fight-energy-value">—</span></p>
-<div class="interactive"><button id="reel-hold" disabled>按住收线</button><button id="land" disabled>抄鱼 · 空格</button><button id="retry-land" hidden disabled>重试原收鱼结果</button>
+<div class="interactive"><button id="reel-hold" disabled>按住收线</button><button id="land" disabled>抄鱼 · 空格</button><button id="retry-land" hidden disabled>重试原收鱼结果</button><button id="retry-escape" hidden disabled>重试原失败结果</button>
 <div id="fight-controls"><label>泄力<button id="drag-minus" disabled aria-label="降低泄力">−</button><span id="drag-level">0 / 10</span><button id="drag-plus" disabled aria-label="提高泄力">+</button></label>
 <label>收线速度<button id="reel-minus" disabled aria-label="降低收线速度">−</button><span id="reel-level">0 / 10</span><button id="reel-plus" disabled aria-label="提高收线速度">+</button></label></div></div>
 <p class="muted">在操作区滚轮调泄力，R＋滚轮调速度。需先在菜单购买并装备抄网，鱼靠近后满足条件才可抄鱼。</p></div></div>
 <p id="fight-metrics" class="muted">出线 — · 线杯余量 — · 张力 —</p><p id="fight-clipped" hidden>鱼的位置超出示意图范围，边缘标记仅表示方向。</p>
-<p class="muted">这是原创简化受力模型；张力以牛顿显示，尚无断线损耗、脱钩和真实抄网动画。</p></section>
+<p id="fight-exposure" class="muted">松线暴露 —</p>
+<p class="muted">这是原创简化受力模型；张力以牛顿显示。松线脱钩由宿主按实际受力状态判定，失败结果保存确认后才结束本竿，不退还已经使用的鱼饵和体力。本阶段没有装备损失、断线和真实抄网动画。</p></section>
 <div class="interactive"><button id="recall" disabled>收回这一竿</button><button id="release" disabled>放流当前鱼</button><button id="menu" disabled>打开鱼护与商店</button></div>
 <p id="notice" role="status"></p>
 <section id="shop" hidden><h2>渔具与食品商店</h2><p id="shop-status" role="status">等待商店信息</p><p id="shop-wallet">余额 — 银币</p>

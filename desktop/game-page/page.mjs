@@ -16,13 +16,13 @@ const flightView = new FlightView(documentId);
 const biteView = new BiteView(documentId);
 const fightView = new FightView(documentId);
 const shopView = new ShopView(documentId);
-let commerceFaulted = false;
+let saveFaulted = false;
 let speedKeyHeld = false;
 const selected = new Set();
 const $ = id => document.getElementById(id);
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
-const canControl = () => !readOnly && !commerceFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
+const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
 const canPrepare = () => canControl() && !inflight && !shopBusy() && !snapshot.SessionId && !snapshot.MenuOpen;
 const castInput = new CastInput({ readContext: () => ({ lease: authority.state().lease, allowed: canPrepare() }), post: send, newTransportId: () => crypto.randomUUID() });
 function strikeContext() {
@@ -36,9 +36,13 @@ function fightContext() {
   const fight = fightView.state();
   return { lease: authority.state().lease, allowed: canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
     Boolean(fight?.sessionId) && fight.sessionId === snapshot.SessionId,
-    sessionId: fight?.sessionId, encounterId: fight?.encounterId, phase: fight?.phase, canRetryLanding: fight?.canRetryLanding };
+    sessionId: fight?.sessionId, encounterId: fight?.encounterId, phase: fight?.phase, canRetryLanding: fight?.canRetryLanding, canRetryFailure: fight?.canRetryFailure };
 }
 const fightInput = new FightInput({ readContext: fightContext, post: send, newTransportId: () => crypto.randomUUID() });
+function failurePending() {
+  const fight = fightView.state();
+  return fight?.phase === 'failure-pending' && fight.sessionId === snapshot?.SessionId;
+}
 function shopContext() {
   const shop = shopView.state();
   return { lease: authority.state().lease, allowed: canControl() && !inflight && Boolean(snapshot.MenuOpen) && !snapshot.SessionId && shop?.available === true,
@@ -60,7 +64,7 @@ function render() {
   shopInput.reconcile();
   if (!shopContext().allowed || previousShopLease !== shopInput.state().lease) shopView.clearReferences();
   if (!fightContext().allowed) speedKeyHeld = false;
-  $('status').textContent = snapshot?.Faulted || commerceFaulted ? '保存结果待核验，请退出后重新打开原存档。' : snapshot?.HostPaused ? '当前暂停' : readOnly ? '观赏窗口' : canControl() ? '交互已开启' : '请从窗口顶部开启交互';
+  $('status').textContent = snapshot?.Faulted || saveFaulted ? '保存结果待核验，请退出后重新打开原存档。' : snapshot?.HostPaused ? '当前暂停' : readOnly ? '观赏窗口' : canControl() ? '交互已开启' : '请从窗口顶部开启交互';
   if (!snapshot?.HasConfirmedState) {
     $('stats').replaceChildren(); $('session').textContent = '尚无可确认的游戏进度'; $('creel').replaceChildren(); $('capacity').textContent = '';
   } else {
@@ -130,19 +134,25 @@ function renderFight() {
   const state = fightView.state(), graph = fightView.diagram();
   const labels = { idle: '中鱼后开始遛鱼', fighting: '遛鱼中', 'landing-eligible': '已进入可抄范围，按空格抄鱼',
     'landing-pending': '正在确认收鱼结果', landed: '已确认收鱼入护', 'capacity-blocked': '鱼护已满，请明确放流当前鱼',
+    'failure-pending': '正在确认本竿失败结果', escaped: '已确认松线脱钩，本竿结束',
     faulted: '遛鱼已暂停，当前结果未确认', ended: '本次遛鱼已结束' };
   const reasons = { 'fish-too-far': '鱼距岸还远', 'fish-too-deep': '鱼所在水层超出抄网范围', 'fish-moving': '鱼还在快速游动', 'fish-active': '鱼仍有较多体力',
     'net-unavailable': '没有可用抄网', eligible: '可抄鱼', 'landing-not-written': '尚未写入，点击下方按钮重试原收鱼结果',
     'landing-save-unknown': '保存结果待核验，请退出后重新打开原存档', 'solver-unresolved': '当前受力求解超出支持范围，请收回这一竿',
+    'failure-pending': '结果尚未保存确认，暂不能收回、抄鱼或继续收线。',
+    'failure-not-written': '失败结果确认未写入。请明确点击下方按钮重试原结果，不能用收回来跳过确认。',
+    'failure-save-unknown': '保存结果待核验，已停止全部操作。请退出后重新打开原存档。',
     'load-outside-supported-range': '当前负载超出简化模型支持范围，请收回这一竿', 'speed-outside-supported-range': '当前速度超出简化模型支持范围，请收回这一竿' };
   $('fight-status').textContent = labels[state?.phase ?? 'idle'];
-  $('fight-detail').textContent = state?.phase === 'faulted' || state?.phase === 'landing-pending' ? reasons[state.reason] ?? '等待宿主确认，不能重复发鱼。' :
+  $('fight-detail').textContent = state && ['faulted', 'landing-pending', 'failure-pending'].includes(state.phase) ? reasons[state.reason] ?? '等待宿主确认，当前结果尚未保存。' :
+    state?.phase === 'escaped' ? '本次没有鱼入护；已使用的鱼饵和体力不退还，装备没有损失。可重新抛竿。' :
     state && ['fighting', 'landing-eligible'].includes(state.phase) ? `${state.reeling ? '正在主动收线' : '尚未主动收线'} · ${reasons[state.landingReason] ?? '观察鱼的位置与线张力'}` : '左键按住收线；松开停止绞入，鱼仍可能向外拉线。';
   $('fight-marks').setAttribute('visibility', graph ? 'visible' : 'hidden');
   $('fight-clipped').hidden = !graph?.clipped;
   $('fight-energy').value = state?.energyPermille ?? 0;
   $('fight-energy-value').textContent = state && state.phase !== 'idle' ? `${(state.energyPermille / 10).toFixed(1)}%` : '—';
   $('fight-reeling').textContent = state?.reeling ? '收线中' : '未收线';
+  $('fight-exposure').textContent = state && !['idle', 'ended', 'escaped'].includes(state.phase) ? `宿主记录的松线暴露：${state.unhookExposureSteps} 步` : '松线暴露 —';
   $('drag-level').textContent = `${state?.dragLevel ?? 0} / 10`;
   $('reel-level').textContent = `${state?.reelLevel ?? 0} / 10`;
   if (!graph) { $('fight-metrics').textContent = '出线 — · 线杯余量 — · 张力 —'; return; }
@@ -157,7 +167,7 @@ function renderShop() {
   const reasons = { 'commerce-upgrade-required': '这份旧版进度尚未启用商店。请先生成并核验升级副本，原档不会自动改动。',
     'control-required': '请从窗口顶部开启交互后购买或使用物品。', 'session-busy': '请先收回当前一竿或处理当前鱼，再购买、换装和进食。',
     'save-outcome-unknown': '保存结果待核验，已停止交易。请退出后重新打开原存档。', 'owner-stopped': '进度已关闭。' };
-  $('shop-status').textContent = commerceFaulted ? reasons['save-outcome-unknown'] : shopBusy() ? '正在等待宿主确认，请勿重复操作。' :
+  $('shop-status').textContent = saveFaulted ? reasons['save-outcome-unknown'] : shopBusy() ? '正在等待宿主确认，请勿重复操作。' :
     state?.reason ? reasons[state.reason] ?? '商店暂时不可用。' : !canControl() ? reasons['control-required'] : input.retry ? '上次操作确认未写入。可以重试原操作，或取消。' : '先获取报价，再确认购买；所有变化以保存结果为准。';
   $('shop-wallet').textContent = `余额 ${formatMinor(state?.walletMinor)} 银币`;
   $('shop-net-price').textContent = `${formatMinor(state?.netPriceMinor)} 银币 / 件`;
@@ -191,7 +201,10 @@ function updateButtons() {
   $('land').disabled = !fight.allowed || fight.phase !== 'landing-eligible' || landingPending;
   $('retry-land').hidden = !fight.canRetryLanding;
   $('retry-land').disabled = !fight.allowed || fight.phase !== 'landing-pending' || !fight.canRetryLanding || landingPending;
-  $('recall').disabled = !active || !snapshot.SessionId || snapshot.PendingResult;
+  const failureRetryPending = fightInput.state().pending.some(p => p.action === 'retry-escape' && p.sessionId === fight.sessionId && p.encounterId === fight.encounterId && p.lease === fight.lease);
+  $('retry-escape').hidden = fight.phase !== 'failure-pending' || !fight.canRetryFailure;
+  $('retry-escape').disabled = !fight.allowed || fight.phase !== 'failure-pending' || !fight.canRetryFailure || failureRetryPending;
+  $('recall').disabled = !active || !snapshot.SessionId || snapshot.PendingResult || failurePending();
   $('release').disabled = !active || !snapshot.PendingResult;
   $('menu').disabled = !active;
   $('menu').textContent = snapshot?.MenuOpen ? '关闭鱼护与商店' : '打开鱼护与商店';
@@ -218,7 +231,7 @@ function revoke(reason) {
   render();
 }
 function intent(action) {
-  if (!canControl() || inflight || shopBusy()) return;
+  if (!canControl() || inflight || shopBusy() || action === 'recall' && failurePending()) return;
   fightInput.cancel();
   const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : snapshot.SessionId,
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
@@ -240,6 +253,10 @@ Object.assign(codes, { 'shop-quoted': '报价已确认，请检查总价后选�
   'shop-cancelled': '本次报价或未写入操作已取消。', 'shop-not-written': '操作确认未写入，可重试原操作或取消。', 'shop-retry-required': '请先重试或取消上次未写入的操作。', 'shop-intent-not-current': '报价或操作已失效，请重新获取报价。',
   'commerce-upgrade-required': '旧版进度需先核验升级副本才能使用商店。', 'wallet-insufficient': '银币不足。', 'net-not-owned': '请先购买抄网。', 'net-already-owned': '已拥有抄网。', 'net-equipment-unchanged': '抄网装备状态没有变化。',
   'food-empty': '食品已用完。', 'stamina-full': '体力已满，本次没有消耗食品。', 'bait-limit-exceeded': '鱼饵数量已达到上限。', 'food-limit-exceeded': '食品数量已达到上限。', 'quote-stale': '进度已变化，请重新获取报价。', 'save-capacity': '保存容量已满，未执行本次交易。' });
+Object.assign(codes, { 'failure-pending': '失败结果尚未保存确认，请等待当前结果。', 'failure-not-written': '失败结果确认未写入，可明确重试原结果。',
+  'failure-save-unknown': '失败结果的保存状态未知，已停止全部操作，请退出后核验原存档。', 'failure-retry-unavailable': '当前不能重试失败结果。',
+  'failure-result-required': '请先确认当前失败结果，不能用收回来跳过。', 'slack-unhooked': '已确认松线脱钩，本竿结束；不退饵、不退体力，装备无损失。',
+  'unhooked-candidate': '已确认松线脱钩，本竿结束；没有鱼入护，装备无损失。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
   if (m.kind === 'game-flight-state') {
@@ -253,12 +270,16 @@ window.chrome.webview.addEventListener('message', event => {
     return;
   }
   if (m.kind === 'game-fight-state') {
-    if (fightView.apply(m)) { fightInput.reconcile(); renderFight(); renderCast(); updateButtons(); }
+    if (fightView.apply(m)) {
+      if (['failure-save-unknown', 'landing-save-unknown'].includes(m.state.reason)) saveFaulted = true;
+      fightInput.reconcile();
+      if (saveFaulted) render(); else { renderFight(); renderCast(); updateButtons(); }
+    }
     return;
   }
   if (m.kind === 'game-shop-state') {
     if (shopView.apply(m)) {
-      if (m.state.reason === 'save-outcome-unknown') commerceFaulted = true;
+      if (m.state.reason === 'save-outcome-unknown') saveFaulted = true;
       shopInput.hostState(shopView.state()); renderShop(); updateButtons();
     }
     return;
@@ -276,7 +297,7 @@ window.chrome.webview.addEventListener('message', event => {
   if (m.kind === 'game-snapshot' && Number.isSafeInteger(m.revision) && m.revision > revision) { snapshot = m.snapshot; revision = m.revision; }
   if (m.kind === 'game-reply') {
     lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m);
-    if (m.code === 'save-outcome-unknown') commerceFaulted = true;
+    if (['save-outcome-unknown', 'failure-save-unknown', 'landing-save-unknown'].includes(m.code)) saveFaulted = true;
     if (inflight === m.transportId) inflight = null; $('notice').textContent = codes[m.code] ?? `操作未完成：${m.code}`;
   }
   if (m.kind === 'game-cast-state' && Number.isSafeInteger(m.revision) && m.revision > castRevision &&
@@ -300,6 +321,8 @@ $('cast-cancel').addEventListener('click', () => { castInput.cancel(); render();
 $('strike').addEventListener('click', () => { strikeInput.strike(); updateButtons(); });
 $('land').addEventListener('click', () => { fightInput.land(); updateButtons(); });
 $('retry-land').addEventListener('click', () => { fightInput.retryLanding(); updateButtons(); });
+$('retry-escape').addEventListener('click', event => { if (event.detail > 1) return; fightInput.retryFailure(); updateButtons(); });
+$('retry-escape').addEventListener('keydown', event => { if (event.repeat && ['Space', 'Enter'].includes(event.code)) event.preventDefault(); });
 function changeFightLevel(action, direction) {
   const state = fightView.state(); if (!state) return false;
   const value = action === 'drag' ? state.dragLevel : state.reelLevel;

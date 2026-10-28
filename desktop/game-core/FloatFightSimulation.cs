@@ -1,4 +1,5 @@
 using System;
+using System.Security.Cryptography;
 using System.Threading;
 
 namespace FishingDesktop.GameCore
@@ -66,8 +67,8 @@ namespace FishingDesktop.GameCore
     }
     internal sealed class FloatLandingRules
     {
-        // The development adapter supplies this fixture capability. This bool
-        // is not an owned inventory item or permission to invent a free net.
+        // The caller resolves this capability from its authoritative owned
+        // and equipped inventory. This bool is not an inventory item itself.
         internal readonly bool NetAvailable;
         internal readonly double MaximumDistanceM,MaximumDepthM,MaximumSpeedMps,MaximumEnergy;
         internal FloatLandingRules(bool netAvailable,double maximumDistanceM,double maximumDepthM,double maximumSpeedMps,double maximumEnergy)
@@ -75,6 +76,18 @@ namespace FishingDesktop.GameCore
             FloatFightGuard.Range(maximumDistanceM,.001,100,"maximumDistanceM");FloatFightGuard.Range(maximumDepthM,0,100,"maximumDepthM");
             FloatFightGuard.Range(maximumSpeedMps,0,50,"maximumSpeedMps");FloatFightGuard.Range(maximumEnergy,0,1,"maximumEnergy");
             NetAvailable=netAvailable;MaximumDistanceM=maximumDistanceM;MaximumDepthM=maximumDepthM;MaximumSpeedMps=maximumSpeedMps;MaximumEnergy=maximumEnergy;
+        }
+    }
+    internal sealed class FloatUnhookRules
+    {
+        internal readonly double MinimumSlackM;
+        internal readonly int ExposureSteps,RecoveryStepsPerTick;
+        internal FloatUnhookRules(double minimumSlackM,int exposureSteps,int recoveryStepsPerTick)
+        {
+            FloatFightGuard.Range(minimumSlackM,.001,1000,"minimumSlackM");
+            if(exposureSteps<1||exposureSteps>12000)throw new ArgumentOutOfRangeException("exposureSteps");
+            if(recoveryStepsPerTick<1||recoveryStepsPerTick>12000)throw new ArgumentOutOfRangeException("recoveryStepsPerTick");
+            MinimumSlackM=minimumSlackM;ExposureSteps=exposureSteps;RecoveryStepsPerTick=recoveryStepsPerTick;
         }
     }
     internal sealed class FloatFightSetup
@@ -88,9 +101,10 @@ namespace FishingDesktop.GameCore
         internal readonly FloatFightRigRules Rig;
         internal readonly FloatFightFishRules Fish;
         internal readonly FloatLandingRules Landing;
+        internal readonly FloatUnhookRules Unhook;
         internal readonly uint Seed;
         internal FloatFightSetup(Guid sessionId,Guid encounterId,FloatBiteTarget target,long rigRevision,FloatFightPoint anchor,FloatFightPoint fishStart,
-            long totalLineMm,double initialOutLineM,FloatFightWater water,FloatFightRigRules rig,FloatFightFishRules fish,FloatLandingRules landing,uint seed)
+            long totalLineMm,double initialOutLineM,FloatFightWater water,FloatFightRigRules rig,FloatFightFishRules fish,FloatLandingRules landing,uint seed,FloatUnhookRules unhook=null)
         {
             if(sessionId==Guid.Empty||encounterId==Guid.Empty||sessionId==encounterId)throw new ArgumentException("Distinct session and encounter identities are required.");
             if(target==null||anchor==null||fishStart==null||water==null||rig==null||fish==null||landing==null)throw new ArgumentNullException("fight dependency");
@@ -102,11 +116,19 @@ namespace FishingDesktop.GameCore
             double dx=fishStart.X-anchor.X,dy=fishStart.Y-anchor.Y,dz=fishStart.Z-anchor.Z;
             if(initialOutLineM+1e-9<Math.Sqrt(dx*dx+dy*dy+dz*dz))throw new ArgumentException("Initial line cannot be shorter than the fish path.");
             SessionId=sessionId;EncounterId=encounterId;Target=target;RigRevision=rigRevision;Anchor=anchor;FishStart=fishStart;
-            TotalLineMm=totalLineMm;InitialOutLineM=initialOutLineM;Water=water;Rig=rig;Fish=fish;Landing=landing;Seed=seed;
+            TotalLineMm=totalLineMm;InitialOutLineM=initialOutLineM;Water=water;Rig=rig;Fish=fish;Landing=landing;Seed=seed;Unhook=unhook;
         }
     }
-    internal enum FloatFightPhase { Fighting,LandingEligible,LandingPending,Landed,CapacityBlocked,Faulted,Ended }
+    internal enum FloatFightPhase { Fighting,LandingEligible,LandingPending,Landed,CapacityBlocked,Faulted,Ended,FailurePending,Escaped }
     internal enum FloatLandingOutcome { Landed,CapacityBlocked,KnownNotWritten,Unknown }
+    internal enum FloatFailureOutcome { Confirmed,KnownNotWritten,Unknown }
+    internal sealed class FloatFailureTicket
+    {
+        internal readonly Guid FailureId,SessionId,EncounterId;
+        internal readonly string Reason;
+        internal FloatFailureTicket(Guid failure,Guid session,Guid encounter,string reason)
+        {FailureId=failure;SessionId=session;EncounterId=encounter;Reason=reason;}
+    }
     internal sealed class FloatLandingTicket
     {
         internal readonly Guid LandingId,SessionId,EncounterId;
@@ -116,7 +138,7 @@ namespace FishingDesktop.GameCore
     {
         internal readonly Guid SessionId,EncounterId;
         internal readonly long RigRevision,StepIndex;
-        internal readonly int RemainderMilliseconds,DragLevel,ReelLevel,LandingAttempt;
+        internal readonly int RemainderMilliseconds,DragLevel,ReelLevel,LandingAttempt,UnhookExposureSteps,FailureAttempt;
         internal readonly FloatFightPhase Phase;
         internal readonly string Reason,LandingReason;
         internal readonly FloatFightPoint Position,Velocity;
@@ -125,25 +147,28 @@ namespace FishingDesktop.GameCore
         internal readonly FloatBiteTarget Target;
         internal FloatFightSnapshot(FloatFightSetup setup,long step,int remainder,FloatFightPhase phase,string reason,string landingReason,
             FloatFightPoint position,FloatFightPoint velocity,double line,double slack,double tension,double drag,double energy,bool reeling,int dragLevel,int reelLevel,
-            double reeled,double paidOut,int landingAttempt)
+            double reeled,double paidOut,int landingAttempt,int unhookExposureSteps,int failureAttempt)
         {SessionId=setup.SessionId;EncounterId=setup.EncounterId;RigRevision=setup.RigRevision;Target=setup.Target;StepIndex=step;RemainderMilliseconds=remainder;
             Phase=phase;Reason=reason;LandingReason=landingReason;Position=position;Velocity=velocity;OutLineM=line;SpoolRemainingM=setup.TotalLineMm/1000.0-line;
             SlackM=slack;TensionN=tension;DragN=drag;RodDeflectionM=tension/setup.Rig.RodSpringNPerM;Energy=energy;Reeling=reeling;DragLevel=dragLevel;ReelLevel=reelLevel;
-            ReeledThisStepM=reeled;PaidOutThisStepM=paidOut;LandingAttempt=landingAttempt;}
+            ReeledThisStepM=reeled;PaidOutThisStepM=paidOut;LandingAttempt=landingAttempt;UnhookExposureSteps=unhookExposureSteps;FailureAttempt=failureAttempt;}
     }
     internal sealed class FloatFightResult
     {
-        internal readonly bool Accepted,ShouldCommitLanding,TerminalEvent;
+        internal readonly bool Accepted,ShouldCommitLanding,ShouldCommitFailure,TerminalEvent;
         internal readonly string Code;
         internal readonly FloatLandingTicket LandingTicket;
-        internal readonly int LandingAttempt;
+        internal readonly FloatFailureTicket FailureTicket;
+        internal readonly int LandingAttempt,FailureAttempt;
         internal readonly FloatFightSnapshot Snapshot;
-        internal FloatFightResult(bool accepted,bool submit,bool terminal,string code,FloatLandingTicket ticket,int attempt,FloatFightSnapshot snapshot)
-        {Accepted=accepted;ShouldCommitLanding=submit;TerminalEvent=terminal;Code=code;LandingTicket=ticket;LandingAttempt=attempt;Snapshot=snapshot;}
+        internal FloatFightResult(bool accepted,bool submit,bool terminal,string code,FloatLandingTicket ticket,int attempt,FloatFightSnapshot snapshot,
+            bool submitFailure,FloatFailureTicket failureTicket,int failureAttempt)
+        {Accepted=accepted;ShouldCommitLanding=submit;TerminalEvent=terminal;Code=code;LandingTicket=ticket;LandingAttempt=attempt;Snapshot=snapshot;
+            ShouldCommitFailure=submitFailure;FailureTicket=failureTicket;FailureAttempt=failureAttempt;}
     }
     internal sealed class FloatFightSimulation
     {
-        internal const int ModelVersion=1,StepMilliseconds=50;
+        internal const int ModelVersion=2,StepMilliseconds=50;
         const double Dt=.05;
         readonly int thread=Thread.CurrentThread.ManagedThreadId;
         readonly FloatFightSetup setup;
@@ -152,12 +177,13 @@ namespace FishingDesktop.GameCore
         double x,z,vx,vz,line,tension,energy=1,reeled,paidOut;
         long step;
         int remainder,dragLevel,reelLevel,behavior;
-        bool reeling,terminalEmitted,landingSubmitted,landingUnknown;
+        bool reeling,terminalEmitted,landingSubmitted,landingUnknown,failureSubmitted,failureUnknown;
         FloatFightPhase phase=FloatFightPhase.Fighting;
         string reason="fighting";
         string solveFailure="solver-unresolved";
         FloatLandingTicket landingTicket;
-        int landingAttempt;
+        FloatFailureTicket failureTicket;
+        int landingAttempt,unhookExposureSteps,failureAttempt;
         internal FloatFightSimulation(FloatFightSetup setup)
         {
             if(setup==null)throw new ArgumentNullException("setup");this.setup=setup;random=new FloatBiteRandom(setup.Seed^0x657832cbu);
@@ -183,6 +209,30 @@ namespace FishingDesktop.GameCore
         }
         void UpdateEligibility(){if(!Active)return;bool ready=LandingReason()=="eligible";phase=ready?FloatFightPhase.LandingEligible:FloatFightPhase.Fighting;reason=ready?"landing-eligible":"fighting";}
         void Fault(string why){phase=FloatFightPhase.Faulted;reason=why;reeling=false;remainder=0;}
+        Guid FailureIdentity()
+        {
+            // Domain-separated from bite/landing identities, stable across
+            // rendering partitions and independent of the fish random stream.
+            var bytes=new byte[64];var domain=System.Text.Encoding.ASCII.GetBytes("float-slack-v2");Array.Copy(domain,bytes,domain.Length);
+            Array.Copy(setup.SessionId.ToByteArray(),0,bytes,16,16);Array.Copy(setup.EncounterId.ToByteArray(),0,bytes,32,16);
+            ulong at=(ulong)step;for(int i=0;i<8;i++)bytes[48+i]=(byte)(at>>(8*i));
+            byte[] hash;using(var sha=SHA256.Create())hash=sha.ComputeHash(bytes);
+            var value=new byte[16];Array.Copy(hash,value,16);value[7]=(byte)((value[7]&15)|128);value[8]=(byte)((value[8]&63)|128);
+            Guid id=new Guid(value);
+            // There are only three excluded identities, so this bounded
+            // sequence always finds a distinct identity within four trials.
+            for(int i=0;i<4;i++){if(id!=Guid.Empty&&id!=setup.SessionId&&id!=setup.EncounterId)return id;value[15]=(byte)((value[15]+1)&255);id=new Guid(value);}
+            throw new InvalidOperationException("Failure identity allocation failed.");
+        }
+        void UpdateUnhook(double slack)
+        {
+            if(setup.Unhook==null)return;
+            if(slack>=setup.Unhook.MinimumSlackM)unhookExposureSteps++;
+            else unhookExposureSteps=Math.Max(0,unhookExposureSteps-setup.Unhook.RecoveryStepsPerTick);
+            if(unhookExposureSteps<setup.Unhook.ExposureSteps)return;
+            failureTicket=new FloatFailureTicket(FailureIdentity(),setup.SessionId,setup.EncounterId,"slack-unhooked");
+            failureAttempt=1;failureSubmitted=true;phase=FloatFightPhase.FailurePending;reason="slack-unhooked";reeling=false;remainder=0;
+        }
         static void Boundary(ref double position,ref double velocity,double minimum,double maximum)
         {if(position<minimum){position=minimum;if(velocity<0)velocity=0;}else if(position>maximum){position=maximum;if(velocity>0)velocity=0;}}
         sealed class Solution
@@ -288,20 +338,24 @@ namespace FishingDesktop.GameCore
             double recovery=solved.Tension<Drag*.25&&behavior==3?setup.Fish.RecoveryPerSecond*Dt:0;
             energy=Math.Max(0,Math.Min(1,energy-effort*setup.Fish.FatiguePerJoule+recovery));
             x=solved.X;z=solved.Z;vx=solved.Vx;vz=solved.Vz;tension=solved.Tension;line=Math.Max(setup.Rig.MinimumOutLineM,Math.Min(total,candidateLine));
-            reeled=requested;paidOut=payout;UpdateEligibility();
+            reeled=requested;paidOut=payout;
+            // Only a successfully validated physical step exposes the hook.
+            // Unsupported solver/load/speed faults above must win this step.
+            UpdateUnhook(Math.Max(0,line-Distance(x,z)));
+            UpdateEligibility();
         }
         FloatFightSnapshot Describe()
         {return new FloatFightSnapshot(setup,step,remainder,phase,reason,LandingReason(),new FloatFightPoint(x,setup.FishStart.Y,z),new FloatFightPoint(vx,0,vz),
-            line,Math.Max(0,line-Distance(x,z)),tension,Drag,energy,reeling,dragLevel,reelLevel,reeled,paidOut,landingAttempt);}
+            line,Math.Max(0,line-Distance(x,z)),tension,Drag,energy,reeling,dragLevel,reelLevel,reeled,paidOut,landingAttempt,unhookExposureSteps,failureAttempt);}
         internal FloatFightSnapshot Snapshot{get{Check();return Describe();}}
-        FloatFightResult Result(bool accepted,bool submit,bool terminal,string code)
-        {return new FloatFightResult(accepted,submit,terminal,code,landingTicket,landingAttempt,Describe());}
+        FloatFightResult Result(bool accepted,bool submit,bool terminal,string code,bool submitFailure=false)
+        {return new FloatFightResult(accepted,submit,terminal,code,landingTicket,landingAttempt,Describe(),submitFailure,failureTicket,failureAttempt);}
         internal FloatFightResult Advance(Guid sessionId,int activeMilliseconds)
         {
             Check();if(activeMilliseconds<0||activeMilliseconds>250)throw new ArgumentOutOfRangeException("activeMilliseconds");
             if(sessionId!=setup.SessionId)return Result(false,false,false,"session-not-current");if(!Active)return Result(false,false,false,"fight-not-active");
             remainder+=activeMilliseconds;while(remainder>=StepMilliseconds&&Active){remainder-=StepMilliseconds;Tick();}
-            return Result(true,false,false,reason);
+            return Result(true,false,false,reason,phase==FloatFightPhase.FailurePending&&failureSubmitted);
         }
         internal FloatFightResult SetReeling(Guid sessionId,Guid encounterId,bool held)
         {Check();if(!Current(sessionId,encounterId))return Result(false,false,false,"fight-not-current");if(!Active)return Result(false,false,false,"fight-not-active");reeling=held;return Result(true,false,false,held?"reel-held":"reel-released");}
@@ -338,10 +392,27 @@ namespace FishingDesktop.GameCore
             phase=outcome==FloatLandingOutcome.Landed?FloatFightPhase.Landed:FloatFightPhase.CapacityBlocked;reason=outcome==FloatLandingOutcome.Landed?"landed":"creel-capacity-exceeded";
             bool emit=outcome==FloatLandingOutcome.Landed&&!terminalEmitted;terminalEmitted|=emit;return Result(true,false,emit,reason);
         }
+        internal FloatFightResult RetryFailure(FloatFailureTicket ticket)
+        {
+            Check();if(!Object.ReferenceEquals(ticket,failureTicket)||ticket==null)return Result(false,false,false,"failure-ticket-invalid");
+            if(phase!=FloatFightPhase.FailurePending||failureSubmitted||failureUnknown)return Result(false,false,false,"failure-retry-unavailable");
+            failureAttempt=checked(failureAttempt+1);failureSubmitted=true;reason="slack-unhooked";return Result(true,false,false,reason,true);
+        }
+        internal FloatFightResult ConfirmFailure(FloatFailureTicket ticket,int attempt,FloatFailureOutcome outcome)
+        {
+            Check();if(outcome!=FloatFailureOutcome.Confirmed&&outcome!=FloatFailureOutcome.KnownNotWritten&&outcome!=FloatFailureOutcome.Unknown)throw new ArgumentOutOfRangeException("outcome");
+            if(!Object.ReferenceEquals(ticket,failureTicket)||ticket==null)return Result(false,false,false,"failure-ticket-invalid");
+            if(phase!=FloatFightPhase.FailurePending||!failureSubmitted||failureUnknown||attempt!=failureAttempt)return Result(false,false,false,"failure-attempt-not-current");
+            failureSubmitted=false;
+            if(outcome==FloatFailureOutcome.Unknown){failureUnknown=true;reason="failure-save-unknown";return Result(true,false,false,reason);}
+            if(outcome==FloatFailureOutcome.KnownNotWritten){reason="failure-not-written";return Result(true,false,false,reason);}
+            phase=FloatFightPhase.Escaped;reason="slack-unhooked";bool emit=!terminalEmitted;terminalEmitted=true;return Result(true,false,emit,reason);
+        }
         internal FloatFightResult End(Guid sessionId)
         {
             Check();if(sessionId!=setup.SessionId)return Result(false,false,false,"session-not-current");
             if(landingUnknown||(phase==FloatFightPhase.LandingPending&&landingSubmitted))return Result(false,false,false,"landing-result-required");
+            if(failureUnknown||phase==FloatFightPhase.FailurePending)return Result(false,false,false,"failure-result-required");
             if(phase==FloatFightPhase.Ended)return Result(false,false,false,"fight-not-active");
             phase=FloatFightPhase.Ended;reason="ended";reeling=false;remainder=0;bool emit=!terminalEmitted;terminalEmitted=true;return Result(true,false,emit,reason);
         }

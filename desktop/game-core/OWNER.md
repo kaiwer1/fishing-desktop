@@ -1,5 +1,7 @@
 # 单竿游戏owner与会话收束候选
 
+2026-10-28 松线脱钩扩展：内部HostFloatUnhooked仅走host通道，仍要求当前可模拟资格、原活动会话和未用遇鱼身份；页面不能提供失败事实。宿主在FailurePending时阻止普通收竿和退出补写，明确重试沿用原请求；确认后重启不会再补一次Recovery。新增28项失败事务与51项隐藏WebView联调通过，见[脱钩模型](UNHOOK_MODEL.md)。未直接测试未确认退出的窗口场景及真实存储故障。
+
 2026-10-28 补给扩展：用户通道增加BuyFloatSupply、EquipFloatNet、UseFloatFood，仍先检查当前view/document/lease，迁移及host鱼事实不进入页面通道。schema2宿主用内部required-schema入口在取得写锁后、Startup前再次核对格式，旧档不会先自动收束；普通旧API兼容其原语义。18项新增Owner及原29项通过，页面/宿主46项联合另见[游戏页](../game-page/README.md)。下述2026-10-27记录为早期切片范围。
 
 2026-10-27。`FloatGameOwner`持有真实`FloatGameStore`，显示页只关联当前view/document/lease；现已通过[静态页面与现有宿主](../game-page/README.md)的12项隐藏WebView联合检查。物理、鱼情和动作模拟尚未实现，游戏可见桌面和原生输入仍未验收；不能把数据接线称作完整游戏已经可玩。

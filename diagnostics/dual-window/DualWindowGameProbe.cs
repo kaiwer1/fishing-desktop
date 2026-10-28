@@ -283,6 +283,8 @@ sealed partial class DualWindowContext
             Require(game.Snapshot.State.WalletMinor==walletAfterSupplies,"Old sale replay paid twice or reverted later supply purchases.");
             checks.Add("page cancellation invalidates game lease and fresh authorized retry preserves old sale receipt");
 
+            lease=await GameFailureProbe(read,control,lease);
+
             await GameCastAndWait(control,lease);
             await Wait(read,s=>Number(s,"flightCount")==gameFlightEmissions);
             long sequence=game.Snapshot.State.Sequence;
@@ -306,7 +308,8 @@ sealed partial class DualWindowContext
                 biteSimulationConnected=true,gameHookedEmissions=gameHookedEmissions,naturalFishLanded=true,controlledBiteSeed=true,
                 fightSimulationConnected=true,gameNaturalLandings=gameNaturalLandings,fixtureNetCapability=false,equipmentDamageImplemented=false,
                 commerceConnected=true,ownedNetEquipped=game.Snapshot.State.OwnedNet!=null && game.Snapshot.State.EquippedNetId==game.Snapshot.State.OwnedNet.Id,
-                foodCount=game.Snapshot.State.FoodCount,baitCount=game.Snapshot.State.BaitCount,stamina=game.Snapshot.State.Stamina}),Encoding.UTF8);
+                foodCount=game.Snapshot.State.FoodCount,baitCount=game.Snapshot.State.BaitCount,stamina=game.Snapshot.State.Stamina,
+                slackUnhookConnected=true,controlledSlackSetup=true,gameUnhookedConfirmations=gameUnhookedConfirmations}),Encoding.UTF8);
             Shutdown();
         } catch(Exception error) { Fail(error); }
     }

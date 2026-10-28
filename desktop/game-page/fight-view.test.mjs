@@ -7,10 +7,11 @@ const encounter = '20000000-0000-0000-0000-000000000001';
 const nextEncounter = '20000000-0000-0000-0000-000000000002';
 const state = extra => ({ sessionId: session, encounterId: encounter, phase: 'fighting', reason: 'fighting', landingReason: 'fish-too-far', stepIndex: '0',
   xMm: 0, yMm: -600, zMm: 15000, outLineMm: 15500, spoolRemainingMm: 34500, slackMm: 353,
-  tensionMilliN: 0, dragMilliN: 6000, rodDeflectionMm: 0, energyPermille: 1000, reeling: false, dragLevel: 5, reelLevel: 5, canRetryLanding: false, ...extra });
+  tensionMilliN: 0, dragMilliN: 6000, rodDeflectionMm: 0, energyPermille: 1000, reeling: false, dragLevel: 5, reelLevel: 5,
+  canRetryLanding: false, unhookExposureSteps: 0, canRetryFailure: false, ...extra });
 const packet = (revision = 1, extra = {}) => ({ kind: 'game-fight-state', documentId: 'current', revision, state: state(extra) });
 function fixture() {
-  const context = { lease: 'first', allowed: true, sessionId: session, encounterId: encounter, phase: 'fighting', canRetryLanding: false }, messages = [];
+  const context = { lease: 'first', allowed: true, sessionId: session, encounterId: encounter, phase: 'fighting', canRetryLanding: false, canRetryFailure: false }, messages = [];
   let transport = 0;
   const input = new FightInput({ readContext: () => context, post: m => messages.push(m), newTransportId: () => `fight-${++transport}` });
   return { input, context, messages, actions: () => messages.map(m => m.action) };
@@ -115,4 +116,75 @@ test('read-only and malformed identity prevent every new control action', () => 
 test('reply pairing stays bounded without dropping the held stop', () => {
   const f = fixture(); f.input.begin(); for (let i = 0; i < 100; i++) f.input.adjust('drag', i % 11);
   assert.equal(f.input.state().pending.length, 64); f.input.end(); assert.equal(f.messages.at(-1).action, 'reel-stop');
+});
+
+test('failure projection requires explicit bounded exposure and phase-specific retry flags', () => {
+  const view = new FightView('current');
+  for (const bad of [{ unhookExposureSteps: undefined }, { unhookExposureSteps: -1 }, { unhookExposureSteps: 12001 }, { unhookExposureSteps: 1.5 },
+    { canRetryFailure: undefined }, { canRetryFailure: 1 }, { canRetryFailure: true }, { canRetryLanding: true },
+    { phase: 'escaped', canRetryFailure: true }, { phase: 'failure-pending', reeling: true }, { phase: 'escaped', reeling: true }])
+    assert.equal(view.apply(packet(1, bad)), false);
+  assert.equal(view.revision, 0);
+  assert.equal(view.apply(packet(1, { phase: 'failure-pending', reason: 'failure-not-written', unhookExposureSteps: 12000, canRetryFailure: true })), true);
+  assert.equal(view.state().unhookExposureSteps, 12000);
+});
+
+test('pending failure stays unconfirmed and only confirmed escape removes connected fish diagram', () => {
+  const view = new FightView('current');
+  view.apply(packet(1, { phase: 'failure-pending', reason: 'failure-pending', unhookExposureSteps: 40 }));
+  assert.equal(view.diagram().phase, 'failure-pending');
+  for (let n = 0; n < 50; n++) assert.equal(view.state().phase, 'failure-pending');
+  view.apply(packet(2, { phase: 'escaped', reason: 'slack-unhooked', unhookExposureSteps: 40 }));
+  assert.equal(view.diagram(), null); assert.equal(view.state().phase, 'escaped');
+  const next = new FightView('new'); next.apply({ ...packet(1, { phase: 'escaped', reason: 'slack-unhooked', unhookExposureSteps: 40 }), documentId: 'new' });
+  assert.equal(next.diagram(), null);
+});
+
+test('failure transition stops held reeling once without automatically retrying or landing', () => {
+  const f = fixture(); f.input.begin(); f.context.phase = 'failure-pending'; f.context.canRetryFailure = true;
+  f.input.reconcile(); f.input.reconcile();
+  assert.deepEqual(f.actions(), ['reel-start', 'reel-stop']);
+  assert.equal(f.input.begin(), false); assert.equal(f.input.adjust('drag', 5), false); assert.equal(f.input.land(), false); assert.equal(f.input.retryLanding(), false);
+  f.context.phase = 'escaped'; f.input.reconcile(); assert.equal(f.input.retryFailure(), false);
+  assert.deepEqual(f.actions(), ['reel-start', 'reel-stop']);
+});
+
+test('escape retry needs an explicit current pending permission and emits only original encounter identity', () => {
+  const f = fixture(); assert.equal(f.input.retryFailure(), false);
+  f.context.phase = 'failure-pending'; assert.equal(f.input.retryFailure(), false);
+  f.context.canRetryFailure = true; assert.equal(f.input.retryFailure(), true); assert.equal(f.input.retryFailure(), false);
+  assert.deepEqual(f.messages[0], { kind: 'game-fight', lease: 'first', transportId: 'fight-1', sessionId: session, encounterId: encounter, inputSequence: '1', action: 'retry-escape' });
+  assert.equal(f.input.reply({ transportId: 'fight-1', code: 'failure-not-written' }), true);
+  assert.equal(f.messages.length, 1); assert.equal(f.input.retryFailure(), true);
+  assert.equal(f.messages[1].encounterId, encounter); assert.equal(f.messages[1].inputSequence, '2');
+});
+
+test('old failure reply cannot clear a replacement grant retry and no forbidden context emits one', () => {
+  const f = fixture(); Object.assign(f.context, { phase: 'failure-pending', canRetryFailure: true }); f.input.retryFailure();
+  f.context.lease = 'second'; f.input.retryFailure(); f.input.reply({ transportId: f.messages[0].transportId, code: 'failure-not-written' });
+  assert.equal(f.input.retryFailure(), false); assert.equal(f.input.state().pending[0].lease, 'second');
+  for (const change of [{ allowed: false }, { lease: null }, { sessionId: null }, { encounterId: 'bad' }, { phase: 'escaped' }, { phase: 'landing-pending' }]) {
+    const g = fixture(); Object.assign(g.context, { phase: 'failure-pending', canRetryFailure: true }, change);
+    assert.equal(g.input.retryFailure(), false); assert.deepEqual(g.messages, []);
+  }
+});
+
+test('unconfirmed landing and escape submissions cannot overlap for the same encounter', () => {
+  const f = fixture(); f.context.phase = 'landing-eligible'; f.input.land();
+  Object.assign(f.context, { phase: 'failure-pending', canRetryFailure: true }); assert.equal(f.input.retryFailure(), false);
+  f.input.reply({ transportId: f.messages[0].transportId, code: 'failure-result-required' }); f.input.retryFailure();
+  f.context.phase = 'landing-eligible'; assert.equal(f.input.land(), false);
+  assert.deepEqual(f.actions(), ['land', 'retry-escape']);
+});
+
+test('unknown failure reply permanently blocks all fight actions even across replacement grants', () => {
+  for (const code of ['failure-save-unknown', 'save-outcome-unknown']) {
+    const f = fixture(); Object.assign(f.context, { phase: 'failure-pending', canRetryFailure: true }); f.input.retryFailure();
+    f.input.reply({ transportId: f.messages[0].transportId, code });
+    f.context.lease = 'second'; assert.equal(f.input.retryFailure(), false);
+    f.context.phase = 'fighting'; assert.equal(f.input.begin(), false); assert.equal(f.input.adjust('speed', 5), false);
+    Object.assign(f.context, { phase: 'landing-pending', canRetryLanding: true }); assert.equal(f.input.retryLanding(), false);
+    f.context.phase = 'landing-eligible'; assert.equal(f.input.land(), false);
+    assert.equal(f.input.state().faulted, true); assert.equal(f.messages.length, 1);
+  }
 });

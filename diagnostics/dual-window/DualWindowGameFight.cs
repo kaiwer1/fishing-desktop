@@ -16,7 +16,7 @@ sealed partial class DualWindowContext
     bool GameFightTimeBlocked {get{
         if(gameFight==null)return false;
         var phase=gameFight.Snapshot.Phase;
-        return phase==FloatFightPhase.Faulted || phase==FloatFightPhase.LandingPending;
+        return phase==FloatFightPhase.Faulted || phase==FloatFightPhase.LandingPending || phase==FloatFightPhase.FailurePending;
     }}
     void StartGameFight(FloatBiteSnapshot bite)
     {
@@ -25,14 +25,20 @@ sealed partial class DualWindowContext
         var state=game.Snapshot.State;var flight=gameFlight.Snapshot;
         var anchor=new FloatFightPoint(0,1.5,0);var fish=new FloatFightPoint(flight.Xmm/1000,-.2,flight.Zmm/1000);
         double distance=Math.Sqrt(fish.X*fish.X+1.7*1.7+fish.Z*fish.Z);
+        // Only the private scripted escape case starts with extra already-owned
+        // line paid out and a resting fish. Ordinary play uses its real landing.
+        bool failureFixture=GameSelfTest&&gameFailureFixture;
+        double initialLine=failureFixture?Math.Min(state.Rig.LineLengthMm/1000.0,distance+2):distance;
         // Original development equipment/flat-depth slice. The extra depth
         // uses the real existing spool budget; this is not new inventory line.
-        var setup=new FloatFightSetup(bite.SessionId,bite.EncounterId,bite.Target,state.Rig.Revision,anchor,fish,state.Rig.LineLengthMm,distance,
+        var setup=new FloatFightSetup(bite.SessionId,bite.EncounterId,bite.Target,state.Rig.Revision,anchor,fish,state.Rig.LineLengthMm,initialLine,
             new FloatFightWater(0,-2,-40,40,3,80),new FloatFightRigRules(80,1,40,200,1,20,.2,1.6,40,3,3,5,5),
-            new FloatFightFishRules(bite.Target.SpeciesId=="carp"?3:2,2,20,.05,.005,10),
-            new FloatLandingRules(state.OwnedNet!=null && state.EquippedNetId==state.OwnedNet.Id,5,1,1,.5),GameSelfTest?91u:BitConverter.ToUInt32(bite.EncounterId.ToByteArray(),0));
+            new FloatFightFishRules(bite.Target.SpeciesId=="carp"?3:2,2,20,.05,.005,10,failureFixture?FloatFightBehavior.Rest:FloatFightBehavior.Seeded),
+            new FloatLandingRules(state.OwnedNet!=null && state.EquippedNetId==state.OwnedNet.Id,5,1,1,.5),GameSelfTest?91u:BitConverter.ToUInt32(bite.EncounterId.ToByteArray(),0),
+            new FloatUnhookRules(.25,60,2));
         gameFight=new FloatFightSimulation(setup);gameFightMillisecondRemainder=0;gameReelInput=null;
         gameLandingCommand=null;gameLandingTicket=null;gameLandingRetry=false;
+        gameFailureCommand=null;gameFailureTicket=null;gameFailureRetry=false;
         BroadcastGameFight();
     }
     void ClearGameFightInput(ProbeWindow pane=null)
@@ -51,7 +57,7 @@ sealed partial class DualWindowContext
     {
         if(gameFight==null)return false;
         var fight=gameFight.Snapshot;var state=game.Snapshot;
-        if(fight.Phase==FloatFightPhase.Ended || fight.Phase==FloatFightPhase.Landed)return false;
+        if(fight.Phase==FloatFightPhase.Ended || fight.Phase==FloatFightPhase.Landed || fight.Phase==FloatFightPhase.Escaped)return false;
         if(state.Faulted){ClearGameFightInput();return false;}
         if(state.State!=null && state.State.Session!=null && state.State.Session.Id==fight.SessionId){
             if(!state.CanSimulate || !GameReelCurrent())ClearGameFightInput();
@@ -69,7 +75,10 @@ sealed partial class DualWindowContext
         double milliseconds=activeSeconds*1000+gameFightMillisecondRemainder;
         int whole=(int)Math.Floor(milliseconds);gameFightMillisecondRemainder=milliseconds-whole;
         if(whole==0)return;
-        while(whole>0){int step=Math.Min(250,whole);gameFight.Advance(before.SessionId,step);whole-=step;}
+        while(whole>0){
+            int step=Math.Min(250,whole);var result=gameFight.Advance(before.SessionId,step);whole-=step;
+            if(result.ShouldCommitFailure){CommitGameFailure(result);break;}
+        }
         if(gameFight.Snapshot.Phase==FloatFightPhase.Faulted)ClearGameFightInput();
         BroadcastGameFight();
     }
@@ -79,6 +88,7 @@ sealed partial class DualWindowContext
         if(phase==FloatFightPhase.LandingEligible)return "landing-eligible";
         if(phase==FloatFightPhase.LandingPending)return "landing-pending";
         if(phase==FloatFightPhase.CapacityBlocked)return "capacity-blocked";
+        if(phase==FloatFightPhase.FailurePending)return "failure-pending";
         return phase.ToString().ToLowerInvariant();
     }
     void SendGameFight(ProbeWindow pane)
@@ -93,7 +103,9 @@ sealed partial class DualWindowContext
             outLineMm=fight==null?0:FightUnits(fight.OutLineM),spoolRemainingMm=fight==null?0:FightUnits(fight.SpoolRemainingM),slackMm=fight==null?0:FightUnits(fight.SlackM),
             tensionMilliN=fight==null?0:FightUnits(fight.TensionN),dragMilliN=fight==null?0:FightUnits(fight.DragN),rodDeflectionMm=fight==null?0:FightUnits(fight.RodDeflectionM),
             energyPermille=fight==null?0:FightUnits(fight.Energy),reeling=fight!=null && fight.Reeling,dragLevel=fight==null?5:fight.DragLevel,reelLevel=fight==null?5:fight.ReelLevel,
-            canRetryLanding=gameLandingRetry && fight!=null && fight.Phase==FloatFightPhase.LandingPending}});
+            canRetryLanding=gameLandingRetry && fight!=null && fight.Phase==FloatFightPhase.LandingPending,
+            canRetryFailure=gameFailureRetry && fight!=null && fight.Phase==FloatFightPhase.FailurePending,
+            unhookExposureSteps=fight==null?0:fight.UnhookExposureSteps}});
     }
     void BroadcastGameFight(){foreach(var pane in windows.Values)SendGameFight(pane);}
     void ReceiveGameFight(ProbeWindow pane,GameBinding binding,Dictionary<string,object> message,string transport)
@@ -105,13 +117,17 @@ sealed partial class DualWindowContext
         }
         bool hasLevel=action=="drag" || action=="speed";
         if(message.Count!=(hasLevel?9:8) || (hasLevel?(!message.TryGetValue("value",out rawValue) || !(rawValue is int) || (level=(int)rawValue)<0 || level>10):
-            (action!="reel-start" && action!="reel-stop" && action!="land" && action!="retry-land"))){GameReply(pane,transport,"invalid-intent");return;}
+            (action!="reel-start" && action!="reel-stop" && action!="land" && action!="retry-land" && action!="retry-escape"))){GameReply(pane,transport,"invalid-intent");return;}
         if(sequence<=binding.FightHighWater){GameReply(pane,transport,"stale-input");return;}
         binding.FightHighWater=sequence;AdvanceActivity();
         if(!game.CanControl(binding.View,binding.Document,binding.Lease) || !game.Snapshot.CanSimulate){GameReply(pane,transport,"domain-paused");return;}
         if(gameFight==null || gameFight.Snapshot.SessionId!=session || gameFight.Snapshot.EncounterId!=encounter){GameReply(pane,transport,"fight-not-current");return;}
         FloatFightResult result;
-        if(action=="reel-start" || action=="reel-stop"){
+        if(action=="retry-escape"){
+            if(!gameFailureRetry){GameReply(pane,transport,"failure-retry-unavailable");return;}
+            result=gameFight.RetryFailure(gameFailureTicket);
+            if(result.ShouldCommitFailure){CommitGameFailure(result,pane,transport);return;}
+        }else if(action=="reel-start" || action=="reel-stop"){
             result=gameFight.SetReeling(session,encounter,action=="reel-start");
             if(result.Accepted){
                 gameReelInput=action=="reel-stop"?null:new GameCastInput{Pane=pane,Binding=binding,Document=binding.Document,Lease=binding.Lease,

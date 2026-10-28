@@ -12,7 +12,7 @@ namespace FishingDesktop.GameCore
     {
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
-        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10;
+        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -126,7 +126,7 @@ namespace FishingDesktop.GameCore
         {
             if(command is CastFloat)return Cast;if(command is RecallFloat)return Recall;if(command is ReleaseCurrentFloatFish)return Release;
             if(command is SellFloatFish)return Sale;if(command is HostFloatFish)return HostFish;if(command is RecoverFloatSession)return Recovery;
-            if(command is UpgradeFloatProfile)return Upgrade;if(command is BuyFloatSupply)return Purchase;if(command is EquipFloatNet)return Equip;if(command is UseFloatFood)return Food;throw Invalid("Unsupported journal command type.");
+            if(command is UpgradeFloatProfile)return Upgrade;if(command is BuyFloatSupply)return Purchase;if(command is EquipFloatNet)return Equip;if(command is UseFloatFood)return Food;if(command is HostFloatUnhooked)return Unhooked;throw Invalid("Unsupported journal command type.");
         }
         static void Catalog(Writer writer,FloatCommerceCatalog catalog)
         {
@@ -147,7 +147,7 @@ namespace FishingDesktop.GameCore
         {
             return Encode(Command,schema,writer=>{
                 if(command==null)throw Invalid("Missing journal command.");byte type=Type(command);
-                if(schema==1&&type>Recovery)throw Invalid("Commerce commands require schema2.");
+                if(schema==1&&type>Recovery)throw Invalid("This command requires schema2.");
                 writer.Byte(type);writer.Guid(command.ProfileId);writer.Guid(command.BranchId);writer.Guid(command.RequestId);writer.Guid(command.EventId);writer.Guid(command.SessionId);
                 writer.I64(command.ExpectedSequence);writer.I64(command.ExpectedRigRevision);writer.I64(command.ExpectedRulesVersion);
                 if(type==Sale){
@@ -163,12 +163,13 @@ namespace FishingDesktop.GameCore
                     writer.Guid(quote.ProfileId);writer.Guid(quote.BranchId);writer.I64(quote.StateSequence);writer.I64(quote.CatalogVersion);writer.Byte((byte)quote.Product);writer.I32(quote.PackCount);writer.I32(quote.Units);writer.I64(quote.TotalPriceMinor);writer.Text(quote.CatalogSignature,1024);writer.Guid(buy.NewNetId);
                 }else if(type==Equip)writer.Guid(((EquipFloatNet)command).NetId);
                 else if(type==Food)writer.Guid(((UseFloatFood)command).FoodStackId);
+                else if(type==Unhooked){var unhooked=(HostFloatUnhooked)command;writer.Guid(unhooked.EncounterId);writer.I32(unhooked.FightModelVersion);}
             });
         }
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,(reader,schema)=>{
-                byte type=reader.Byte();if(type<Cast||type>Food||(schema==1&&type>Recovery))throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(type<Cast||type>Unhooked||(schema==1&&type>Recovery))throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
                 if(type==Cast)return (FloatCommand)new CastFloat(profile,branch,request,businessEvent,session,sequence,rig,rules);
@@ -179,6 +180,7 @@ namespace FishingDesktop.GameCore
                     if(session!=Guid.Empty)throw Invalid("Sale command contains a session.");int count=reader.U16();if(count<1||count>MaximumSaleIds)throw Invalid("Sale identity count is invalid.");
                     var ids=new List<Guid>(count);for(int i=0;i<count;i++)ids.Add(reader.Guid());SaleIds(ids);return new SellFloatFish(profile,branch,request,businessEvent,ids,sequence,rig,rules);
                 }
+                if(type==Unhooked)return new HostFloatUnhooked(profile,branch,request,businessEvent,session,reader.Guid(),sequence,rig,rules,reader.I32());
                 if(type>=Upgrade){
                     if(session!=Guid.Empty)throw Invalid("Commerce command contains a session.");
                     if(type==Upgrade){Guid newBranch=reader.Guid(),foodStack=reader.Guid();string sha=reader.Text(),tip=reader.Text();long length=reader.I64();var catalog=Catalog(reader);return new UpgradeFloatProfile(profile,branch,request,businessEvent,newBranch,foodStack,sha,tip,length,sequence,rig,rules,catalog);}

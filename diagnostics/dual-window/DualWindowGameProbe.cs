@@ -57,6 +57,7 @@ sealed partial class DualWindowContext
     }
     void GameFixtureLand()
     {
+        Require(GameSelfTest,"Controlled fish facts are restricted to the private scripted check.");
         Require(GameReadyForFish(),"A fish fact cannot bypass valid water contact or pause.");
         var s=game.Snapshot.State;
         var result=game.ExecuteHost(new HostFloatFish(s.ProfileId,s.BranchId,Guid.NewGuid(),Guid.NewGuid(),s.Session.Id,Guid.NewGuid(),Guid.NewGuid(),"carp",1000000,s.Sequence,s.Rig.Revision,s.RulesVersion));
@@ -203,6 +204,7 @@ sealed partial class DualWindowContext
             checks.Add("typed release prepares first and host event commits once before the other page receives new resources");
 
             lease=await GameFlightLifecycleProbe(control,lease);
+            lease=await GameBiteLifecycleProbe(read,control,lease);
 
             GameCode(await GameCastWire(control,lease,"release",1),"gesture-not-current",false);
             GameCode(await GameCastWire(control,lease,"begin",1),"session-busy",false);
@@ -259,6 +261,7 @@ sealed partial class DualWindowContext
             await GamePreparationCancellationProbe(control,lease);
             // The probe above revokes/regrants; explicitly acquire the current lease.
             lease=await Activate(control);
+            await GameBiteFailureProbe(control,lease);
             for(int index=0;index<3;index++) { await GameCastAndWait(control,lease); await GameWaitForWater(control); GameFixtureLand(); }
             Require(game.Snapshot.PendingResult && !game.Snapshot.CanSimulate,"Full-creel result was not paused.");
             Require(gameFlight.Snapshot.Phase==FloatFlightPhase.Ended,"Pending fish kept an active flight runtime.");
@@ -295,7 +298,8 @@ sealed partial class DualWindowContext
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new {passed=true,checks=checks.ToArray(),gameLoaded=true,
                 sequence=game.Snapshot.State.Sequence,value=game.Snapshot.State.WalletMinor,realWebViewMessages=true,independentWindows=true,
                 nativeInputTested=false,desktopLayer=false,nativeFullscreenTested=false,gameSimulationImplemented=false,controlledFishFacts=true,personalSaveRead=false,
-                castPreparationConnected=true,gameFlightEmissions=gameFlightEmissions,flatWaterFlightConnected=true,realWaterAndFlight=false}),Encoding.UTF8);
+                castPreparationConnected=true,gameFlightEmissions=gameFlightEmissions,flatWaterFlightConnected=true,realWaterAndFlight=false,
+                biteSimulationConnected=true,gameHookedEmissions=gameHookedEmissions,naturalFishLanded=false,controlledBiteSeed=true}),Encoding.UTF8);
             Shutdown();
         } catch(Exception error) { Fail(error); }
     }

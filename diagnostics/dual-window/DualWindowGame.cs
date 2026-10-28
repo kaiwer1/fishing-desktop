@@ -21,8 +21,8 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision;
-        internal long CastHighWater;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision;
+        internal long CastHighWater, StrikeHighWater;
     }
     readonly Dictionary<ProbeWindow,GameBinding> gameViews = new Dictionary<ProbeWindow,GameBinding>();
     bool GameCanSimulate { get { return game == null || game.Snapshot.CanSimulate; } }
@@ -64,7 +64,7 @@ sealed partial class DualWindowContext
     {
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
-        b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0; b.CastRevision=0; b.FlightRevision=0;
+        b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0; b.CastRevision=0; b.FlightRevision=0; b.BiteRevision=0;
         if (pane.DesktopReadOnly && !desktopShown.Contains(pane)) {
             desktopShown.Add(pane); GuardPresentation(()=>pane.Show()); CheckDesktop(pane);
         }
@@ -81,7 +81,7 @@ sealed partial class DualWindowContext
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
-        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0;
+        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0;
         var state=game.Snapshot;
         if (wireLease == null || b.Document == null || state.Faulted || state.HostPaused || state.ShutdownConfirmed) return;
         b.Lease=game.GrantControl(b.View,b.Document); b.WireLease=wireLease;
@@ -100,8 +100,8 @@ sealed partial class DualWindowContext
         var read=windows[false];
         if (read.DesktopReadOnly && !desktopShown.Contains(read)) { desktopShown.Add(read); GuardPresentation(()=>read.Show()); CheckDesktop(read); }
         rendererEnabled=true; RendererPageReady(read);
-        // Preparation and a flat-water flight slice run on the host. There is
-        // no autonomous fish simulation in this integration candidate.
+        // Preparation, flat-water flight and bite run on the host. Fighting
+        // and naturally landed fish are not connected in this stage.
         await Task.FromResult(0);
         Broadcast();
     }
@@ -110,6 +110,7 @@ sealed partial class DualWindowContext
         GameBinding b;
         if (game == null || !pane.Ready || !gameViews.TryGetValue(pane,out b) || b.Document == null) return;
         ReconcileGameFlight();
+        ReconcileGameBite();
         var snapshot=game.ReadView(b.View,b.Document);
         int count=snapshot.State==null?0:snapshot.State.Creel.Count;
         if (b.Offset>count) b.Offset=0;
@@ -117,6 +118,7 @@ sealed partial class DualWindowContext
         Send(pane,new {kind="game-snapshot",documentId=pane.Ticket.DocumentId,revision=checked(++b.Revision),snapshot=projected});
         SendGameCast(pane);
         SendGameFlight(pane);
+        SendGameBite(pane);
     }
     bool GameAuthorized(ProbeWindow pane,string document,string lease,out GameBinding b)
     {
@@ -145,6 +147,7 @@ sealed partial class DualWindowContext
         }
         if (!GameAuthorized(pane,document,lease,out b)) { GameReply(pane,transport,"control-required"); return; }
         if (kind=="game-cast") { ReceiveGameCast(pane,b,m,transport); return; }
+        if (kind=="game-strike") { ReceiveGameStrike(pane,b,m,transport); return; }
         if (kind=="game-menu") {
             object open;
             if (m.Count!=5 || !m.TryGetValue("open",out open) || !(open is bool)) { GameReply(pane,transport,"invalid-intent"); return; }
@@ -174,6 +177,7 @@ sealed partial class DualWindowContext
             if (ExitCode!=0 || state.Faulted) { gameShutdownCode="fault-exit-no-settlement"; return; }
             var result=game.Shutdown(); gameShutdownCode=result.Code;
             ReconcileGameFlight();
+            ReconcileGameBite();
             if (!result.Confirmed) ExitCode=4;
         } catch(Exception error) {
             ExitCode=4; gameShutdownCode="settlement-unconfirmed";

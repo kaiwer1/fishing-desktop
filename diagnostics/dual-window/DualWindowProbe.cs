@@ -15,10 +15,10 @@ sealed partial class DualWindowContext
         object field;return value!=null && value.TryGetValue(key,out field)?field as Dictionary<string,object>:null;
     }
     static long Number(Dictionary<string,object> value,string key){return Convert.ToInt64(value[key]);}
-    async Task<Dictionary<string,object>> Wait(ProbeWindow pane,Func<Dictionary<string,object>,bool> condition)
+    async Task<Dictionary<string,object>> Wait(ProbeWindow pane,Func<Dictionary<string,object>,bool> condition,int timeoutMilliseconds=6000)
     {
         var timer=Stopwatch.StartNew();
-        while(timer.ElapsedMilliseconds<6000 && Live(pane)){
+        while(timer.ElapsedMilliseconds<timeoutMilliseconds && Live(pane)){
             if(pane.Ready){
                 string raw=await pane.View.CoreWebView2.ExecuteScriptAsync("window.dualProbe.state()");
                 if(!Live(pane))break;

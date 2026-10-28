@@ -7,15 +7,16 @@
 *{box-sizing:border-box}body{margin:0;background:#202421;color:#ededdf;font:16px/1.55 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1120px;margin:auto;padding:24px}header{border-bottom:1px solid #737965;padding-bottom:16px}h1{font-size:24px;margin:0 0 8px}p{margin:8px 0}.muted{color:#bac1b0;font-size:14px}#status{color:#d3df8a}#stats{display:flex;flex-wrap:wrap;gap:14px;margin:20px 0}#stats span{padding:8px 16px;background:#343a31}button{font:inherit;background:#454c3a;border:1px solid #8c9872;color:#fff;padding:9px 18px;cursor:pointer;margin:0 8px 8px 0}button:disabled{opacity:.4;cursor:default}button:focus-visible{outline:3px solid #d6e18c;outline-offset:2px}section{padding:16px 0;border-top:1px solid #555e4d}h2{font-size:18px;margin:0 0 12px}#creel{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;list-style:none;padding:0}.fish{padding:14px;background:#343a31}.fish label{display:flex;gap:8px;align-items:flex-start}#notice{min-height:26px;color:#d9d498}#portrait{display:none}body[data-role=observer] .interactive{display:none}@media(orientation:portrait){main{display:none}#portrait{display:flex;height:100vh;align-items:center;justify-content:center;font-size:24px}}
 #cast-target{border:1px solid #8c9872;background:#2b342b;padding:20px;margin:14px 0;min-height:130px;user-select:none;touch-action:none;cursor:crosshair}#cast-target[aria-disabled=true]{opacity:.55;cursor:default}#cast-power{width:min(65%,420px);height:20px;vertical-align:middle;accent-color:#bdcd7a;margin-right:12px}#cast-status{min-height:25px}
 #flight-diagram{display:block;width:100%;max-height:250px;background:#252d2b;border:1px solid #596358}#flight-diagram text{fill:#bac7bf;font:12px system-ui,sans-serif}#flight-diagram .axis{stroke:#576963;stroke-width:1}#flight-diagram .water{stroke:#82b4bb;stroke-width:1.5}#flight-metrics{font-variant-numeric:tabular-nums}#flight-status{min-height:25px}#flight-clipped{color:#e0b778}
+#bite-layout{display:flex;gap:24px;align-items:center;flex-wrap:wrap}#bite-diagram{width:360px;max-width:100%;height:250px;flex:0 1 360px;border:1px solid #596358;background:#252d2b;cursor:crosshair;user-select:none;touch-action:none}#bite-diagram text{fill:#bac7bf;font:13px system-ui,sans-serif}#bite-copy{flex:1 1 280px}#bite-status{color:#d3df8a;font-size:18px}#bite-bait{color:#bac1b0}
 @media(min-width:900px){#cast-workbench{display:grid;grid-template-columns:minmax(300px,.85fr) minmax(0,1.15fr);gap:20px}#cast-workbench section{min-width:0}}
 </style></head>
 <body><div id="portrait">请横屏游玩</div><main>
-<header><h1>钓鱼桌面 · 单竿操作预览</h1><p class="muted">开发预览：按住蓄力、松开出手；下方示意图显示固定平面上的轨迹。鱼情、真实地形和挥竿动作尚未接入。</p><p id="status">等待宿主载入进度…</p></header>
+<header><h1>钓鱼桌面 · 单竿操作预览</h1><p class="muted">开发预览：左键蓄力后松开出手，落水后观察浮漂，右键提竿。当前使用简化水域和漂相示意，遛鱼、真实地形与挥竿动作尚未接入。</p><p id="status">等待宿主载入进度…</p></header>
 <div id="stats"></div>
 <p id="session">等待进度</p>
 <div id="cast-workbench">
 <section id="casting"><h2>抛竿准备</h2><p id="cast-status" role="status">尚未蓄力</p><progress id="cast-power" max="1000" value="0" aria-label="宿主确认的蓄力"></progress><span id="cast-percent">0%</span>
-<div id="cast-target" class="interactive" role="group" aria-label="临时抛竿操作区"><strong>临时抛竿操作区</strong><p>在这里按住鼠标左键蓄力，松开出手；右键取消尚未出手的蓄力。</p><p class="muted">固定测试目标，尚无真实水面。</p></div>
+<div id="cast-target" class="interactive" role="group" aria-label="临时抛竿操作区"><strong>临时抛竿操作区</strong><p>左键按住蓄力，松开出手。准备时右键取消；落水后右键提竿。</p><p class="muted">固定朝向的简化水域，尚无真实场景。</p></div>
 <div class="interactive"><button id="cast" disabled>开始蓄力</button><button id="cast-release" disabled>松开出手</button><button id="cast-cancel" disabled>取消蓄力</button></div></section>
 <section id="flight"><h2>飞行与落水 · 固定平面示意</h2><p id="flight-status">等待确认出手</p>
 <svg id="flight-diagram" viewBox="0 0 720 240" role="img" aria-labelledby="flight-title flight-description">
@@ -29,8 +30,23 @@
 <polyline id="flight-trail" fill="none" stroke="#c4d985" stroke-width="2" stroke-linejoin="round"/>
 <circle id="flight-origin" r="3" fill="#d7dec3"/><circle id="flight-bobber" r="5" fill="#e8a85b" stroke="#f4eedb" stroke-width="1.5"/>
 </g></svg>
-<p id="flight-metrics" class="muted">距离 — · 所需线长 —</p><p class="muted">亮线为最近轨迹，所需线长按竿尖到钓组的直线距离显示。这是简化平面示意，尚未接入真实场景和漂相。</p><p id="flight-clipped" hidden>当前位置超出示意图范围，边缘标记仅表示方向。</p></section>
+<p id="flight-metrics" class="muted">距离 — · 所需线长 —</p><p class="muted">亮线为最近轨迹，所需线长按竿尖到钓组的直线距离显示。这是简化平面示意，浮漂变化见下方近景。</p><p id="flight-clipped" hidden>当前位置超出示意图范围，边缘标记仅表示方向。</p></section>
 </div>
+<section id="bite"><h2>观察浮漂 · 近景示意</h2><div id="bite-layout">
+<svg id="bite-diagram" viewBox="0 0 360 250" role="img" aria-labelledby="bite-title bite-description">
+<title id="bite-title">浮漂近景</title><desc id="bite-description">水面横线保持固定，浮漂按宿主报告的位置上下或侧向移动。可在图内右键提竿。</desc>
+<rect x="0" y="125" width="360" height="125" fill="#304d50"/>
+<path d="M0 125H360M20 163H90M270 182H330M80 213H150" fill="none" stroke="#679399" stroke-width="1"/>
+<text x="12" y="112">水面</text>
+<g id="bite-marks" visibility="hidden"><g id="bite-float" transform="translate(180 125)">
+<path d="M0 -68V42" stroke="#e2ddd0" stroke-width="3"/><path d="M0 -68V-51M0 -38V-24" stroke="#dd674c" stroke-width="5"/>
+<ellipse cx="0" cy="-6" rx="7" ry="18" fill="#e4c47a" stroke="#f4e5b6" stroke-width="1"/>
+<path d="M0 42V80" stroke="#c3d0bd" stroke-width="1"/>
+</g></g></svg>
+<div id="bite-copy"><p id="bite-status" role="status">有效落水后开始观察浮漂</p><p id="bite-detail">右键提竿；过早提竿可能空提。</p><p id="bite-bait">钩饵 —</p>
+<div class="interactive"><button id="strike" disabled>提竿</button></div>
+<p class="muted">右键每次按下只提竿一次。菜单、暂停和失去交互时冻结鱼口，恢复后需要重新按下。</p></div>
+</div></section>
 <div class="interactive"><button id="recall" disabled>收回这一竿</button><button id="release" disabled>放流当前鱼</button><button id="menu" disabled>打开鱼护菜单</button></div>
 <p id="notice" role="status"></p>
 <section><h2>鱼护 <span id="capacity"></span></h2><ul id="creel"></ul><div class="interactive"><button id="sell" disabled>出售选中的鱼</button></div><button id="previous" disabled>上一页</button><button id="next" disabled>下一页</button></section>

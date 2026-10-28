@@ -46,10 +46,16 @@ namespace FishingDesktop.GameCore
         public static FloatGameOwner OpenExisting(string path)
         { return OpenExisting(path, null); }
         internal static FloatGameOwner OpenExisting(string path, Action<FloatSaveFaultPoint> hook)
+        { return OpenExisting(path,hook,0); }
+        // A host with a newer feature set may require a schema before startup
+        // settlement. The already-held writer closes the inspection/open gap.
+        internal static FloatGameOwner OpenExisting(string path,Action<FloatSaveFaultPoint> hook,int requiredSchemaVersion)
         {
             var owner = new FloatGameOwner(FloatGameStore.OpenExisting(path, hook));
             try
             {
+                if(requiredSchemaVersion!=0&&owner._store.State.SchemaVersion!=requiredSchemaVersion)
+                    throw new InvalidOperationException("An explicitly upgraded profile candidate is required before opening this game.");
                 var recovery = owner.Run(() => FloatGameLifecycle.Startup(owner._store));
                 if (!recovery.Confirmed) throw new InvalidOperationException("Startup settlement was not confirmed: " + recovery.Code);
                 return owner;
@@ -103,7 +109,7 @@ namespace FishingDesktop.GameCore
             return new FloatCommitResult(code, null, null, false, false, false);
         }
         static bool UserType(FloatCommand command)
-        { return command is CastFloat || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish; }
+        { return command is CastFloat || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
         bool HasRecordedRequest(FloatCommand command)
         {
             if (command == null) return false;

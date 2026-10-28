@@ -80,6 +80,18 @@ sealed partial class DualWindowContext
         Require(gameHookedEmissions==1 && game.Snapshot.State.Sequence==saved.Sequence && game.Snapshot.State.BaitCount==saved.BaitCount &&
             game.Snapshot.State.WalletMinor==saved.WalletMinor && game.Snapshot.State.Creel.Count==0,"Strike granted fish or repeated spending.");
         checks.Add("real page strike button hooks the existing encounter exactly once without awarding fish, replaying or consuming another bait");
+        Require(game.Snapshot.State.OwnedNet==null && game.Snapshot.State.EquippedNetId==Guid.Empty,"New profile received a training net as an owned asset.");
+        GameCode(await GameFightWire(pane,lease,"land"),"net-unavailable",false);
+        await GameMenu(pane,lease,true);
+        foreach(string shopAction in new[]{"quote","equip","eat"}){
+            var shop=new Dictionary<string,object>{{"kind","game-shop"},{"documentId",pane.Ticket.DocumentId},{"lease",lease},{"transportId",Guid.NewGuid().ToString("D")},{"action",shopAction}};
+            if(shopAction=="quote"){shop.Add("product","net");shop.Add("packs",1);}
+            else{shop.Add("inputSequence","1");if(shopAction=="equip")shop.Add("equipped",true);}
+            GameCode(await GameStrikeWire(pane,shop),"session-busy",false);
+        }
+        Require(game.Snapshot.State.Sequence==saved.Sequence && gameLandingCommand==null && game.Snapshot.State.OwnedNet==null,"Unowned net or busy shop produced inventory.");
+        await GameMenu(pane,lease,false);
+        checks.Add("a hooked fish cannot use a training net and an active cast rejects shop purchases equipment and food even in the menu");
         return lease;
     }
     async Task GameBiteFailureProbe(ProbeWindow pane,string lease)

@@ -30,7 +30,7 @@ sealed partial class DualWindowContext
         var setup=new FloatFightSetup(bite.SessionId,bite.EncounterId,bite.Target,state.Rig.Revision,anchor,fish,state.Rig.LineLengthMm,distance,
             new FloatFightWater(0,-2,-40,40,3,80),new FloatFightRigRules(80,1,40,200,1,20,.2,1.6,40,3,3,5,5),
             new FloatFightFishRules(bite.Target.SpeciesId=="carp"?3:2,2,20,.05,.005,10),
-            new FloatLandingRules(true,5,1,1,.5),GameSelfTest?91u:BitConverter.ToUInt32(bite.EncounterId.ToByteArray(),0));
+            new FloatLandingRules(state.OwnedNet!=null && state.EquippedNetId==state.OwnedNet.Id,5,1,1,.5),GameSelfTest?91u:BitConverter.ToUInt32(bite.EncounterId.ToByteArray(),0));
         gameFight=new FloatFightSimulation(setup);gameFightMillisecondRemainder=0;gameReelInput=null;
         gameLandingCommand=null;gameLandingTicket=null;gameLandingRetry=false;
         BroadcastGameFight();

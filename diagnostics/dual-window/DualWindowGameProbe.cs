@@ -262,6 +262,8 @@ sealed partial class DualWindowContext
             // The probe above revokes/regrants; explicitly acquire the current lease.
             lease=await Activate(control);
             await GameBiteFailureProbe(control,lease);
+            lease=await GameCommerceProbe(read,control,lease);
+            long walletAfterSupplies=game.Snapshot.State.WalletMinor;
             for(int index=0;index<3;index++)lease=await GameNaturalLanding(read,control,lease,index==0,index==2);
             Require(game.Snapshot.PendingResult && !game.Snapshot.CanSimulate,"Full-creel result was not paused.");
             Require(gameFlight.Snapshot.Phase==FloatFlightPhase.Ended,"Pending fish kept an active flight runtime.");
@@ -278,7 +280,7 @@ sealed partial class DualWindowContext
             GameCode(await GameWire(control,lease,sell),"control-required",false);
             lease=await Activate(control);
             GameCode(await GameWire(control,lease,sell),"sale-candidate",true);
-            Require(game.Snapshot.State.WalletMinor==12120,"Old sale replay paid twice.");
+            Require(game.Snapshot.State.WalletMinor==walletAfterSupplies,"Old sale replay paid twice or reverted later supply purchases.");
             checks.Add("page cancellation invalidates game lease and fresh authorized retry preserves old sale receipt");
 
             await GameCastAndWait(control,lease);
@@ -302,7 +304,9 @@ sealed partial class DualWindowContext
                 nativeInputTested=false,desktopLayer=false,nativeFullscreenTested=false,gameSimulationImplemented=false,controlledFishFacts=true,personalSaveRead=false,
                 castPreparationConnected=true,gameFlightEmissions=gameFlightEmissions,flatWaterFlightConnected=true,realWaterAndFlight=false,
                 biteSimulationConnected=true,gameHookedEmissions=gameHookedEmissions,naturalFishLanded=true,controlledBiteSeed=true,
-                fightSimulationConnected=true,gameNaturalLandings=gameNaturalLandings,fixtureNetCapability=true,equipmentDamageImplemented=false}),Encoding.UTF8);
+                fightSimulationConnected=true,gameNaturalLandings=gameNaturalLandings,fixtureNetCapability=false,equipmentDamageImplemented=false,
+                commerceConnected=true,ownedNetEquipped=game.Snapshot.State.OwnedNet!=null && game.Snapshot.State.EquippedNetId==game.Snapshot.State.OwnedNet.Id,
+                foodCount=game.Snapshot.State.FoodCount,baitCount=game.Snapshot.State.BaitCount,stamina=game.Snapshot.State.Stamina}),Encoding.UTF8);
             Shutdown();
         } catch(Exception error) { Fail(error); }
     }

@@ -21,8 +21,9 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision;
-        internal long CastHighWater, StrikeHighWater, FightHighWater;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision;
+        internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater;
+        internal GameShopPending Shop;
     }
     readonly Dictionary<ProbeWindow,GameBinding> gameViews = new Dictionary<ProbeWindow,GameBinding>();
     bool GameCanSimulate { get { return game == null || (game.Snapshot.CanSimulate && !GameFightTimeBlocked); } }
@@ -31,8 +32,13 @@ sealed partial class DualWindowContext
     {
         if (!GameMode) return;
         string path = Path.Combine(root, "game.fltj");
-        if (gameMode == "open") game = FloatGameOwner.OpenExisting(path);
-        else if (gameMode == "new" || GameSelfTest) game = FloatGameOwner.CreateNew(path, CreateGameFixture());
+        if (gameMode == "open") {
+            var inspection=FloatJournalArchive.Inspect(path);
+            if(inspection.State.SchemaVersion!=2)throw new InvalidOperationException("This legacy profile requires an explicit backed-up candidate upgrade; opening did not change it.");
+            game=FloatGameOwner.OpenExisting(path,null,2);
+        }
+        else if(GameSelfTest) game=FloatGameOwner.CreateNew(path,CreateGameFixture(),GameShopSaveFault);
+        else if(gameMode=="new") game=FloatGameOwner.CreateNew(path,CreateGameFixture());
         else throw new ArgumentException("Unknown game mode.");
         InitializeGameCast();
         InitializeGameFlight();
@@ -46,7 +52,8 @@ sealed partial class DualWindowContext
         var rules = new FloatGameRules(1,"float-starter","worm",2,100,2,1000000,
             new[]{new FloatSpeciesRule("carp",100000,10000000,120),new FloatSpeciesRule("crucian",50000,3000000,80)});
         var rig = new FixedFloatRig(Guid.NewGuid(),1,"float-starter",Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),50000,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid());
-        return FloatGameState.CreateNew(Guid.NewGuid(),Guid.NewGuid(),12000,100,Guid.NewGuid(),"worm",12,rig,rules);
+        var catalog=new FloatCommerceCatalog(1,"worm","landing-net","bread",2400,5,20,20,20,1000,1000,100);
+        return FloatGameState.CreateNewWithCommerce(Guid.NewGuid(),Guid.NewGuid(),12000,100,Guid.NewGuid(),"worm",12,rig,rules,catalog,Guid.NewGuid());
     }
     void GameOpen(ProbeWindow pane)
     {
@@ -59,13 +66,15 @@ sealed partial class DualWindowContext
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
         ClearGameFightInput(pane);
+        ClearGameShop(pane);
         game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.Document=null;
     }
     void GameAttached(ProbeWindow pane)
     {
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
-        b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0; b.CastRevision=0; b.FlightRevision=0; b.BiteRevision=0; b.FightRevision=0;
+        ClearGameShop(pane);
+        b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0; b.CastRevision=0; b.FlightRevision=0; b.BiteRevision=0; b.FightRevision=0; b.ShopRevision=0;
         if (pane.DesktopReadOnly && !desktopShown.Contains(pane)) {
             desktopShown.Add(pane); GuardPresentation(()=>pane.Show()); CheckDesktop(pane);
         }
@@ -76,6 +85,7 @@ sealed partial class DualWindowContext
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
         ClearGameFightInput(pane);
+        ClearGameShop(pane);
         game.CloseView(b.View); gameViews.Remove(pane);
     }
     void GameLease(ProbeWindow pane,string wireLease)
@@ -84,7 +94,8 @@ sealed partial class DualWindowContext
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
         ClearGameFightInput(pane);
-        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0;
+        ClearGameShop(pane);
+        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0;
         var state=game.Snapshot;
         if (wireLease == null || b.Document == null || state.Faulted || state.HostPaused || state.ShutdownConfirmed) return;
         b.Lease=game.GrantControl(b.View,b.Document); b.WireLease=wireLease;
@@ -94,6 +105,7 @@ sealed partial class DualWindowContext
         if (game == null) return;
         var snapshot=game.Snapshot;
         if (!snapshot.Faulted && !snapshot.ShutdownConfirmed) game.SetHostPaused(!owner.ActivityState().CanRun);
+        if(game.Snapshot.HostPaused||game.Snapshot.Faulted||game.Snapshot.ShutdownConfirmed)ClearGameShop();
         if (!game.Snapshot.CanSimulate) { CancelGameCast(); ClearGameFightInput(); }
     }
     async Task StartGamePresentation()
@@ -103,8 +115,8 @@ sealed partial class DualWindowContext
         var read=windows[false];
         if (read.DesktopReadOnly && !desktopShown.Contains(read)) { desktopShown.Add(read); GuardPresentation(()=>read.Show()); CheckDesktop(read); }
         rendererEnabled=true; RendererPageReady(read);
-        // Original fixed-water development gameplay runs on the host. The
-        // landing capability is an explicit fixture, not an inventory net.
+        // Original fixed-water development gameplay runs on the host. A net
+        // must be purchased and equipped; its visual remains a placeholder.
         await Task.FromResult(0);
         Broadcast();
     }
@@ -124,6 +136,7 @@ sealed partial class DualWindowContext
         SendGameFlight(pane);
         SendGameBite(pane);
         SendGameFight(pane);
+        SendGameShop(pane);
     }
     bool GameAuthorized(ProbeWindow pane,string document,string lease,out GameBinding b)
     {
@@ -154,6 +167,7 @@ sealed partial class DualWindowContext
         if (kind=="game-cast") { ReceiveGameCast(pane,b,m,transport); return; }
         if (kind=="game-strike") { ReceiveGameStrike(pane,b,m,transport); return; }
         if (kind=="game-fight") { ReceiveGameFight(pane,b,m,transport); return; }
+        if (kind=="game-shop") { ReceiveGameShop(pane,b,m,document,lease,transport); return; }
         if (kind=="game-menu") {
             object open;
             if (m.Count!=5 || !m.TryGetValue("open",out open) || !(open is bool)) { GameReply(pane,transport,"invalid-intent"); return; }
@@ -178,6 +192,7 @@ sealed partial class DualWindowContext
         if (game == null || gameShutdownAttempted) return;
         CancelGameCast();
         ClearGameFightInput();
+        ClearGameShop();
         gameShutdownAttempted=true;
         try {
             var state=game.Snapshot;

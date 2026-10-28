@@ -3,6 +3,7 @@ import { CastInput, FlightNotices } from './cast-input.mjs';
 import { FlightView } from './flight-view.mjs';
 import { BiteView, StrikeInput } from './bite-view.mjs';
 import { FightView, FightInput } from './fight-view.mjs';
+import { ShopView, ShopInput, formatMinor } from './shop-view.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -14,13 +15,15 @@ const flightNotices = new FlightNotices();
 const flightView = new FlightView(documentId);
 const biteView = new BiteView(documentId);
 const fightView = new FightView(documentId);
+const shopView = new ShopView(documentId);
+let commerceFaulted = false;
 let speedKeyHeld = false;
 const selected = new Set();
 const $ = id => document.getElementById(id);
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
-const canControl = () => !readOnly && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
-const canPrepare = () => canControl() && !inflight && !snapshot.SessionId && !snapshot.MenuOpen;
+const canControl = () => !readOnly && !commerceFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
+const canPrepare = () => canControl() && !inflight && !shopBusy() && !snapshot.SessionId && !snapshot.MenuOpen;
 const castInput = new CastInput({ readContext: () => ({ lease: authority.state().lease, allowed: canPrepare() }), post: send, newTransportId: () => crypto.randomUUID() });
 function strikeContext() {
   const bite = biteView.state();
@@ -36,6 +39,13 @@ function fightContext() {
     sessionId: fight?.sessionId, encounterId: fight?.encounterId, phase: fight?.phase, canRetryLanding: fight?.canRetryLanding };
 }
 const fightInput = new FightInput({ readContext: fightContext, post: send, newTransportId: () => crypto.randomUUID() });
+function shopContext() {
+  const shop = shopView.state();
+  return { lease: authority.state().lease, allowed: canControl() && !inflight && Boolean(snapshot.MenuOpen) && !snapshot.SessionId && shop?.available === true,
+    schemaVersion: shop?.schemaVersion, netOwned: shop?.netOwned, netEquipped: shop?.netEquipped, foodCount: shop?.foodCount, maxPacks: shop?.maxPacks };
+}
+const shopInput = new ShopInput({ readContext: shopContext, post: send, newTransportId: () => crypto.randomUUID() });
+function shopBusy() { const s = shopInput.state(); return Boolean(s.inflight || s.awaitingState); }
 const names = { carp: '鲤鱼', crucian: '鲫鱼', worm: '蚯蚓' };
 function decimal(value, scale = 2) {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) return '—';
@@ -46,8 +56,11 @@ function render() {
   castInput.reconcile();
   strikeInput.reconcile();
   fightInput.reconcile();
+  const previousShopLease = shopInput.state().lease;
+  shopInput.reconcile();
+  if (!shopContext().allowed || previousShopLease !== shopInput.state().lease) shopView.clearReferences();
   if (!fightContext().allowed) speedKeyHeld = false;
-  $('status').textContent = snapshot?.Faulted ? '保存结果待核验，请退出后重新打开原存档。' : snapshot?.HostPaused ? '当前暂停' : readOnly ? '观赏窗口' : canControl() ? '交互已开启' : '请从窗口顶部开启交互';
+  $('status').textContent = snapshot?.Faulted || commerceFaulted ? '保存结果待核验，请退出后重新打开原存档。' : snapshot?.HostPaused ? '当前暂停' : readOnly ? '观赏窗口' : canControl() ? '交互已开启' : '请从窗口顶部开启交互';
   if (!snapshot?.HasConfirmedState) {
     $('stats').replaceChildren(); $('session').textContent = '尚无可确认的游戏进度'; $('creel').replaceChildren(); $('capacity').textContent = '';
   } else {
@@ -69,7 +82,7 @@ function render() {
     }));
     if (!rows.length) { const item = document.createElement('li'); item.textContent = '鱼护为空'; $('creel').append(item); }
   }
-  renderCast(); renderBite(); renderFight(); updateButtons();
+  renderCast(); renderBite(); renderFight(); renderShop(); updateButtons();
 }
 function renderCast() {
   const labels = { idle: '尚未蓄力', charging: '正在蓄力，松开左键出手', prepared: '已松开，等待确认出手', committed: '已确认出手', cancelled: '蓄力已取消，重新按下才能开始', rejected: '本次出手未完成', unknown: '保存结果待核验，请退出后重新打开原存档' };
@@ -138,8 +151,33 @@ function renderFight() {
   $('fight-fish').setAttribute('fill', state.phase === 'landing-eligible' ? '#c4d985' : state.phase === 'faulted' ? '#d47a66' : '#e8a85b');
   $('fight-metrics').textContent = `距岸 ${(graph.distanceMm / 1000).toFixed(2)} 米 · 深度 ${(graph.depthMm / 1000).toFixed(2)} 米 · 出线 ${(state.outLineMm / 1000).toFixed(2)} 米 · 线杯余量 ${(state.spoolRemainingMm / 1000).toFixed(2)} 米 · 松线 ${(state.slackMm / 1000).toFixed(2)} 米 · 张力 ${(state.tensionMilliN / 1000).toFixed(2)} N · 泄力 ${(state.dragMilliN / 1000).toFixed(2)} N`;
 }
+function renderShop() {
+  const state = shopView.state(), input = shopInput.state();
+  $('shop').hidden = !snapshot?.MenuOpen;
+  const reasons = { 'commerce-upgrade-required': '这份旧版进度尚未启用商店。请先生成并核验升级副本，原档不会自动改动。',
+    'control-required': '请从窗口顶部开启交互后购买或使用物品。', 'session-busy': '请先收回当前一竿或处理当前鱼，再购买、换装和进食。',
+    'save-outcome-unknown': '保存结果待核验，已停止交易。请退出后重新打开原存档。', 'owner-stopped': '进度已关闭。' };
+  $('shop-status').textContent = commerceFaulted ? reasons['save-outcome-unknown'] : shopBusy() ? '正在等待宿主确认，请勿重复操作。' :
+    state?.reason ? reasons[state.reason] ?? '商店暂时不可用。' : !canControl() ? reasons['control-required'] : input.retry ? '上次操作确认未写入。可以重试原操作，或取消。' : '先获取报价，再确认购买；所有变化以保存结果为准。';
+  $('shop-wallet').textContent = `余额 ${formatMinor(state?.walletMinor)} 银币`;
+  $('shop-net-price').textContent = `${formatMinor(state?.netPriceMinor)} 银币 / 件`;
+  $('shop-net-owned').textContent = state?.netEquipped ? '已拥有 · 已装备' : state?.netOwned ? '已拥有 · 未装备' : '尚未拥有';
+  $('shop-bait-price').textContent = `${formatMinor(state?.baitPackPriceMinor)} 银币 / 包${state?.baitPackUnits ? ` · 每包 ${state.baitPackUnits} 份` : ''}`;
+  $('shop-bait-count').textContent = `现有 ${state?.baitCount ?? 0} 份`;
+  $('shop-food-price').textContent = `${formatMinor(state?.foodPriceMinor)} 银币 / 份${state?.foodStaminaRestore ? ` · 每份恢复最多 ${state.foodStaminaRestore} 体力` : ''}`;
+  $('shop-food-count').textContent = `现有 ${state?.foodCount ?? 0} 份`;
+  for (const id of ['bait-packs', 'food-packs']) $(id).max = String(state?.maxPacks || 1);
+  $('shop-quote').hidden = !input.quote;
+  if (input.quote) {
+    const q = input.quote, product = { net: '抄网', bait: '蚯蚓鱼饵', food: '面包' }[q.product];
+    $('shop-quote-text').textContent = `${product} · ${q.packs} ${q.product === 'bait' ? '包' : '份'}（共 ${q.units} ${q.product === 'net' ? '件' : '份'}）· 合计 ${formatMinor(q.totalPriceMinor)} 银币。确认后才购买。`;
+  } else $('shop-quote-text').textContent = '';
+  $('shop-retry').hidden = !input.retry;
+  $('shop-retry-text').textContent = input.retry ? `上次${{ buy: '购买', equip: '装备调整', eat: '食用' }[input.retry.action]}确认未写入；重试沿用原操作，不会换成新的购买。` : '';
+  $('shop-cancel').hidden = !input.quote && !input.retry;
+}
 function updateButtons() {
-  const active = canControl() && !inflight;
+  const active = canControl() && !inflight && !shopBusy();
   const input = castInput.state();
   $('cast').disabled = !canPrepare() || Boolean(input);
   $('cast-release').disabled = !canPrepare() || input?.phase !== 'charging' || input.source !== 'button';
@@ -156,10 +194,21 @@ function updateButtons() {
   $('recall').disabled = !active || !snapshot.SessionId || snapshot.PendingResult;
   $('release').disabled = !active || !snapshot.PendingResult;
   $('menu').disabled = !active;
-  $('menu').textContent = snapshot?.MenuOpen ? '关闭鱼护菜单' : '打开鱼护菜单';
+  $('menu').textContent = snapshot?.MenuOpen ? '关闭鱼护与商店' : '打开鱼护与商店';
   $('sell').disabled = !active || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || !selected.size;
   $('previous').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset <= 0;
   $('next').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset + (snapshot.Creel?.length ?? 0) >= snapshot.CreelCount;
+  const shop = shopContext(), shopState = shopInput.state(), shopping = shop.allowed && shopState.ready && !shopBusy() && !shopState.faulted;
+  const newShopAction = shopping && !shopState.retry;
+  $('quote-net').disabled = !newShopAction || shop.netOwned;
+  $('quote-bait').disabled = !newShopAction; $('quote-food').disabled = !newShopAction;
+  $('bait-packs').disabled = !newShopAction; $('food-packs').disabled = !newShopAction;
+  $('net-equip').disabled = !newShopAction || !shop.netOwned || shop.netEquipped;
+  $('net-unequip').disabled = !newShopAction || !shop.netOwned || !shop.netEquipped;
+  $('food-eat').disabled = !newShopAction || shop.foodCount < 1;
+  $('shop-buy').disabled = !shopping || !shopState.quote;
+  $('shop-retry-confirm').disabled = !shopping || !shopState.retry;
+  $('shop-cancel').disabled = !shopping || !shopState.quote && !shopState.retry;
 }
 function revoke(reason) {
   castInput.cancel();
@@ -169,7 +218,7 @@ function revoke(reason) {
   render();
 }
 function intent(action) {
-  if (!canControl() || inflight) return;
+  if (!canControl() || inflight || shopBusy()) return;
   fightInput.cancel();
   const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : snapshot.SessionId,
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
@@ -187,6 +236,10 @@ Object.assign(codes, { 'reel-held': '开始手动收线。', 'reel-released': '�
   'fish-too-far': '鱼还没有进入抄网范围。', 'fish-too-deep': '鱼所在水层还不能抄鱼。', 'fish-moving': '鱼还在快速游动。', 'fish-active': '鱼还没有疲劳到可抄状态。',
   'net-unavailable': '没有可用抄网。', 'landing-pending': '正在确认收鱼结果。', landed: '已确认收鱼入护。', 'landed-candidate': '已确认收鱼入护。', 'creel-capacity-exceeded': '鱼护已满，请明确放流当前鱼。',
   'landing-not-written': '本次结果尚未写入，可重试原收鱼结果。', 'landing-retry-unavailable': '当前不能重试收鱼。', 'landing-save-unknown': '保存结果待核验，请退出后重新打开原存档。' });
+Object.assign(codes, { 'shop-quoted': '报价已确认，请检查总价后选择购买。', 'purchase-candidate': '购买已确认，物品已入背包。', 'equip-candidate': '抄网装备状态已保存。', 'food-candidate': '已食用一份食品，体力变化已保存。',
+  'shop-cancelled': '本次报价或未写入操作已取消。', 'shop-not-written': '操作确认未写入，可重试原操作或取消。', 'shop-retry-required': '请先重试或取消上次未写入的操作。', 'shop-intent-not-current': '报价或操作已失效，请重新获取报价。',
+  'commerce-upgrade-required': '旧版进度需先核验升级副本才能使用商店。', 'wallet-insufficient': '银币不足。', 'net-not-owned': '请先购买抄网。', 'net-already-owned': '已拥有抄网。', 'net-equipment-unchanged': '抄网装备状态没有变化。',
+  'food-empty': '食品已用完。', 'stamina-full': '体力已满，本次没有消耗食品。', 'bait-limit-exceeded': '鱼饵数量已达到上限。', 'food-limit-exceeded': '食品数量已达到上限。', 'quote-stale': '进度已变化，请重新获取报价。', 'save-capacity': '保存容量已满，未执行本次交易。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
   if (m.kind === 'game-flight-state') {
@@ -203,6 +256,13 @@ window.chrome.webview.addEventListener('message', event => {
     if (fightView.apply(m)) { fightInput.reconcile(); renderFight(); renderCast(); updateButtons(); }
     return;
   }
+  if (m.kind === 'game-shop-state') {
+    if (shopView.apply(m)) {
+      if (m.state.reason === 'save-outcome-unknown') commerceFaulted = true;
+      shopInput.hostState(shopView.state()); renderShop(); updateButtons();
+    }
+    return;
+  }
   if (m.kind === 'prepare-activation') {
     if (!landscape() || (!m.allowUnfocused && (document.hidden || !document.hasFocus()))) return;
     lastActivation = { requestId: m.requestId };
@@ -214,7 +274,11 @@ window.chrome.webview.addEventListener('message', event => {
       send({ kind: 'revoke', lease: m.lease, cancellationEpoch: authority.state().epoch, transportId: crypto.randomUUID(), reason: 'late-grant' });
   }
   if (m.kind === 'game-snapshot' && Number.isSafeInteger(m.revision) && m.revision > revision) { snapshot = m.snapshot; revision = m.revision; }
-  if (m.kind === 'game-reply') { lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); if (inflight === m.transportId) inflight = null; $('notice').textContent = codes[m.code] ?? `操作未完成：${m.code}`; }
+  if (m.kind === 'game-reply') {
+    lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m);
+    if (m.code === 'save-outcome-unknown') commerceFaulted = true;
+    if (inflight === m.transportId) inflight = null; $('notice').textContent = codes[m.code] ?? `操作未完成：${m.code}`;
+  }
   if (m.kind === 'game-cast-state' && Number.isSafeInteger(m.revision) && m.revision > castRevision &&
       ['idle', 'charging', 'prepared', 'committed', 'cancelled', 'rejected', 'unknown'].includes(m.phase) &&
       Number.isInteger(m.powerPermille) && m.powerPermille >= 0 && m.powerPermille <= 1000 &&
@@ -248,11 +312,25 @@ $('recall').addEventListener('click', () => intent('recall'));
 $('release').addEventListener('click', () => intent('release-current'));
 $('sell').addEventListener('click', () => intent('sell'));
 $('menu').addEventListener('click', () => {
-  if (!canControl() || inflight) return;
+  if (!canControl() || inflight || shopBusy()) return;
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
+  if (snapshot.MenuOpen) shopInput.cancel();
   inflight = crypto.randomUUID(); send({ kind: 'game-menu', lease: authority.state().lease, transportId: inflight, open: !snapshot.MenuOpen }); render();
 });
+function requestShopQuote(product) {
+  const packs = product === 'net' ? 1 : $(product === 'bait' ? 'bait-packs' : 'food-packs').valueAsNumber;
+  if (!Number.isInteger(packs) || packs < 1 || packs > (shopView.state()?.maxPacks ?? 0)) { $('notice').textContent = '请输入当前上限以内的整数数量。'; return; }
+  shopInput.quote(product, packs); renderShop(); updateButtons();
+}
+for (const [id, action] of [
+  ['quote-net', () => requestShopQuote('net')], ['quote-bait', () => requestShopQuote('bait')], ['quote-food', () => requestShopQuote('food')],
+  ['shop-buy', () => shopInput.buy()], ['shop-cancel', () => shopInput.cancel()], ['shop-retry-confirm', () => shopInput.retry()],
+  ['net-equip', () => shopInput.equip(true)], ['net-unequip', () => shopInput.equip(false)], ['food-eat', () => shopInput.eat()],
+]) {
+  $(id).addEventListener('click', event => { if (event.detail > 1) return; action(); renderShop(); updateButtons(); });
+  $(id).addEventListener('keydown', event => { if (event.repeat && ['Space', 'Enter'].includes(event.code)) event.preventDefault(); });
+}
 function page(offset) { send({ kind: 'game-page', lease: '', transportId: crypto.randomUUID(), offset }); }
 $('previous').addEventListener('click', () => page(Math.max(0, snapshot.CreelOffset - 50)));
 $('next').addEventListener('click', () => page(snapshot.CreelOffset + 50));
@@ -343,6 +421,7 @@ document.addEventListener('keyup', event => { if (event.code === 'KeyR') speedKe
 const visual = { start() {}, stop() {}, pause() {}, resume() {}, state: () => ({ running: false, frames: 0, kind: 'host-flight-projection' }) };
 window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision,
   biteState: biteView.state(), biteRevision: biteView.revision, strikeInputState: strikeInput.state(),
-  fightState: fightView.state(), fightRevision: fightView.revision, fightInputState: fightInput.state() }),
+  fightState: fightView.state(), fightRevision: fightView.revision, fightInputState: fightInput.state(),
+  shopState: shopView.state(), shopRevision: shopView.revision, shopInputState: shopInput.state() }),
   sendRaw: message => window.chrome.webview.postMessage(message), cancel: () => revoke('test-cancel') };
 render(); renderFlight();

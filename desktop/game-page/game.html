@@ -9,6 +9,7 @@
 #flight-diagram{display:block;width:100%;max-height:250px;background:#252d2b;border:1px solid #596358}#flight-diagram text{fill:#bac7bf;font:12px system-ui,sans-serif}#flight-diagram .axis{stroke:#576963;stroke-width:1}#flight-diagram .water{stroke:#82b4bb;stroke-width:1.5}#flight-metrics{font-variant-numeric:tabular-nums}#flight-status{min-height:25px}#flight-clipped{color:#e0b778}
 #bite-layout{display:flex;gap:24px;align-items:center;flex-wrap:wrap}#bite-diagram{width:360px;max-width:100%;height:250px;flex:0 1 360px;border:1px solid #596358;background:#252d2b;cursor:crosshair;user-select:none;touch-action:none}#bite-diagram text{fill:#bac7bf;font:13px system-ui,sans-serif}#bite-copy{flex:1 1 280px}#bite-status{color:#d3df8a;font-size:18px}#bite-bait{color:#bac1b0}
 #fight-layout{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}#fight-diagram{width:480px;max-width:100%;height:250px;flex:1 1 380px;background:#253e40;border:1px solid #596358;cursor:crosshair;touch-action:none;user-select:none}#fight-diagram text{fill:#bac7bf;font:12px system-ui,sans-serif}#fight-copy{flex:1 1 320px}#fight-status{font-size:18px;color:#d3df8a}#fight-metrics{font-variant-numeric:tabular-nums}#fight-energy{width:130px;height:16px;accent-color:#a8c37d;vertical-align:middle}#fight-controls{display:flex;gap:18px;flex-wrap:wrap}#fight-controls button{padding:2px 12px;margin:6px}#fight-controls span{display:inline-block;min-width:55px;text-align:center}#fight-clipped{color:#e0b778}#reel-hold{touch-action:none;user-select:none}
+#shop-products{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}#shop-products article{background:#30392f;border:1px solid #69765b;padding:16px}#shop-products h3{font-size:18px;margin:0 0 8px}#shop-products input{width:75px;margin:8px;padding:6px;background:#202821;color:#f1f0df;border:1px solid #8c9872;font:inherit}#shop-wallet{font-size:18px;font-variant-numeric:tabular-nums}#shop-status{color:#d3df8a}#shop-quote,#shop-retry{margin:16px 0;padding:14px 18px;border:1px solid #a6b577;background:#3b4331}#shop [hidden]{display:none}#shop-cancel{margin-top:8px}
 @media(min-width:900px){#cast-workbench{display:grid;grid-template-columns:minmax(300px,.85fr) minmax(0,1.15fr);gap:20px}#cast-workbench section{min-width:0}}
 </style></head>
 <body><div id="portrait">请横屏游玩</div><main>
@@ -63,11 +64,25 @@
 <div class="interactive"><button id="reel-hold" disabled>按住收线</button><button id="land" disabled>抄鱼 · 空格</button><button id="retry-land" hidden disabled>重试原收鱼结果</button>
 <div id="fight-controls"><label>泄力<button id="drag-minus" disabled aria-label="降低泄力">−</button><span id="drag-level">0 / 10</span><button id="drag-plus" disabled aria-label="提高泄力">+</button></label>
 <label>收线速度<button id="reel-minus" disabled aria-label="降低收线速度">−</button><span id="reel-level">0 / 10</span><button id="reel-plus" disabled aria-label="提高收线速度">+</button></label></div></div>
-<p class="muted">在操作区滚轮调泄力，R＋滚轮调速度。靠近后满足条件才可抄鱼；当前使用训练抄网能力，尚未接入背包中的抄网装备。</p></div></div>
+<p class="muted">在操作区滚轮调泄力，R＋滚轮调速度。需先在菜单购买并装备抄网，鱼靠近后满足条件才可抄鱼。</p></div></div>
 <p id="fight-metrics" class="muted">出线 — · 线杯余量 — · 张力 —</p><p id="fight-clipped" hidden>鱼的位置超出示意图范围，边缘标记仅表示方向。</p>
 <p class="muted">这是原创简化受力模型；张力以牛顿显示，尚无断线损耗、脱钩和真实抄网动画。</p></section>
-<div class="interactive"><button id="recall" disabled>收回这一竿</button><button id="release" disabled>放流当前鱼</button><button id="menu" disabled>打开鱼护菜单</button></div>
+<div class="interactive"><button id="recall" disabled>收回这一竿</button><button id="release" disabled>放流当前鱼</button><button id="menu" disabled>打开鱼护与商店</button></div>
 <p id="notice" role="status"></p>
+<section id="shop" hidden><h2>渔具与食品商店</h2><p id="shop-status" role="status">等待商店信息</p><p id="shop-wallet">余额 — 银币</p>
+<p class="muted">在任意钓点打开菜单即可补给。已出手时先收回或处理当前鱼；购买不会自动装备或食用。</p>
+<div id="shop-products">
+<article id="shop-net"><h3>抄网</h3><p id="shop-net-price">— 银币 / 件</p><p id="shop-net-owned">尚未拥有</p><p class="muted">抄鱼前需要装备。当前只提供一种基础抄网。</p>
+<div class="interactive"><button id="quote-net" disabled>获取抄网报价</button><button id="net-equip" disabled>装备</button><button id="net-unequip" disabled>卸下</button></div></article>
+<article id="shop-bait"><h3>蚯蚓鱼饵</h3><p id="shop-bait-price">— 银币 / 包</p><p id="shop-bait-count">现有 — 份</p>
+<div class="interactive"><label>包数<input id="bait-packs" type="number" min="1" max="100" step="1" value="1" disabled></label><button id="quote-bait" disabled>获取鱼饵报价</button></div></article>
+<article id="shop-food"><h3>面包</h3><p id="shop-food-price">— 银币 / 份</p><p id="shop-food-count">现有 — 份</p>
+<div class="interactive"><label>份数<input id="food-packs" type="number" min="1" max="100" step="1" value="1" disabled></label><button id="quote-food" disabled>获取食品报价</button><button id="food-eat" disabled>食用一份</button></div></article>
+</div>
+<div id="shop-quote" hidden><p id="shop-quote-text"></p><button id="shop-buy" class="interactive" disabled>确认购买</button></div>
+<div id="shop-retry" hidden><p id="shop-retry-text"></p><button id="shop-retry-confirm" class="interactive" disabled>重试原操作</button></div>
+<button id="shop-cancel" class="interactive" hidden disabled>取消本次操作</button>
+</section>
 <section><h2>鱼护 <span id="capacity"></span></h2><ul id="creel"></ul><div class="interactive"><button id="sell" disabled>出售选中的鱼</button></div><button id="previous" disabled>上一页</button><button id="next" disabled>下一页</button></section>
 <p class="muted">从窗口顶部开启交互。收回不退还已经使用的鱼饵；切出窗口后需重新开启交互。</p>
 </main><script type="module" src="page.mjs"></script></body></html>

@@ -35,6 +35,7 @@ sealed partial class DualWindowContext
     {
         double step=activityClock.Advance(activityWatch.Elapsed.TotalSeconds,owner.ActivityState().CanRun && GameCanSimulate);
         AdvanceGameCast(step);
+        AdvanceGameFlight(step);
     }
     void ApplyPolicy(RunTransition transition)
     {

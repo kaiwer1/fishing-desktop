@@ -127,7 +127,7 @@ sealed partial class DualWindowContext : ApplicationContext
     async void Start()
     {
         try{
-            if(automated){if(nativePolicySelfTest)deadline.Interval=85000+soakSeconds*1000+(nativeOperatorStart?180000:0);deadline.Tick+=delegate{Fail(new InvalidOperationException("Dual-window self-test deadline exceeded."));};deadline.Start();}
+            if(automated){if(GameSelfTest)deadline.Interval=90000;else if(nativePolicySelfTest)deadline.Interval=85000+soakSeconds*1000+(nativeOperatorStart?180000:0);deadline.Tick+=delegate{Fail(new InvalidOperationException("Dual-window self-test deadline exceeded."));};deadline.Start();}
             StartManualLifetime();
             environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(root,"private-profile"));
             if(stopping)return;

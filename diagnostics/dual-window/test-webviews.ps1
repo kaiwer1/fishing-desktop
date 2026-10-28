@@ -93,16 +93,17 @@ try{
   $taskTimer=[Diagnostics.Stopwatch]::StartNew()
   while(-not $taskProcess.WaitForExit(500)){
     Update-DualOwned | Out-Null
-    $taskTimeout=if($NativePolicy){105+$SoakSeconds+$(if($OperatorFullscreen){180}else{0})}else{75}
+    $taskTimeout=if($Game){105}elseif($NativePolicy){105+$SoakSeconds+$(if($OperatorFullscreen){180}else{0})}else{75}
     if($taskTimer.Elapsed.TotalSeconds -gt $taskTimeout){throw 'Dual-window self-test timed out.'}
   }
   $taskObservedExit=$taskProcess.ExitCode
   if($taskObservedExit -ne 0){throw ('Dual-window self-test exited '+$taskObservedExit+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
-  $taskExpectedChecks=if($Game){19}elseif($ThreeScene){if($SoakSeconds -gt 0){31}else{30}}elseif($DisplaySoak){29}elseif($OperatorFullscreen){34}elseif($StartupPreparation){16}elseif($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
+  $taskExpectedChecks=if($Game){22}elseif($ThreeScene){if($SoakSeconds -gt 0){31}else{30}}elseif($DisplaySoak){29}elseif($OperatorFullscreen){34}elseif($StartupPreparation){16}elseif($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if($Game){
-    if(-not $taskReport.passed -or -not $taskReport.gameLoaded -or $taskReport.value -ne 12120 -or $taskReport.sequence -ne 16 -or $taskReport.checks.Count -ne $taskExpectedChecks -or $taskReport.gameSimulationImplemented -or -not $taskReport.controlledFishFacts -or -not $taskReport.castPreparationConnected -or $taskReport.gameFlightEmissions -ne 7 -or $taskReport.realWaterAndFlight){throw 'Game cast integration report mismatch.'}
+    if(-not $taskReport.passed -or -not $taskReport.gameLoaded -or $taskReport.value -ne 12120 -or $taskReport.sequence -ne 16 -or $taskReport.checks.Count -ne $taskExpectedChecks -or $taskReport.gameSimulationImplemented -or -not $taskReport.controlledFishFacts -or -not $taskReport.castPreparationConnected -or $taskReport.gameFlightEmissions -ne 7 -or -not $taskReport.flatWaterFlightConnected -or $taskReport.realWaterAndFlight){throw 'Game cast integration report mismatch.'}
     if(-not (Test-Path -LiteralPath (Join-Path $taskRun 'game-cast-panel.png') -PathType Leaf)){throw 'Owned game page preview was not captured.'}
+    if(-not (Test-Path -LiteralPath (Join-Path $taskRun 'game-flight-panel.png') -PathType Leaf)){throw 'Owned flight page preview was not captured.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'recovered-candidate'){throw 'Game shutdown was not confirmed.'}
   }elseif(-not $taskReport.passed -or $taskReport.value -ne 10 -or $taskReport.sequence -ne 2 -or $taskReport.checks.Count -ne $taskExpectedChecks){throw 'Dual-window self-test report mismatch.'}
@@ -170,5 +171,5 @@ if($taskFailure){
   throw $taskFailure
 }
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;
-  realWebViewMessages=$true;gameLoaded=[bool]$Game;gameSimulationImplemented=$false;controlledFishFacts=[bool]$Game;castPreparationConnected=$taskReport.castPreparationConnected;gameFlightEmissions=$taskReport.gameFlightEmissions;realWaterAndFlight=$false;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;availability=$taskReport.availability;nativePolicy=$taskReport.nativePolicy;nativeForegroundTestSkipped=$taskReport.nativeForegroundTestSkipped;nativeSignals=$taskReport.nativeSignals;display=$taskReport.display;renderer=$taskReport.renderer;soak=$taskReport.soak;scene=$taskReport.scene;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
+  realWebViewMessages=$true;gameLoaded=[bool]$Game;gameSimulationImplemented=$false;controlledFishFacts=[bool]$Game;castPreparationConnected=$taskReport.castPreparationConnected;gameFlightEmissions=$taskReport.gameFlightEmissions;flatWaterFlightConnected=$taskReport.flatWaterFlightConnected;realWaterAndFlight=$false;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;availability=$taskReport.availability;nativePolicy=$taskReport.nativePolicy;nativeForegroundTestSkipped=$taskReport.nativeForegroundTestSkipped;nativeSignals=$taskReport.nativeSignals;display=$taskReport.display;renderer=$taskReport.renderer;soak=$taskReport.soak;scene=$taskReport.scene;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
   ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $taskRun 'summary.json')

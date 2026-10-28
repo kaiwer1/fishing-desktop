@@ -1,5 +1,6 @@
 import { LeaseSession } from './lease-session.mjs';
 import { CastInput, FlightNotices } from './cast-input.mjs';
+import { FlightView } from './flight-view.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -8,6 +9,7 @@ let lastActivation = null, lastActivationReply = null, lastRevoke = null;
 let inflight = null, readOnly = true;
 let castState = null, castRevision = 0;
 const flightNotices = new FlightNotices();
+const flightView = new FlightView(documentId);
 const selected = new Set();
 const $ = id => document.getElementById(id);
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
@@ -55,6 +57,24 @@ function renderCast() {
   $('cast-power').value = power; $('cast-percent').textContent = `${(power / 10).toFixed(1)}%`;
   $('cast-target').setAttribute('aria-disabled', String(!canPrepare()));
 }
+function renderFlight() {
+  const graph = flightView.diagram(), state = flightView.state();
+  const labels = { idle: '等待确认出手', flying: '钓组飞行中', waiting: '已落水，进入等待；咬钩尚未接入', invalid: '本次未进入有效水面', ended: '这一竿已结束' };
+  const reasons = { flying: '飞行中', 'water-contact': '已接触水面', 'outside-water': '落在水域外', 'line-limit': '所需线长已达可用上限', 'flight-timeout': '飞行超时', ended: '已结束' };
+  const redundant = { flying: 'flying', waiting: 'water-contact', ended: 'ended' };
+  const reason = state?.reason && state.reason !== redundant[state.phase] ? reasons[state.reason] ?? '未能继续本次轨迹' : '';
+  $('flight-status').textContent = `${labels[state?.phase ?? 'idle']}${reason ? ` · ${reason}` : ''}`;
+  $('flight-marks').setAttribute('visibility', graph ? 'visible' : 'hidden');
+  $('flight-clipped').hidden = !graph?.clipped;
+  if (!graph) { $('flight-metrics').textContent = '距离 — · 所需线长 —'; return; }
+  const setPoint = (element, p) => { element.setAttribute('cx', p.x.toFixed(2)); element.setAttribute('cy', p.y.toFixed(2)); };
+  setPoint($('flight-origin'), graph.origin); setPoint($('flight-bobber'), graph.current);
+  $('flight-bobber').setAttribute('fill', graph.phase === 'invalid' ? '#d47a66' : graph.phase === 'waiting' ? '#c4d985' : '#e8a85b');
+  $('flight-trail').setAttribute('points', graph.recent.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' '));
+  const line = $('flight-tether');
+  for (const [attribute, value] of Object.entries({ x1: graph.origin.x, y1: graph.origin.y, x2: graph.current.x, y2: graph.current.y })) line.setAttribute(attribute, value.toFixed(2));
+  $('flight-metrics').textContent = `距离 ${(graph.distanceMm / 1000).toFixed(2)} 米 · 所需线长 ${(graph.lineUsedMm / 1000).toFixed(2)} 米 · 活动 ${(graph.elapsedMilliseconds / 1000).toFixed(2)} 秒`;
+}
 function updateButtons() {
   const active = canControl() && !inflight;
   const input = castInput.state();
@@ -88,6 +108,12 @@ const codes = { 'cast-candidate': '这一竿已保存，已使用一份鱼饵。
 Object.assign(codes, { charging: '已开始蓄力，松开出手。', prepared: '已松开，等待宿主确认。', cancelled: '蓄力已取消。', 'stale-input': '旧操作已忽略，请重新按下。', 'gesture-not-current': '本次操作已结束，请重新按下。', 'domain-paused': '当前暂停，请恢复后重新按下。', 'cast-preparation-required': '请先按住蓄力，再松开出手。', 'save-outcome-unknown': '保存结果待核验，请退出后重新打开原存档。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
+  if (m.kind === 'game-flight-state') {
+    // Host positions can arrive frequently. Update the diagram alone; neither
+    // rebuild the creel nor start an independent page animation clock.
+    if (flightView.apply(m)) renderFlight();
+    return;
+  }
   if (m.kind === 'prepare-activation') {
     if (!landscape() || (!m.allowUnfocused && (document.hidden || !document.hasFocus()))) return;
     lastActivation = { requestId: m.requestId };
@@ -107,7 +133,7 @@ window.chrome.webview.addEventListener('message', event => {
     castState = m; castRevision = m.revision; castInput.hostState(m);
   }
   if (m.kind === 'game-flight' && flightNotices.apply(m)) {
-    $('notice').textContent = '已确认出手并保存消耗。飞行轨迹与水面尚未接入。';
+    $('notice').textContent = '已确认出手并保存消耗。下方显示固定平面的飞行与落水状态。';
   }
   if (m.kind === 'activation-reply') lastActivationReply = m;
   if (m.kind === 'revoke-reply') lastRevoke = m;
@@ -151,9 +177,8 @@ window.addEventListener('pagehide', () => revoke('pagehide'));
 window.addEventListener('resize', () => { if (!landscape()) revoke('portrait'); render(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) revoke('hidden'); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') revoke('escape'); });
-// Static integration page. These hooks let the existing host pause/capture its
-// own view without pretending that a render loop or fishing simulation exists.
-const visual = { start() {}, stop() {}, pause() {}, resume() {}, state: () => ({ running: false, frames: 0, kind: 'static-game-data' }) };
-window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state() }),
+// No page render/simulation loop: the SVG only projects host snapshots.
+const visual = { start() {}, stop() {}, pause() {}, resume() {}, state: () => ({ running: false, frames: 0, kind: 'host-flight-projection' }) };
+window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision }),
   sendRaw: message => window.chrome.webview.postMessage(message), cancel: () => revoke('test-cancel') };
-render();
+render(); renderFlight();

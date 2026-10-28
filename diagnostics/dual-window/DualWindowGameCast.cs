@@ -118,6 +118,7 @@ sealed partial class DualWindowContext
             if(gameCast.Snapshot.Phase!=FloatCastPhase.Prepared)return;
             var result=gameCast.CommitPrepared(input.Gesture);
             if(result.ShouldStartFlight){
+                StartGameFlight(result.Snapshot);
                 gameFlightEmissions=checked(gameFlightEmissions+1);
                 foreach(var pane in windows.Values)Send(pane,new {kind="game-flight",documentId=pane.Ticket.DocumentId,revision=gameFlightEmissions,
                     inputSequence=input.Sequence.ToString(CultureInfo.InvariantCulture),sessionId=result.Snapshot.SessionId.ToString("D"),powerPermille=result.Snapshot.PowerPermille});

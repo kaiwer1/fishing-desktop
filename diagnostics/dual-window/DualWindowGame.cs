@@ -21,7 +21,7 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision;
+        internal int Revision, Offset, CastRevision, FlightRevision;
         internal long CastHighWater;
     }
     readonly Dictionary<ProbeWindow,GameBinding> gameViews = new Dictionary<ProbeWindow,GameBinding>();
@@ -35,6 +35,7 @@ sealed partial class DualWindowContext
         else if (gameMode == "new" || GameSelfTest) game = FloatGameOwner.CreateNew(path, CreateGameFixture());
         else throw new ArgumentException("Unknown game mode.");
         InitializeGameCast();
+        InitializeGameFlight();
         // This opt-in build uses only its private fixture save. Opening never
         // falls back to creating new funds, bait or equipment.
         desktopAllowForegroundChanges = true;
@@ -63,7 +64,7 @@ sealed partial class DualWindowContext
     {
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
-        b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0; b.CastRevision=0;
+        b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0; b.CastRevision=0; b.FlightRevision=0;
         if (pane.DesktopReadOnly && !desktopShown.Contains(pane)) {
             desktopShown.Add(pane); GuardPresentation(()=>pane.Show()); CheckDesktop(pane);
         }
@@ -99,8 +100,8 @@ sealed partial class DualWindowContext
         var read=windows[false];
         if (read.DesktopReadOnly && !desktopShown.Contains(read)) { desktopShown.Add(read); GuardPresentation(()=>read.Show()); CheckDesktop(read); }
         rendererEnabled=true; RendererPageReady(read);
-        // Only host preparation time is connected. There is no water/flight or
-        // fish simulation in this fixed-target input integration candidate.
+        // Preparation and a flat-water flight slice run on the host. There is
+        // no autonomous fish simulation in this integration candidate.
         await Task.FromResult(0);
         Broadcast();
     }
@@ -108,12 +109,14 @@ sealed partial class DualWindowContext
     {
         GameBinding b;
         if (game == null || !pane.Ready || !gameViews.TryGetValue(pane,out b) || b.Document == null) return;
+        ReconcileGameFlight();
         var snapshot=game.ReadView(b.View,b.Document);
         int count=snapshot.State==null?0:snapshot.State.Creel.Count;
         if (b.Offset>count) b.Offset=0;
         var projected=FloatPageProjection.Create(snapshot,b.Offset,50);
         Send(pane,new {kind="game-snapshot",documentId=pane.Ticket.DocumentId,revision=checked(++b.Revision),snapshot=projected});
         SendGameCast(pane);
+        SendGameFlight(pane);
     }
     bool GameAuthorized(ProbeWindow pane,string document,string lease,out GameBinding b)
     {
@@ -170,6 +173,7 @@ sealed partial class DualWindowContext
             var state=game.Snapshot;
             if (ExitCode!=0 || state.Faulted) { gameShutdownCode="fault-exit-no-settlement"; return; }
             var result=game.Shutdown(); gameShutdownCode=result.Code;
+            ReconcileGameFlight();
             if (!result.Confirmed) ExitCode=4;
         } catch(Exception error) {
             ExitCode=4; gameShutdownCode="settlement-unconfirmed";

@@ -57,9 +57,45 @@ sealed partial class DualWindowContext
     }
     void GameFixtureLand()
     {
+        Require(GameReadyForFish(),"A fish fact cannot bypass valid water contact or pause.");
         var s=game.Snapshot.State;
         var result=game.ExecuteHost(new HostFloatFish(s.ProfileId,s.BranchId,Guid.NewGuid(),Guid.NewGuid(),s.Session.Id,Guid.NewGuid(),Guid.NewGuid(),"carp",1000000,s.Sequence,s.Rig.Revision,s.RulesVersion));
         Require(result.Committed,"Controlled host fact was not saved."); Broadcast();
+    }
+    async Task GameWaitForWater(ProbeWindow pane)
+    {
+        string session=game.Snapshot.State.Session.Id.ToString("D");
+        await Wait(pane,s=>Field(s,"flightState")!=null && (string)Field(s,"flightState")["sessionId"]==session &&
+            (string)Field(s,"flightState")["phase"]=="waiting" && GameReadyForFish());
+        Require(GameReadyForFish() && gameFlight.Snapshot.Ymm==0,"Waiting projection lacks valid host water contact.");
+    }
+    async Task<string> GameFlightLifecycleProbe(ProbeWindow pane,string lease)
+    {
+        var runtime=gameFlight;
+        Require(runtime!=null && runtime.Snapshot.Phase==FloatFlightPhase.Flying && !GameReadyForFish(),"Flight did not begin before water eligibility.");
+        long sequence=game.Snapshot.State.Sequence;
+        await GameMenu(pane,lease,true);
+        var frozen=runtime.Snapshot;
+        await Task.Delay(180);
+        Require(runtime.Snapshot.ElapsedMilliseconds==frozen.ElapsedMilliseconds && runtime.Snapshot.Ymm==frozen.Ymm && !GameReadyForFish(),"Menu advanced flight or allowed fish facts.");
+        await GameMenu(pane,lease,false);
+        Require(Object.ReferenceEquals(runtime,gameFlight),"Menu rebuilt the trajectory.");
+        checks.Add("menu freezes the active trajectory and fish eligibility without replacing its paid session");
+
+        SetHostPause(PauseReason.Manual,true);await Wait(pane,s=>s["lease"]==null);
+        frozen=runtime.Snapshot;await Task.Delay(180);
+        Require(runtime.Snapshot.ElapsedMilliseconds==frozen.ElapsedMilliseconds && runtime.Snapshot.Zmm==frozen.Zmm,"Host pause advanced the trajectory.");
+        SetHostPause(PauseReason.Manual,false);lease=await Activate(pane);
+        Require(Object.ReferenceEquals(runtime,gameFlight),"Host resume launched the same session again.");
+        checks.Add("host pause freezes flight and resume retains one runtime with a new control grant");
+
+        await GameWaitForWater(pane);
+        Require(game.Snapshot.State.Sequence==sequence && game.Snapshot.State.Creel.Count==0 && runtime.Snapshot.LineUsedMm<=game.Snapshot.State.Rig.LineLengthMm,"Water contact created rewards or exceeded line.");
+        await pane.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('flight').scrollIntoView()");
+        using(var preview=File.Create(Path.Combine(root,"game-flight-panel.png")))
+            await pane.View.CoreWebView2.CapturePreviewAsync(Microsoft.Web.WebView2.Core.CoreWebView2CapturePreviewImageFormat.Png,preview);
+        checks.Add("host trajectory reaches bounded flat water before waiting without granting fish or spending again");
+        return lease;
     }
     async Task GamePreparationCancellationProbe(ProbeWindow pane,string lease)
     {
@@ -166,8 +202,10 @@ sealed partial class DualWindowContext
             Require(await read.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('stats').textContent.includes('11 份')")=="true","Visible resource text did not update.");
             checks.Add("typed release prepares first and host event commits once before the other page receives new resources");
 
-            GameCode(await GameCastWire(control,lease,"release",1),"gesture-not-active",false);
-            GameCode(await GameCastWire(control,lease,"begin",1),"stale-input",false);
+            lease=await GameFlightLifecycleProbe(control,lease);
+
+            GameCode(await GameCastWire(control,lease,"release",1),"gesture-not-current",false);
+            GameCode(await GameCastWire(control,lease,"begin",1),"session-busy",false);
             Require(game.Snapshot.State.Sequence==1 && gameFlightEmissions==1,"Repeated input charged or emitted flight again.");
             GameCode(await GameWire(control,lease,cast),"cast-preparation-required",false);
             var malformed=new Dictionary<string,object>(cast);malformed.Add("massMg","999999");
@@ -175,8 +213,11 @@ sealed partial class DualWindowContext
             checks.Add("late release cannot repeat flight, direct cast bypass is closed and page fish mass is rejected");
 
             string oldDocument=control.Ticket.DocumentId,oldLease=lease;
+            var keptFlight=gameFlight;
             Reload(control); await Wait(control,s=>(string)s["documentId"]!=oldDocument && Field(s,"snapshot")!=null);
             Require(game.Snapshot.State.Sequence==1 && game.Snapshot.State.Session!=null,"Page reload settled game session.");
+            await GameWaitForWater(control);
+            Require(Object.ReferenceEquals(keptFlight,gameFlight),"Page reload restarted flight.");
             c=await Ready(control);Require(Number(c,"flightCount")==0 && Field(c,"lastFlight")==null,"New document replayed an old flight.");
             GameCode(await GameCastWire(control,oldLease,"release",1,oldDocument),"control-required",false);
             GameCode(await GameCastWire(control,oldLease,"release",1),"control-required",false);
@@ -192,6 +233,7 @@ sealed partial class DualWindowContext
             lease=await Activate(control);
             GameCode(await GameWire(control,lease,GameIntent("recall")),"recall-candidate",true);
             Require(game.Snapshot.State.BaitCount==11,"Recall refunded consumed bait.");
+            Require(gameFlight.Snapshot.Phase==FloatFlightPhase.Ended,"Recall left the old flight active.");
             checks.Add("host pause revokes game control and resume requires fresh activation before recall");
 
             await Wait(control,s=>(string)Field(s,"snapshot")["Sequence"]=="2");
@@ -204,7 +246,7 @@ sealed partial class DualWindowContext
             await Wait(control,s=>(string)Field(s,"snapshot")["Sequence"]=="3");
             await Wait(read,s=>Number(s,"flightCount")==2);
             Require(game.Snapshot.State.BaitCount==10,"Page button did not reach typed game transaction.");
-            GameFixtureLand();
+            await GameWaitForWater(control);GameFixtureLand();
             await GameMenu(control,lease,true);
             Require(!game.Snapshot.CanSimulate && game.Snapshot.MenuOpen,"Menu did not pause game eligibility.");
             var sell=GameIntent("sell"); sell.Add("fishIds",new[]{game.Snapshot.State.Creel[0].Id.ToString("D")});
@@ -217,8 +259,9 @@ sealed partial class DualWindowContext
             await GamePreparationCancellationProbe(control,lease);
             // The probe above revokes/regrants; explicitly acquire the current lease.
             lease=await Activate(control);
-            for(int index=0;index<3;index++) { await GameCastAndWait(control,lease); GameFixtureLand(); }
+            for(int index=0;index<3;index++) { await GameCastAndWait(control,lease); await GameWaitForWater(control); GameFixtureLand(); }
             Require(game.Snapshot.PendingResult && !game.Snapshot.CanSimulate,"Full-creel result was not paused.");
+            Require(gameFlight.Snapshot.Phase==FloatFlightPhase.Ended,"Pending fish kept an active flight runtime.");
             await Wait(control,s=>(bool)Field(s,"snapshot")["PendingResult"]);
             Require(await control.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('session').textContent.includes('鲤鱼 · 1.000000 kg')")=="true","Pending fish identity was not shown before release.");
             GameCode(await GameWire(control,lease,GameIntent("release-current")),"released-candidate",true);
@@ -252,7 +295,7 @@ sealed partial class DualWindowContext
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new {passed=true,checks=checks.ToArray(),gameLoaded=true,
                 sequence=game.Snapshot.State.Sequence,value=game.Snapshot.State.WalletMinor,realWebViewMessages=true,independentWindows=true,
                 nativeInputTested=false,desktopLayer=false,nativeFullscreenTested=false,gameSimulationImplemented=false,controlledFishFacts=true,personalSaveRead=false,
-                castPreparationConnected=true,gameFlightEmissions=gameFlightEmissions,realWaterAndFlight=false}),Encoding.UTF8);
+                castPreparationConnected=true,gameFlightEmissions=gameFlightEmissions,flatWaterFlightConnected=true,realWaterAndFlight=false}),Encoding.UTF8);
             Shutdown();
         } catch(Exception error) { Fail(error); }
     }

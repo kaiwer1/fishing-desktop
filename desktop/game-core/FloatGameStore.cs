@@ -29,6 +29,18 @@ namespace FishingDesktop.GameCore
     // Internal fault injection for real private-file tests; never a page API.
     internal enum FloatSaveFaultPoint { BeforeWrite, AfterPrefix, AfterFrame, AfterFlush }
 
+    // One replay result shared by the writable store and the independent
+    // read-only archive service. It has no file handle or mutation authority.
+    internal sealed class FloatJournalReplay
+    {
+        internal readonly FloatGameState State;
+        internal readonly long Length;
+        readonly byte[] tipHash;
+        internal FloatJournalReplay(FloatGameState state,long length,byte[] tip)
+        {State=state;Length=length;tipHash=(byte[])tip.Clone();}
+        internal byte[] CopyTipHash(){return (byte[])tipHash.Clone();}
+    }
+
     // Bounded, append-only schema-1 candidate. There is no import, automatic
     // repair, tail trimming, compaction, checkpoint fallback or reset-to-new.
     public sealed class FloatGameStore : IDisposable
@@ -200,47 +212,59 @@ namespace FishingDesktop.GameCore
 
         void ReadJournal()
         {
-            long size = _file.Length;
+            var replay=ReadValidatedJournal(_file);
+            _state=replay.State;_lastHash=replay.CopyTipHash();_length=replay.Length;
+        }
+
+        // The caller owns a stable, seekable input at byte zero. This is the
+        // exact replay validator used by OpenExisting; it never repairs,
+        // settles an unfinished session, rewrites a file or creates a profile.
+        internal static FloatJournalReplay ReadValidatedJournal(Stream input)
+        {
+            if(input==null)throw new ArgumentNullException("input");
+            if(!input.CanRead||!input.CanSeek||input.Position!=0)throw new ArgumentException("A readable seekable journal at byte zero is required.","input");
+            long size = input.Length;
             if (size > MaximumFileBytes || size < Magic.Length + FrameOverhead + 1)
                 throw new InvalidDataException("Save length is invalid or exceeds the schema-1 limit.");
-            using (var reader = new BinaryReader(_file, Encoding.UTF8, true))
+            FloatGameState state=null;byte[] lastHash=new byte[32];
+            using (var reader = new BinaryReader(input, Encoding.UTF8, true))
             {
                 if (!Equal(Exact(reader, Magic.Length), Magic))
                     throw new InvalidDataException("Unsupported save header or version.");
                 long expectedSequence = 0;
-                while (_file.Position < size)
+                while (input.Position < size)
                 {
-                    if (size - _file.Position < FrameOverhead + 1 || expectedSequence > MaximumTransactions)
+                    if (size - input.Position < FrameOverhead + 1 || expectedSequence > MaximumTransactions)
                         throw new InvalidDataException("Truncated or excessive save frames.");
                     int length = reader.ReadInt32();
                     long sequence = reader.ReadInt64();
                     if (length <= 0 || length > FloatJournalCodec.MaximumPayloadBytes ||
-                        size - _file.Position < 64L + length || sequence != expectedSequence)
+                        size - input.Position < 64L + length || sequence != expectedSequence)
                         throw new InvalidDataException("Invalid save frame length or sequence.");
                     byte[] previous = Exact(reader, 32);
                     byte[] payload = Exact(reader, length);
                     byte[] hash = Exact(reader, 32);
-                    if (!Equal(previous, _lastHash) || !Equal(hash, Digest(FrameBody(sequence, previous, payload))))
+                    if (!Equal(previous, lastHash) || !Equal(hash, Digest(FrameBody(sequence, previous, payload))))
                         throw new InvalidDataException("Save frame integrity check failed.");
 
-                    if (sequence == 0) _state = FloatJournalCodec.DecodeGenesis(payload);
+                    if (sequence == 0) state = FloatJournalCodec.DecodeGenesis(payload);
                     else
                     {
                         var command = FloatJournalCodec.DecodeCommand(payload);
-                        var reduction = FloatGameReducer.Reduce(_state, command, _state.Rules);
+                        var reduction = FloatGameReducer.Reduce(state, command, state.Rules);
                         // Every stored command must add exactly one new state.
                         // An extra duplicate/rejected command is not a commit.
                         if (!reduction.HasCandidate || reduction.IsReplay || reduction.Candidate.Sequence != sequence)
                             throw new InvalidDataException("Save command is inconsistent with its preceding state.");
-                        _state = reduction.Candidate;
+                        state = reduction.Candidate;
                     }
-                    _lastHash = hash;
+                    lastHash = hash;
                     expectedSequence++;
                 }
             }
-            if (_state == null || _file.Position != size)
+            if (state == null || input.Position != size || input.Length != size)
                 throw new InvalidDataException("The save has no complete initial state.");
-            _length = size;
+            return new FloatJournalReplay(state,size,lastHash);
         }
 
         public void Dispose()

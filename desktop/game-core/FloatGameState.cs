@@ -155,7 +155,7 @@ namespace FishingDesktop.GameCore
         }
     }
     public enum FloatRecoveryReason { StartupInterrupted=1,OwnerShutdown=2 }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded }
     public sealed class FloatEquipmentLossSummary
     {
         public readonly Guid LineId;

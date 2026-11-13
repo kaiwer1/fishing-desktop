@@ -33,6 +33,7 @@ sealed partial class DualWindowContext
     }
     void AdvanceActivity()
     {
+        AdvanceGameCamp(activityWatch.Elapsed.TotalSeconds);
         double step=activityClock.Advance(activityWatch.Elapsed.TotalSeconds,owner.ActivityState().CanRun && GameCanSimulate);
         AdvanceGameCast(step);
         AdvanceGameFlight(step);

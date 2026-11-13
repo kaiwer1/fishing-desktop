@@ -85,6 +85,11 @@
 <div id="shop-retry" hidden><p id="shop-retry-text"></p><button id="shop-retry-confirm" class="interactive" disabled>重试原操作</button></div>
 <button id="shop-cancel" class="interactive" hidden disabled>取消本次操作</button>
 </section>
+<section id="camp" hidden><h2>营地帮工</h2><p id="camp-status" role="status">等待帮工信息</p>
+<p>余额低于 32 银币且鱼护为空时，可帮工 1 分钟，完成后领取 8 银币；不消耗鱼饵或体力。</p>
+<progress id="camp-progress" max="60000" value="0"></progress> <span id="camp-elapsed">0 / 60 秒</span>
+<div class="interactive"><button id="camp-start" disabled>开始帮工</button><button id="camp-claim" disabled>领取报酬</button><button id="camp-cancel" disabled>取消本轮</button></div>
+<p class="muted">请保持当前窗口和菜单开启；离开、关闭菜单或切换窗口会取消未结算的本轮，不计算离线收益。</p></section>
 <section id="spares" hidden><h2>渔具店 · 备件</h2><p id="spares-status" role="status">等待备件信息</p><p id="spares-wallet"></p><div id="spares-items"></div>
 <div id="spares-offer" hidden><p id="spares-offer-text"></p><button id="spares-buy" class="interactive" disabled>确认购买</button></div>
 <button id="spares-retry" class="interactive" hidden disabled>重试原购买</button><button id="spares-cancel" class="interactive" hidden disabled>取消未写入操作</button></section>

@@ -11,8 +11,9 @@ sealed partial class DualWindowContext
 {
     readonly string gameMode;
     internal bool GameMode { get { return gameMode != null; } }
-    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameFailureCase!=null; } }
+    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameFailureCase!=null; } }
     bool GameSparesSelfTest { get { return gameMode == "spares-self-test"; } }
+    bool GameCampSelfTest { get { return gameMode == "camp-self-test"; } }
     string GameFailureCase { get { return gameMode!=null && gameMode.StartsWith("failure-",StringComparison.Ordinal)?gameMode.Substring(8):null; } }
     FloatGameOwner game;
     bool gameShutdownAttempted;
@@ -23,8 +24,8 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision;
-        internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision;
+        internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater;
         internal GameShopPending Shop;
         internal GameEquipmentPending Equipment;
         internal GameSparesPending Spares;
@@ -41,20 +42,21 @@ sealed partial class DualWindowContext
             if(inspection.State.SchemaVersion!=2&&inspection.State.SchemaVersion!=3)throw new InvalidOperationException("This legacy profile requires an explicit backed-up candidate upgrade; opening did not change it.");
             game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion);
         }
-        else if(gameMode=="new" || GameSparesSelfTest){
-            var initial=CreateGameFixture();
-            game=FloatGameOwner.CreateNewWithEquipmentOffers(path,initial,CreateGameSparesCatalog(initial),GameSparesSelfTest?(Action<FloatSaveFaultPoint>)GameShopSaveFault:null);
+        else if(gameMode=="new" || GameSparesSelfTest || GameCampSelfTest){
+            var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture();
+            game=FloatGameOwner.CreateNewWithEquipmentOffers(path,initial,CreateGameSparesCatalog(initial),(GameSparesSelfTest||GameCampSelfTest)?(Action<FloatSaveFaultPoint>)GameShopSaveFault:null);
         }
         else if(GameSelfTest) game=FloatGameOwner.CreateNew(path,CreateGameFixture(),GameShopSaveFault);
         else throw new ArgumentException("Unknown game mode.");
         InitializeGameCast();
+        InitializeGameCamp();
         InitializeGameFlight();
         // This opt-in build uses only its private fixture save. Opening never
         // falls back to creating new funds, bait or equipment.
         desktopAllowForegroundChanges = true;
         if (!GameSelfTest) owner.SetPause(FishingDesktop.Diagnostics.HostPolicy.PauseReason.EnvironmentUnknown,true);
     }
-    static FloatGameState CreateGameFixture()
+    static FloatGameState CreateGameFixture(long wallet=12000,int stamina=100,int bait=12)
     {
         var rules = new FloatGameRules(1,"float-starter","worm",2,100,2,1000000,
             new[]{new FloatSpeciesRule("carp",100000,10000000,120),new FloatSpeciesRule("crucian",50000,3000000,80)});
@@ -80,7 +82,7 @@ sealed partial class DualWindowContext
             new FloatEquipmentInstance(rig.HookId,"single-hook",FloatEquipmentKind.Hook,1,FloatEquipmentLocation.RigSlot(rig.Id,FloatEquipmentSlot.Hook)),
             new FloatEquipmentInstance(rig.BobberId,"float-3g",FloatEquipmentKind.Bobber,1,FloatEquipmentLocation.RigSlot(rig.Id,FloatEquipmentSlot.Bobber)),
             new FloatEquipmentInstance(rig.SinkerId,"sinker-2_5g",FloatEquipmentKind.Sinker,1,FloatEquipmentLocation.RigSlot(rig.Id,FloatEquipmentSlot.Sinker))});
-        return FloatGameState.CreateNewWithEquipment(Guid.NewGuid(),Guid.NewGuid(),12000,100,Guid.NewGuid(),"worm",12,equipment,rules,catalog,Guid.NewGuid());
+        return FloatGameState.CreateNewWithEquipment(Guid.NewGuid(),Guid.NewGuid(),wallet,stamina,Guid.NewGuid(),"worm",bait,equipment,rules,catalog,Guid.NewGuid());
     }
     static FloatEquipmentOffers CreateGameSparesCatalog(FloatGameState initial)
     {
@@ -109,14 +111,14 @@ sealed partial class DualWindowContext
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
         ClearGameFightInput(pane);
-        ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane);
+        ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
         game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.Document=null;
     }
     void GameAttached(ProbeWindow pane)
     {
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
-        ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane);
+        ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
         b.Document=game.AttachDocument(b.View); b.Offset=0; b.Revision=0; b.CastRevision=0; b.FlightRevision=0; b.BiteRevision=0; b.FightRevision=0; b.ShopRevision=0;
         if (pane.DesktopReadOnly && !desktopShown.Contains(pane)) {
             desktopShown.Add(pane); GuardPresentation(()=>pane.Show()); CheckDesktop(pane);
@@ -128,7 +130,7 @@ sealed partial class DualWindowContext
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
         ClearGameFightInput(pane);
-        ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane);
+        ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
         game.CloseView(b.View); gameViews.Remove(pane);
     }
     void GameLease(ProbeWindow pane,string wireLease)
@@ -137,8 +139,8 @@ sealed partial class DualWindowContext
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         CancelGameCast(pane);
         ClearGameFightInput(pane);
-        ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane);
-        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0; b.EquipmentHighWater=0;
+        ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
+        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0; b.EquipmentHighWater=0; b.CampHighWater=0;
         var state=game.Snapshot;
         if (wireLease == null || b.Document == null || state.Faulted || state.HostPaused || state.ShutdownConfirmed) return;
         b.Lease=game.GrantControl(b.View,b.Document); b.WireLease=wireLease;
@@ -148,7 +150,7 @@ sealed partial class DualWindowContext
         if (game == null) return;
         var snapshot=game.Snapshot;
         if (!snapshot.Faulted && !snapshot.ShutdownConfirmed) game.SetHostPaused(!owner.ActivityState().CanRun);
-        if(game.Snapshot.HostPaused||game.Snapshot.Faulted||game.Snapshot.ShutdownConfirmed){ClearGameShop(); ClearGameEquipment(); ClearGameSpares();}
+        if(game.Snapshot.HostPaused||game.Snapshot.Faulted||game.Snapshot.ShutdownConfirmed){ClearGameShop(); ClearGameEquipment(); ClearGameSpares(); ClearGameCamp();}
         if (!game.Snapshot.CanSimulate) { CancelGameCast(); ClearGameFightInput(); }
     }
     async Task StartGamePresentation()
@@ -179,7 +181,7 @@ sealed partial class DualWindowContext
         SendGameFlight(pane);
         SendGameBite(pane);
         SendGameFight(pane);
-        SendGameShop(pane); SendGameEquipment(pane); SendGameSpares(pane);
+        SendGameShop(pane); SendGameEquipment(pane); SendGameSpares(pane); SendGameCamp(pane);
     }
     bool GameAuthorized(ProbeWindow pane,string document,string lease,out GameBinding b)
     {
@@ -206,7 +208,15 @@ sealed partial class DualWindowContext
             if (state.State==null || (int)offset>state.State.Creel.Count) return;
             b.Offset=(int)offset; SendGameSnapshot(pane); return;
         }
-        if (!GameAuthorized(pane,document,lease,out b)) { GameReply(pane,transport,"control-required"); return; }
+        if (!GameAuthorized(pane,document,lease,out b)) {
+            GameReply(pane,transport,"control-required");
+            if(kind=="game-camp")Broadcast();
+            return;
+        }
+        if(kind=="game-camp"){ReceiveGameCamp(pane,b,m,document,lease,transport);return;}
+        if(GameCampActive&&(kind=="game-shop"||kind=="game-equipment"||kind=="game-spares"||kind=="game-intent")){
+            GameReply(pane,transport,"camp-work-busy");Broadcast();return;
+        }
         if (kind=="game-cast") { ReceiveGameCast(pane,b,m,transport); return; }
         if (kind=="game-strike") { ReceiveGameStrike(pane,b,m,transport); return; }
         if (kind=="game-fight") { ReceiveGameFight(pane,b,m,transport); return; }
@@ -218,6 +228,7 @@ sealed partial class DualWindowContext
             if (m.Count!=5 || !m.TryGetValue("open",out open) || !(open is bool)) { GameReply(pane,transport,"invalid-intent"); return; }
             AdvanceActivity();
             if ((bool)open) { CancelGameCast(); ClearGameFightInput(); }
+            else ClearGameCamp();
             game.SetMenuOpen((bool)open);
             AdvanceActivity();
             GameReply(pane,transport,"menu-updated"); Broadcast(); return;
@@ -238,7 +249,7 @@ sealed partial class DualWindowContext
         if (game == null || gameShutdownAttempted) return;
         CancelGameCast();
         ClearGameFightInput();
-        ClearGameShop(); ClearGameEquipment(); ClearGameSpares();
+        ClearGameShop(); ClearGameEquipment(); ClearGameSpares(); ClearGameCamp();
         gameShutdownAttempted=true;
         try {
             var state=game.Snapshot;

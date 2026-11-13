@@ -50,6 +50,7 @@ sealed partial class DualWindowContext
     {
         GameEquipmentSaveFault(point);
         GameSparesSaveFault(point);
+        GameCampSaveFault(point);
         if(GameSelfTest&&GameFailureCase!=null&&gameFailureCommitInProgress&&gameFailureBoundaryFault==point){
             gameFailureBoundaryFault=null;throw new IOException("Controlled private failure boundary: "+GameFailureCase);
         }

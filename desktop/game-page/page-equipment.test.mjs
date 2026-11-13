@@ -47,7 +47,8 @@ async function pageFixture() {
   const equipment = { schemaVersion: 3, available: true, reason: null, lease: 'first', stateSequence: '1', rigRevision: '1', inventoryRevision: '1', equipmentVersion: '1', archivedItemsCount: 0, archivedLineMm: '0', items: inventory(), issues: [], retry: null };
   const spares = { schemaVersion: 3, available: true, reason: null, lease: 'first', stateSequence: '1', catalogVersion: '1', walletMinor: '12000', instancesCount: 7,
     items: [{ sku: 'hook-single', definitionKey: 'single-hook', kind: 'hook', priceMinor: '35', lineLengthMm: 0 }], quote: null, retry: null };
-  let snapshotRevision = 0, shopRevision = 0, equipmentRevision = 0, sparesRevision = 0, leaseRevision = 0;
+  const camp = { available: false, reason: 'camp-balance-sufficient', lease: 'first', phase: 'idle', elapsedMilliseconds: 0, requiredMilliseconds: 60000, rewardMinor: '800', stateSequence: '1' };
+  let snapshotRevision = 0, shopRevision = 0, equipmentRevision = 0, sparesRevision = 0, campRevision = 0, leaseRevision = 0;
   const emit = message => receive({ data: { documentId, ...message } });
   const broadcast = () => {
     emit({ kind: 'game-snapshot', revision: ++snapshotRevision, snapshot: { ...snapshot } });
@@ -55,14 +56,15 @@ async function pageFixture() {
     emit({ kind: 'game-shop-state', revision: ++shopRevision, state: structuredClone(shop) });
     emit({ kind: 'game-equipment-state', revision: ++equipmentRevision, state: structuredClone(equipment) });
     emit({ kind: 'game-spares-state', revision: ++sparesRevision, state: structuredClone(spares) });
+    emit({ kind: 'game-camp-state', revision: ++campRevision, state: structuredClone(camp) });
   };
   const grant = lease => emit({ kind: 'lease', revision: ++leaseRevision, cancellationEpoch: 0, lease });
   emit({ kind: 'role', role: '交互' }); emit({ kind: 'game-snapshot', revision: ++snapshotRevision, snapshot: { ...snapshot } }); grant('first'); broadcast();
-  return { nodes, messages, snapshot, shop, equipment, spares, probe, broadcast, grant, emit,
+  return { nodes, messages, snapshot, shop, equipment, spares, camp, probe, broadcast, grant, emit,
     click: (id, event, force) => nodes.get(id).dispatch('click', event, force),
     select(id, value) { nodes.get(id).value = value; nodes.get(id).dispatch('change'); },
     reply(code, transportId = messages.at(-1).transportId) { emit({ kind: 'game-reply', transportId, code }); },
-    advance() { snapshot.Sequence = String(Number(snapshot.Sequence) + 1); equipment.stateSequence = spares.stateSequence = snapshot.Sequence; },
+    advance() { snapshot.Sequence = String(Number(snapshot.Sequence) + 1); equipment.stateSequence = spares.stateSequence = camp.stateSequence = snapshot.Sequence; },
     replaceRod() { equipment.items = equipment.items.map(item => item.id === id(1) ? { ...item, location: 'inventory', slot: null, revision: '2' } : item.id === id(7) ? { ...item, location: 'rig-slot', slot: 'rod', revision: '2' } : item); this.advance(); }
   };
 }
@@ -75,6 +77,42 @@ test('page initializes after empty placeholders with current equipment selected 
   }
   assert.equal(f.nodes.get('equipment-line').value, id(3)); assert.equal(f.nodes.get('equipment-reel').value, id(2));
   assert.equal(f.nodes.get('equipment-move-line').disabled, true); assert.equal(f.messages.length, 0);
+});
+
+test('camp holds all trading menus through work and retry, then unlocks immediately after confirmed explicit payment', async () => {
+  const f = await pageFixture(); f.snapshot.WalletMinor = f.shop.walletMinor = f.spares.walletMinor = '0';
+  Object.assign(f.camp, { available: true, reason: null }); f.broadcast(); f.select('equipment-slot-rod', id(7));
+  f.click('camp-start'); assert.equal(f.messages.at(-1).action, 'start'); f.reply('camp-work-started');
+  Object.assign(f.camp, { phase: 'working', elapsedMilliseconds: 20000 }); f.broadcast();
+  assert.equal(f.nodes.get('camp-elapsed').textContent, '20 / 60 秒'); assert.equal(f.nodes.get('menu').disabled, false);
+  for (const button of ['quote-bait', 'spares-quote-hook-single', 'equipment-apply-rod']) {
+    assert.equal(f.nodes.get(button).disabled, true); f.click(button, {}, true);
+  }
+  assert.equal(f.messages.length, 1); Object.assign(f.camp, { phase: 'ready', elapsedMilliseconds: 60000 }); f.broadcast();
+  assert.equal(f.messages.length, 1); assert.equal(f.nodes.get('camp-claim').disabled, false); f.click('camp-claim');
+  f.reply('camp-work-not-written'); f.camp.phase = 'retry'; f.broadcast();
+  assert.equal(f.nodes.get('camp-claim').textContent, '重试领取'); assert.equal(f.nodes.get('quote-bait').disabled, true); assert.equal(f.messages.length, 2);
+  f.click('camp-claim'); f.snapshot.WalletMinor = f.shop.walletMinor = f.spares.walletMinor = '800'; f.advance();
+  f.reply('camp-work-candidate'); f.camp.phase = 'confirmed'; f.broadcast();
+  assert.equal(f.nodes.get('camp-status').textContent, '报酬已确认入账：8.00 银币。');
+  for (const button of ['quote-bait', 'spares-quote-hook-single', 'equipment-apply-rod']) assert.equal(f.nodes.get(button).disabled, false);
+  assert.deepEqual(f.messages.map(m => m.action), ['start', 'claim', 'claim']);
+});
+
+test('camp respects a busy shop, permits menu exit, gives recovery guidance and freezes all menus after unknown payment', async () => {
+  const f = await pageFixture(); assert.equal(f.nodes.get('camp-start').disabled, true); assert.match(f.nodes.get('camp-status').textContent, /现有银币/);
+  Object.assign(f.camp, { available: true, reason: null }); f.broadcast(); f.click('food-eat');
+  f.click('camp-start', {}, true); assert.equal(f.messages.length, 1); f.reply('food-candidate'); f.broadcast();
+  f.click('camp-start'); f.reply('camp-work-started'); f.camp.phase = 'working'; f.broadcast(); f.click('menu');
+  assert.equal(f.messages.at(-1).kind, 'game-menu'); assert.equal(f.messages.at(-1).open, false);
+  f.snapshot.MenuOpen = false; Object.assign(f.camp, { available: false, reason: 'menu-required', phase: 'cancelled' }); f.reply('menu-updated'); f.broadcast();
+  assert.equal(f.probe.state().campInputState.phase, null); assert.equal(f.nodes.get('camp').hidden, true);
+  f.snapshot.MenuOpen = true; f.snapshot.CreelCount = 1; Object.assign(f.camp, { reason: 'camp-creel-not-empty' }); f.broadcast();
+  assert.match(f.nodes.get('camp-status').textContent, /出售渔获/);
+  f.snapshot.CreelCount = 0; Object.assign(f.camp, { available: true, reason: null, phase: 'ready', elapsedMilliseconds: 60000 }); f.broadcast(); f.click('camp-claim');
+  f.reply('camp-work-save-unknown'); f.camp.phase = 'confirmed'; f.broadcast();
+  for (const button of ['camp-start', 'camp-claim', 'quote-bait', 'spares-quote-hook-single']) assert.equal(f.nodes.get(button).disabled, true);
+  assert.match(f.nodes.get('camp-status').textContent, /待核验/);
 });
 
 test('archive button confirms freed slots and exact archived line totals without changing owned gear or money', async () => {

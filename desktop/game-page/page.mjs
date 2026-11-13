@@ -8,6 +8,8 @@ import { EquipmentView, EquipmentInput } from './equipment-view.mjs';
 import { EquipmentPanel } from './equipment-panel.mjs';
 import { SparesView, SparesInput } from './spares-view.mjs';
 import { SparesPanel } from './spares-panel.mjs';
+import { CampView, CampInput } from './camp-view.mjs';
+import { CampPanel } from './camp-panel.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -22,6 +24,7 @@ const fightView = new FightView(documentId);
 const shopView = new ShopView(documentId);
 const equipmentView = new EquipmentView(documentId);
 const sparesView = new SparesView(documentId);
+const campView = new CampView(documentId);
 let saveFaulted = false;
 let speedKeyHeld = false;
 const selected = new Set();
@@ -29,7 +32,7 @@ const $ = id => document.getElementById(id);
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
 const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
-const canPrepare = () => canControl() && !inflight && !shopBusy() && !equipmentBusy() && !sparesBusy() && !snapshot.SessionId && !snapshot.MenuOpen;
+const canPrepare = () => canControl() && !inflight && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.SessionId && !snapshot.MenuOpen;
 const castInput = new CastInput({ readContext: () => ({ lease: authority.state().lease, allowed: canPrepare() }), post: send, newTransportId: () => crypto.randomUUID() });
 function strikeContext() {
   const bite = biteView.state();
@@ -68,15 +71,21 @@ function sparesContext() {
 }
 const sparesInput = new SparesInput({ readContext: sparesContext, post: send, newTransportId: () => crypto.randomUUID() });
 function sparesBusy() { const s = sparesInput.state(); return Boolean(s.inflight || s.awaitingState); }
+const campInput = new CampInput({ readContext: equipmentContext, post: send, newTransportId: () => crypto.randomUUID() });
+function campBusy() { const s = campInput.state(); return Boolean(s.inflight || s.awaitingState); }
+function campEngaged() { return ['working', 'ready', 'retry'].includes(campInput.state().phase); }
 // Another menu operation blocks new intent, not delivery of a current host
 // projection. Otherwise the fixed shop/equipment send order loses readiness.
-const canUseShop = () => !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
-const canUseEquipment = () => !shopBusy() && !shopInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
-const canUseSpares = () => !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry;
+const canUseShop = () => !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
+const canUseEquipment = () => !shopBusy() && !shopInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
+const canUseSpares = () => !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !campBusy() && !campEngaged();
+const canUseCamp = () => !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
 const equipmentPanel = new EquipmentPanel({ view: equipmentView, input: equipmentInput, snapshot: () => snapshot,
   canAct: canUseEquipment, changed: () => updateButtons() });
 const sparesPanel = new SparesPanel({ view: sparesView, input: sparesInput, snapshot: () => snapshot,
   canAct: canUseSpares, changed: () => updateButtons() });
+const campPanel = new CampPanel({ view: campView, input: campInput, snapshot: () => snapshot,
+  canAct: canUseCamp, changed: () => updateButtons() });
 const names = { carp: '鲤鱼', crucian: '鲫鱼', worm: '蚯蚓' };
 function decimal(value, scale = 2) {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) return '—';
@@ -91,6 +100,7 @@ function render() {
   shopInput.reconcile();
   equipmentInput.reconcile();
   sparesInput.reconcile();
+  campInput.reconcile();
   if (!shopContext().allowed || previousShopLease !== shopInput.state().lease) shopView.clearReferences();
   if (!fightContext().allowed) speedKeyHeld = false;
   $('status').textContent = snapshot?.Faulted || saveFaulted ? '保存结果待核验，请退出后重新打开原存档。' : snapshot?.HostPaused ? '当前暂停' : readOnly ? '观赏窗口' : canControl() ? '交互已开启' : '请从窗口顶部开启交互';
@@ -216,7 +226,7 @@ function renderShop() {
   $('shop-cancel').hidden = !input.quote && !input.retry;
 }
 function updateButtons() {
-  const active = canControl() && !inflight && !shopBusy() && !equipmentBusy() && !sparesBusy();
+  const active = canControl() && !inflight && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
   const input = castInput.state();
   $('cast').disabled = !canPrepare() || Boolean(input);
   $('cast-release').disabled = !canPrepare() || input?.phase !== 'charging' || input.source !== 'button';
@@ -237,7 +247,7 @@ function updateButtons() {
   $('release').disabled = !active || !snapshot.PendingResult;
   $('menu').disabled = !active;
   $('menu').textContent = snapshot?.MenuOpen ? '关闭鱼护与商店' : '打开鱼护与商店';
-  $('sell').disabled = !active || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || !selected.size;
+  $('sell').disabled = !active || campEngaged() || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || !selected.size;
   $('previous').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset <= 0;
   $('next').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset + (snapshot.Creel?.length ?? 0) >= snapshot.CreelCount;
   const shop = shopContext(), shopState = shopInput.state(), shopping = shop.allowed && shopState.ready && !shopBusy() && !shopState.faulted && canUseShop();
@@ -253,6 +263,7 @@ function updateButtons() {
   $('shop-cancel').disabled = !shopping || !shopState.quote && !shopState.retry;
   equipmentPanel.render();
   sparesPanel.render();
+  campPanel.render();
 }
 function revoke(reason) {
   castInput.cancel();
@@ -262,7 +273,7 @@ function revoke(reason) {
   render();
 }
 function intent(action) {
-  if (!canControl() || inflight || shopBusy() || equipmentBusy() || sparesBusy() || action === 'recall' && failurePending()) return;
+  if (!canControl() || inflight || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
   fightInput.cancel();
   const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : snapshot.SessionId,
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
@@ -301,6 +312,12 @@ Object.assign(codes, { 'spares-quoted': '备件报价已确认，请核对后购
   'spares-retry-required': '请先处理上一次未写入的备件购买。', 'spares-cancelled': '已取消备件报价或未写入操作。',
   'spares-intent-not-current': '备件报价已失效，请重新查看报价。', 'equipment-quote-stale': '装备或进度已变化，请重新查看备件报价。',
   'equipment-capacity-exceeded': '装备数量已达当前存档上限，本次未扣款。', 'equipment-offers-missing': '此存档尚未配置备件商店。' });
+Object.assign(codes, { 'camp-work-started': '帮工已开始，请保持当前窗口和菜单开启。', 'camp-work-ready': '帮工已完成，请领取报酬。',
+  'camp-work-not-written': '领取确认未写入，请重试领取原报酬。', 'camp-work-save-unknown': '领取结果待核验，请退出后重新打开原存档。',
+  'camp-work-cancelled': '本轮帮工已取消，未结算时间不保留。', 'camp-work-not-ready': '本轮尚未完成，暂不能领取。',
+  'camp-work-busy': '请先完成或取消当前帮工。', 'camp-work-state-changed': '当前进度已变化，本轮帮工已取消。',
+  'camp-work-candidate': '帮工报酬已确认入账：8.00 银币。', 'camp-wallet-ineligible': '可先用现有银币购买补给。',
+  'camp-creel-not-empty': '可以先出售鱼护里的渔获。', 'camp-schema-required': '此存档尚未支持营地帮工。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
   if (m.kind === 'game-flight-state') {
@@ -342,6 +359,13 @@ window.chrome.webview.addEventListener('message', event => {
     }
     return;
   }
+  if (m.kind === 'game-camp-state') {
+    if (campView.apply(m)) {
+      if (m.state.phase === 'unknown' || ['save-outcome-unknown', 'camp-work-save-unknown'].includes(m.state.reason)) saveFaulted = true;
+      campInput.hostState(m); updateButtons();
+    }
+    return;
+  }
   if (m.kind === 'prepare-activation') {
     if (!landscape() || (!m.allowUnfocused && (document.hidden || !document.hasFocus()))) return;
     lastActivation = { requestId: m.requestId };
@@ -354,8 +378,8 @@ window.chrome.webview.addEventListener('message', event => {
   }
   if (m.kind === 'game-snapshot' && Number.isSafeInteger(m.revision) && m.revision > revision) { snapshot = m.snapshot; revision = m.revision; }
   if (m.kind === 'game-reply') {
-    lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m); equipmentInput.reply(m); sparesInput.reply(m);
-    if (['save-outcome-unknown', 'failure-save-unknown', 'landing-save-unknown'].includes(m.code)) saveFaulted = true;
+    lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m); equipmentInput.reply(m); sparesInput.reply(m); campInput.reply(m);
+    if (['save-outcome-unknown', 'failure-save-unknown', 'landing-save-unknown', 'camp-work-save-unknown'].includes(m.code)) saveFaulted = true;
     if (inflight === m.transportId) inflight = null; $('notice').textContent = codes[m.code] ?? `操作未完成：${m.code}`;
   }
   if (m.kind === 'game-cast-state' && Number.isSafeInteger(m.revision) && m.revision > castRevision &&
@@ -393,7 +417,7 @@ $('recall').addEventListener('click', () => intent('recall'));
 $('release').addEventListener('click', () => intent('release-current'));
 $('sell').addEventListener('click', () => intent('sell'));
 $('menu').addEventListener('click', () => {
-  if (!canControl() || inflight || shopBusy() || equipmentBusy() || sparesBusy()) return;
+  if (!canControl() || inflight || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
   if (snapshot.MenuOpen) shopInput.cancel();
@@ -506,6 +530,7 @@ window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authorit
   fightState: fightView.state(), fightRevision: fightView.revision, fightInputState: fightInput.state(),
   shopState: shopView.state(), shopRevision: shopView.revision, shopInputState: shopInput.state(),
   equipmentState: equipmentView.state(), equipmentRevision: equipmentView.revision, equipmentInputState: equipmentInput.state(),
-  sparesState: sparesView.state(), sparesRevision: sparesView.revision, sparesInputState: sparesInput.state() }),
+  sparesState: sparesView.state(), sparesRevision: sparesView.revision, sparesInputState: sparesInput.state(),
+  campState: campView.state(), campRevision: campView.revision, campInputState: campInput.state() }),
   sendRaw: message => window.chrome.webview.postMessage(message), cancel: () => revoke('test-cancel') };
 render(); renderFlight();

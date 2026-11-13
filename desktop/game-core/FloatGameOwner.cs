@@ -200,6 +200,12 @@ namespace FishingDesktop.GameCore
         internal FloatCommitResult ExecuteHost(FloatCommand command)
         {
             Entry(); Operational();
+            // Camp completion is a separate host fact while the menu is open.
+            // It never relaxes the fishing simulation gate or page authority.
+            if(command is HostFloatCampReward){
+                if(_hostPaused||!_menu||_store.State.Session!=null)return Refused("simulation-paused");
+                return Run(()=>_store.Execute(command));
+            }
             if (!(command is HostFloatFish) && !(command is RecoverFloatSession) && !(command is HostFloatUnhooked) && !(command is HostFloatTerminalLoss)) return Refused("host-command-not-allowed");
             if (!Current().CanSimulate && !HasRecordedRequest(command)) return Refused("simulation-paused");
             return Run(() => _store.Execute(command));

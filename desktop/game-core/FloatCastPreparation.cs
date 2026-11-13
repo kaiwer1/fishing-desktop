@@ -90,6 +90,8 @@ namespace FishingDesktop.GameCore
             if(!snapshot.CanSimulate||snapshot.State==null){code="domain-paused";return false;}
             var state=snapshot.State;
             if(state.Session!=null){code="session-busy";return false;}
+            var budget=owner.SaveBudget;
+            if(!budget.CanStartCast){code=budget.Code;return false;}
             if(state.BaitCount<1){code="bait-empty";return false;}
             if(state.Stamina<state.Rules.CastStaminaCost){code="stamina-insufficient";return false;}
             if(state.Rig.DefinitionKey!=state.Rules.RigDefinitionKey){code="rig-invalid";return false;}

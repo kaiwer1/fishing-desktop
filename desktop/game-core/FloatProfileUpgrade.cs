@@ -86,6 +86,11 @@ namespace FishingDesktop.GameCore
                 if(!preview.HasCandidate)throw new InvalidOperationException("Upgrade policy was rejected before file creation: "+preview.Code);
                 long frameBytes=4+8+32+32+(long)FloatJournalCodec.EncodeCommand(command,2).Length;
                 if(source.Length>FloatGameStore.MaximumFileBytes-frameBytes)throw new InvalidOperationException("Source has insufficient journal space; history is not reset.");
+                // New writes must retain enough space to settle an active
+                // legacy cast. Existing candidates remain read-only verifiable
+                // even when they were legitimately created by an older writer.
+                if(!File.Exists(candidateFile)&&!FloatSaveBudget.PreservesEnding(source.Sequence,source.Length,frameBytes,preview.Candidate.Session))
+                    throw new InvalidOperationException("Source has insufficient reserved space to settle its active session after upgrade.");
                 if(!File.Exists(backupFile))FloatJournalArchive.Backup(source,backupFile);
                 using(var backupLock=new FileStream(backupFile,FileMode.Open,FileAccess.Read,FileShare.Read)){
                     DistinctFiles(sourceLock,backupLock);

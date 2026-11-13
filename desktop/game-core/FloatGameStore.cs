@@ -26,6 +26,38 @@ namespace FishingDesktop.GameCore
         }
     }
 
+    // Storage eligibility only, not equipment, resource or input authority.
+    // These bounds cover one cast plus the largest currently valid ending:
+    // a maximum-key fish result followed by explicit full-creel release.
+    public sealed class FloatSaveBudget
+    {
+        internal const int LegacyCastFrameBytes=188,EquipmentCastFrameBytes=212;
+        internal const int MaximumEndingBytes=482,ReleaseFrameBytes=188;
+        public readonly bool CanStartCast;
+        public readonly string Code;
+        public readonly long RemainingTransactions,RemainingBytes;
+        public readonly int RequiredCastTransactions=3,RequiredCastBytes;
+        internal FloatSaveBudget(int schema,long sequence,long length)
+        {
+            if((schema!=1&&schema!=2&&schema!=3)||sequence<0||sequence>FloatGameStore.MaximumTransactions||length<0||length>FloatGameStore.MaximumFileBytes)
+                throw new ArgumentOutOfRangeException("save budget");
+            RemainingTransactions=FloatGameStore.MaximumTransactions-sequence;
+            RemainingBytes=FloatGameStore.MaximumFileBytes-length;
+            RequiredCastBytes=(schema==3?EquipmentCastFrameBytes:LegacyCastFrameBytes)+MaximumEndingBytes;
+            CanStartCast=RemainingTransactions>=RequiredCastTransactions&&RemainingBytes>=RequiredCastBytes;
+            Code=CanStartCast?null:"save-settlement-reserve";
+        }
+        // Called for every NEW candidate, not replay. A legacy upgrade can
+        // leave an active cast too, and must not spend its reserved ending.
+        internal static bool PreservesEnding(long sequence,long length,long frameBytes,FloatSession candidateSession)
+        {
+            int transactions=candidateSession==null?0:candidateSession.CapacityBlocked?1:2;
+            int bytes=candidateSession==null?0:candidateSession.CapacityBlocked?ReleaseFrameBytes:MaximumEndingBytes;
+            return sequence<=FloatGameStore.MaximumTransactions-1-transactions&&
+                length<=FloatGameStore.MaximumFileBytes-frameBytes-bytes;
+        }
+    }
+
     // Internal fault injection for real private-file tests; never a page API.
     internal enum FloatSaveFaultPoint { BeforeWrite, AfterPrefix, AfterFrame, AfterFlush }
 
@@ -66,6 +98,10 @@ namespace FishingDesktop.GameCore
         public FloatGameState State
         {
             get { lock (_gate) { CheckAvailable(); return _state; } }
+        }
+        public FloatSaveBudget SaveBudget
+        {
+            get { lock (_gate) { CheckAvailable();return new FloatSaveBudget(_state.SchemaVersion,_state.Sequence,_length); } }
         }
 
         public static FloatGameStore CreateNew(string path, FloatGameState genesis)
@@ -134,6 +170,8 @@ namespace FishingDesktop.GameCore
                     // Old receipts remain queryable at the capacity boundary.
                     if (_state.Sequence >= MaximumTransactions || _length > MaximumFileBytes - frameSize)
                         return new FloatCommitResult("save-capacity", _state, null, false, false, false);
+                    if(!FloatSaveBudget.PreservesEnding(_state.Sequence,_length,frameSize,result.Candidate.Session))
+                        return new FloatCommitResult("save-settlement-reserve",_state,null,false,false,false);
                     var upgrade=command as UpgradeFloatProfile;
                     if(upgrade!=null&&!UpgradeMatchesPrefix(upgrade,_file,_length,_lastHash))
                         return new FloatCommitResult("upgrade-source-mismatch",_state,null,false,false,false);

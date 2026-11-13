@@ -14,9 +14,9 @@ if($taskBuildExit -ne 0){$taskBuild|Out-Host;throw 'Profile upgrade integration 
 $taskLines=@(& $taskExecutable $taskRun);$taskExit=$LASTEXITCODE
 $taskLines|Set-Content -LiteralPath (Join-Path $taskRun 'test-output.txt') -Encoding utf8
 $taskPassed=@($taskLines|Where-Object {$_ -like 'PASS *'});$taskFailed=@($taskLines|Where-Object {$_ -like 'FAIL *'})
-$taskReport=[pscustomobject]@{passed=($taskExit -eq 0 -and $taskPassed.Count -eq 28 -and $taskFailed.Count -eq 0);passedCount=$taskPassed.Count;checks=$taskPassed;failures=$taskFailed;
+$taskReport=[pscustomobject]@{passed=($taskExit -eq 0 -and $taskPassed.Count -eq 30 -and $taskFailed.Count -eq 0);passedCount=$taskPassed.Count;checks=$taskPassed;failures=$taskFailed;
   privateFixtureFileIO=$true;sourceAndLegacyPrefixUnchanged=$true;exactIndependentBackup=$true;deterministicExplicitCandidate=$true;
-  samePathAndNativeHardlinkChecks=$true;realTransactionLimitFixture=$true;readOnlyAndBusyFileChecks=$true;unknownWriteFaultInjection=$false;
+  samePathAndNativeHardlinkChecks=$true;realTransactionLimitFixture=$true;readOnlyAndBusyFileChecks=$true;newActiveCandidateSettlementReserve=$true;historicalFullCandidateReadOnlyVerified=$true;unknownWriteFaultInjection=$false;
   personalSaveRead=$false;automaticMigration=$false;activated=$false;restored=$false;realDiskFailure=$false;realPowerLoss=$false;outputDirectory=$taskRun}
 $taskReport|ConvertTo-Json -Depth 4|Set-Content -LiteralPath (Join-Path $taskRun 'summary.json') -Encoding utf8
 if(-not $taskReport.passed){$taskLines|Out-Host;throw 'Profile upgrade integration checks failed.'}

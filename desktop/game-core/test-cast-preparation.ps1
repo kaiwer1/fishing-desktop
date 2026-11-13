@@ -14,8 +14,8 @@ if($taskBuildExit -ne 0){$taskBuild|Out-Host;throw 'Float cast preparation check
 $taskLines=@(& $taskExecutable $taskRun);$taskExit=$LASTEXITCODE
 $taskLines|Set-Content -LiteralPath (Join-Path $taskRun 'test-output.txt') -Encoding utf8
 $taskPassed=@($taskLines|Where-Object {$_ -like 'PASS *'});$taskFailed=@($taskLines|Where-Object {$_ -like 'FAIL *'})
-$taskReport=[pscustomobject]@{passed=($taskExit -eq 0 -and $taskPassed.Count -eq 21 -and $taskFailed.Count -eq 0);passedCount=$taskPassed.Count;checks=$taskPassed;failures=$taskFailed;
-  privateFixtureFileIO=$true;scriptedWriteFaults=$true;hostOnlyChargeSteps=$true;nativeExecuted=$false;webViewExecuted=$false;flightPhysicsImplemented=$false;personalSaveRead=$false;fixtureRulesOnly=$true;outputDirectory=$taskRun}
+$taskReport=[pscustomobject]@{passed=($taskExit -eq 0 -and $taskPassed.Count -eq 23 -and $taskFailed.Count -eq 0);passedCount=$taskPassed.Count;checks=$taskPassed;failures=$taskFailed;
+  privateFixtureFileIO=$true;scriptedWriteFaults=$true;capacityByteCounterReflection=$true;realFullDisk=$false;hostOnlyChargeSteps=$true;nativeExecuted=$false;webViewExecuted=$false;flightPhysicsImplemented=$false;personalSaveRead=$false;fixtureRulesOnly=$true;outputDirectory=$taskRun}
 $taskReport|ConvertTo-Json -Depth 4|Set-Content -LiteralPath (Join-Path $taskRun 'summary.json') -Encoding utf8
 if(-not $taskReport.passed){$taskLines|Out-Host;throw 'Float cast preparation checks failed.'}
 $taskReport|ConvertTo-Json -Depth 4

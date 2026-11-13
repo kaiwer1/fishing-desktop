@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using FishingDesktop.GameCore;
 
 static class FloatCastPreparationTests
@@ -45,6 +46,12 @@ static class FloatCastPreparationTests
     }
     static void Unchanged(Fixture f, FloatGameState state, long length)
     { Need(Object.ReferenceEquals(f.State, state) && f.Length == length, "Unconfirmed gesture changed confirmed state or file."); }
+    // Only the private byte counter is changed; this is not a full-disk test.
+    static void LeaveBytes(Fixture fixture,long remaining)
+    {
+        var store=(FloatGameStore)typeof(FloatGameOwner).GetField("_store",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(fixture.Owner);
+        typeof(FloatGameStore).GetField("_length",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(store,FloatGameStore.MaximumFileBytes-remaining);
+    }
     static FloatCastGesture Prepared(Fixture f)
     {
         var begin = f.Begin(); Need(begin.Accepted && begin.Gesture != null, "Begin rejected: " + begin.Code);
@@ -288,6 +295,25 @@ static class FloatCastPreparationTests
                 foreach (var foreign in new[] { b.Preparation.Advance(ga, 250), b.Preparation.Release(ga), b.Preparation.Cancel(ga), b.Preparation.CommitPrepared(ga) })
                     Need(!foreign.Accepted && !foreign.ShouldStartFlight && Object.ReferenceEquals(foreign.Gesture, gb) && foreign.Snapshot.Phase == FloatCastPhase.Charging && foreign.Snapshot.ElapsedMilliseconds == 0, "Foreign gesture affected current input.");
                 Unchanged(b, state, length);
+            }
+        });
+        Test("insufficient settlement reserve refuses charging without consuming resources", () => {
+            using(var f=new Fixture()){
+                var state=f.State;long bytes=f.Length;
+                LeaveBytes(f,f.Owner.SaveBudget.RequiredCastBytes-1);
+                Need(!f.Owner.SaveBudget.CanStartCast,"Fixture still has room.");
+                var result=f.Begin();
+                Need(!result.Accepted&&result.Code=="save-settlement-reserve"&&result.Gesture==null&&!result.ShouldStartFlight,"Unsafe cast began charging.");
+                Unchanged(f,state,bytes);
+            }
+        });
+        Test("settlement capacity is rechecked after preparation before launch", () => {
+            using(var f=new Fixture()){
+                var gesture=Prepared(f);var state=f.State;long bytes=f.Length;
+                LeaveBytes(f,f.Owner.SaveBudget.RequiredCastBytes-1);
+                var result=f.Preparation.CommitPrepared(gesture);
+                Need(!result.Accepted&&result.Code=="save-settlement-reserve"&&!result.ShouldStartFlight,"Stale capacity launched a cast.");
+                Unchanged(f,state,bytes);
             }
         });
         Console.WriteLine("SUMMARY passed=" + passed + " failed=" + failed); return failed == 0 ? 0 : 1;

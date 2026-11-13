@@ -73,6 +73,29 @@ static class FloatProfileUpgradeTests
             }
         }return path;
     }
+    static Guid UpgradeIdentity(string source,string policy,string role)
+    {
+        var method=typeof(FloatProfileUpgrade).GetMethod("Identity",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
+        Need(method!=null,"Deterministic upgrade identity method missing.");return (Guid)method.Invoke(null,new object[]{source,policy,role});
+    }
+    static void AppendHistoricalUpgrade(string sourcePath,string candidatePath,FloatCommerceCatalog catalog)
+    {
+        // An older writer allowed this valid active candidate at transaction
+        // 10000. Build its complete frame explicitly so the new admission rule
+        // is not used to manufacture the backward-compatibility fixture.
+        var source=FloatJournalArchive.Inspect(sourcePath);string policy=catalog.Signature;
+        var command=new UpgradeFloatProfile(source.ProfileId,source.BranchId,UpgradeIdentity(source.Sha256,policy,"request"),UpgradeIdentity(source.Sha256,policy,"event"),
+            UpgradeIdentity(source.Sha256,policy,"branch"),UpgradeIdentity(source.Sha256,policy,"food-stack"),source.Sha256,source.TipSha256,source.Length,
+            source.Sequence,source.State.Rig.Revision,source.State.RulesVersion,catalog);
+        byte[] payload=FloatJournalCodec.EncodeCommand(command,2),tip=new byte[32];
+        for(int i=0;i<tip.Length;i++)tip[i]=Byte.Parse(source.TipSha256.Substring(i*2,2),NumberStyles.HexNumber,CultureInfo.InvariantCulture);
+        byte[] body;using(var memory=new MemoryStream())using(var frame=new BinaryWriter(memory,Encoding.UTF8)){
+            frame.Write(payload.Length);frame.Write(source.Sequence+1);frame.Write(tip);frame.Write(payload);frame.Flush();body=memory.ToArray();}
+        File.WriteAllBytes(candidatePath,source.CopyBytes());
+        using(var output=new FileStream(candidatePath,FileMode.Append,FileAccess.Write,FileShare.None)){
+            output.Write(body,0,body.Length);using(var sha=SHA256.Create()){byte[] digest=sha.ComputeHash(body);output.Write(digest,0,digest.Length);}output.Flush(true);
+        }
+    }
     static int Main(string[] args)
     {
         if(args.Length!=1||!Directory.Exists(args[0])){Console.WriteLine("FAIL existing private output directory required");return 2;}root=Path.GetFullPath(args[0]);
@@ -204,6 +227,22 @@ static class FloatProfileUpgradeTests
         Test("invalid arguments and missing backup directory create nothing",()=>{
             string source=Source(),backup=P("backup"),candidate=P("candidate");Reject<ArgumentNullException>(()=>FloatProfileUpgrade.CreateCandidate(source,backup,candidate,null));Reject<ArgumentException>(()=>FloatProfileUpgrade.CreateCandidate(source," ",candidate,Catalog()));NoOutputs(backup,candidate);
             string absent=Path.Combine(root,G().ToString("N"));Reject<DirectoryNotFoundException>(()=>FloatProfileUpgrade.CreateCandidate(source,Path.Combine(absent,"backup.fltj"),candidate,Catalog()));Need(!Directory.Exists(absent)&&!File.Exists(candidate),"Missing directory was implicitly created.");
+        });
+        Test("new active schema1 upgrade reserves settlement capacity before creating any output",()=>{
+            string source=FullJournal(FloatGameStore.MaximumTransactions-1),backup=P("backup"),candidate=P("candidate");byte[] before=File.ReadAllBytes(source);var inspected=FloatJournalArchive.Inspect(source);
+            Need(inspected.Sequence==9999&&inspected.HasActiveSession&&!inspected.HasPendingFish,"Boundary fixture is not an active schema1 source.");
+            Reject<InvalidOperationException>(()=>FloatProfileUpgrade.CreateCandidate(source,backup,candidate,Catalog()));NoOutputs(backup,candidate);Need(Equal(before,File.ReadAllBytes(source)),"Settlement reserve rejection changed source.");
+        });
+        Test("historical active candidate at transaction cap remains read-only verifiable",()=>{
+            string source=FullJournal(FloatGameStore.MaximumTransactions-1),backup=P("backup"),candidate=P("historical-candidate");var catalog=Catalog();
+            byte[] original=File.ReadAllBytes(source);File.WriteAllBytes(backup,original);AppendHistoricalUpgrade(source,candidate,catalog);
+            var historical=FloatJournalArchive.Inspect(candidate);Need(historical.Sequence==10000&&historical.HasActiveSession&&historical.State.SchemaVersion==2,"Historical candidate is invalid.");
+            byte[] before=File.ReadAllBytes(candidate);DateTime backupTime=File.GetLastWriteTimeUtc(backup),candidateTime=File.GetLastWriteTimeUtc(candidate);
+            File.SetAttributes(backup,FileAttributes.ReadOnly);File.SetAttributes(candidate,FileAttributes.ReadOnly);
+            try{var result=FloatProfileUpgrade.CreateCandidate(source,backup,candidate,catalog);Need(result.ExistingCandidateVerified&&result.CandidateSequence==10000&&result.CandidateSha256==historical.Sha256&&
+                    Equal(before,File.ReadAllBytes(candidate))&&Equal(original,File.ReadAllBytes(source))&&Equal(original,File.ReadAllBytes(backup))&&
+                    File.GetLastWriteTimeUtc(backup)==backupTime&&File.GetLastWriteTimeUtc(candidate)==candidateTime,"Read-only historical retry changed or rejected candidate.");}
+            finally{File.SetAttributes(backup,FileAttributes.Normal);File.SetAttributes(candidate,FileAttributes.Normal);}
         });
         Test("real maximum-transaction schema1 journal is rejected before any output",()=>{
             string source=FullJournal(FloatGameStore.MaximumTransactions),backup=P("backup"),candidate=P("candidate");byte[] before=File.ReadAllBytes(source);

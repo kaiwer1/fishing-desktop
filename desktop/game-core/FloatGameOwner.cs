@@ -104,6 +104,9 @@ namespace FishingDesktop.GameCore
         FloatOwnerSnapshot Current()
         { return new FloatOwnerSnapshot(_faulted ? null : _store.State, _faulted, _hostPaused, _menu, _shutdown); }
         public FloatOwnerSnapshot Snapshot { get { Entry(); return Current(); } }
+        // Host-only readiness hint. Execute still checks the current file budget
+        // under the store lock; a read never reserves bytes or grants control.
+        public FloatSaveBudget SaveBudget { get { Entry(); Operational(); return _store.SaveBudget; } }
 
         bool DocumentMatches(FloatViewTicket view, FloatDocumentTicket document)
         {

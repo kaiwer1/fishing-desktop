@@ -137,6 +137,9 @@ namespace FishingDesktop.GameCore
                     var upgrade=command as UpgradeFloatProfile;
                     if(upgrade!=null&&!UpgradeMatchesPrefix(upgrade,_file,_length,_lastHash))
                         return new FloatCommitResult("upgrade-source-mismatch",_state,null,false,false,false);
+                    var equipmentUpgrade=command as UpgradeFloatEquipment;
+                    if(equipmentUpgrade!=null&&!UpgradeOriginMatchesPrefix(equipmentUpgrade.Origin,_file,_length,_lastHash))
+                        return new FloatCommitResult("upgrade-source-mismatch",_state,null,false,false,false);
 
                     AppendFrame(result.Candidate.Sequence, payload);
                     // Publish only after the full frame and Flush(true) succeed.
@@ -154,16 +157,21 @@ namespace FishingDesktop.GameCore
         internal FloatCommitResult AppendUpgrade(UpgradeFloatProfile command)
         {if(command==null)throw new ArgumentNullException("command");return Execute(command);}
 
+        internal FloatCommitResult AppendEquipmentUpgrade(UpgradeFloatEquipment command)
+        {if(command==null)throw new ArgumentNullException("command");return Execute(command);}
+
         static string Hex(byte[] bytes){return BitConverter.ToString(bytes).Replace("-","").ToLowerInvariant();}
         static bool UpgradeMatchesPrefix(UpgradeFloatProfile upgrade,Stream input,long prefixLength,byte[] tip)
+        {return UpgradeOriginMatchesPrefix(upgrade.Origin,input,prefixLength,tip);}
+        static bool UpgradeOriginMatchesPrefix(FloatUpgradeOrigin origin,Stream input,long prefixLength,byte[] tip)
         {
-            if(upgrade.Origin.SourceLength!=prefixLength||upgrade.Origin.SourceTipSha256!=Hex(tip))return false;
+            if(origin.SourceLength!=prefixLength||origin.SourceTipSha256!=Hex(tip))return false;
             long resume=input.Position;
             try{
                 input.Position=0;long remaining=prefixLength;byte[] buffer=new byte[8192];
                 using(var sha=SHA256.Create()){
                     while(remaining>0){int count=input.Read(buffer,0,(int)Math.Min(buffer.Length,remaining));if(count==0)throw new EndOfStreamException("Truncated upgrade source prefix.");sha.TransformBlock(buffer,0,count,buffer,0);remaining-=count;}
-                    sha.TransformFinalBlock(new byte[0],0,0);return upgrade.Origin.SourceSha256==Hex(sha.Hash);
+                    sha.TransformFinalBlock(new byte[0],0,0);return origin.SourceSha256==Hex(sha.Hash);
                 }
             }finally{input.Position=resume;}
         }
@@ -275,11 +283,13 @@ namespace FishingDesktop.GameCore
                     else
                     {
                         var command = FloatJournalCodec.DecodeCommand(payload);
-                        int schema=FloatJournalCodec.CommandSchema(payload);var upgrade=command as UpgradeFloatProfile;
-                        if(schema!=state.SchemaVersion&&!(state.SchemaVersion==1&&schema==2&&upgrade!=null))
+                        int schema=FloatJournalCodec.CommandSchema(payload);var upgrade=command as UpgradeFloatProfile;var equipmentUpgrade=command as UpgradeFloatEquipment;
+                        if(schema!=state.SchemaVersion&&!(state.SchemaVersion==1&&schema==2&&upgrade!=null)&&!(state.SchemaVersion==2&&schema==3&&equipmentUpgrade!=null))
                             throw new InvalidDataException("Journal payload schema changed without an explicit upgrade.");
                         if(upgrade!=null&&!UpgradeMatchesPrefix(upgrade,input,frameStart,lastHash))
                             throw new InvalidDataException("Upgrade source does not match the journal prefix.");
+                        if(equipmentUpgrade!=null&&!UpgradeOriginMatchesPrefix(equipmentUpgrade.Origin,input,frameStart,lastHash))
+                            throw new InvalidDataException("Equipment upgrade source does not match the journal prefix.");
                         var reduction = FloatGameReducer.Reduce(state, command, state.Rules);
                         // Every stored command must add exactly one new state.
                         // An extra duplicate/rejected command is not a commit.

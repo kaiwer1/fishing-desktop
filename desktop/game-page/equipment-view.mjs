@@ -1,7 +1,7 @@
 const slots = new Set(['rod', 'reel', 'hook', 'bobber', 'sinker']);
 const kinds = new Set([...slots, 'line']);
 const locations = new Set(['inventory', 'rig-slot', 'reel-spool', 'lost']);
-const actions = new Set(['replace-slot', 'move-line']);
+const actions = new Set(['replace-slot', 'move-line', 'archive-lost']);
 const guid = value => typeof value === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value) && value !== '00000000-0000-0000-0000-000000000000';
 const integer = (value, minimum, maximum) => Number.isInteger(value) && value >= minimum && value <= maximum;
 const text = value => typeof value === 'string' && value.length > 0 && value.length <= 128;
@@ -14,16 +14,18 @@ const copyIssue = issue => ({ code: issue.code, slot: issue.slot, itemId: issue.
 const copyRetry = retry => retry ? { operationId: retry.operationId, action: retry.action } : null;
 const copy = s => ({ schemaVersion: s.schemaVersion, available: s.available, reason: s.reason, lease: s.lease,
   stateSequence: s.stateSequence, rigRevision: s.rigRevision, inventoryRevision: s.inventoryRevision, equipmentVersion: s.equipmentVersion,
+  archivedItemsCount: s.archivedItemsCount, archivedLineMm: s.archivedLineMm,
   items: s.items.map(copyItem), issues: s.issues.map(copyIssue), retry: copyRetry(s.retry) });
 
 function validState(s) {
   if (!s || !integer(s.schemaVersion, 0, 3) || typeof s.available !== 'boolean' ||
       (s.available ? s.reason !== null || !text(s.lease) : !text(s.reason)) || !(s.lease === null || text(s.lease)) ||
-      !Array.isArray(s.items) || s.items.length > 128 || !Array.isArray(s.issues) || s.issues.length > 256) return false;
+      !Array.isArray(s.items) || s.items.length > 128 || !Array.isArray(s.issues) || s.issues.length > 256 ||
+      !integer(s.archivedItemsCount, 0, 1280000) || !counter(s.archivedLineMm)) return false;
   if (s.schemaVersion === 3) {
     if (!counter(s.stateSequence) || !['rigRevision', 'inventoryRevision', 'equipmentVersion'].every(field => counter(s[field], true))) return false;
   } else if (s.available || s.stateSequence !== null || ['rigRevision', 'inventoryRevision', 'equipmentVersion'].some(field => s[field] !== null) ||
-      s.items.length || s.issues.length || s.retry !== null) return false;
+      s.items.length || s.issues.length || s.retry !== null || s.archivedItemsCount !== 0 || s.archivedLineMm !== '0') return false;
   const ids = new Map(), occupiedSlots = new Set(), occupiedSpools = new Set();
   for (const item of s.items) {
     if (!item || !guid(item.id) || ids.has(item.id) || !key(item.definitionKey) || !kinds.has(item.kind) || !counter(item.revision, true) ||
@@ -137,6 +139,10 @@ export class EquipmentInput {
       if (!reel || reel.kind !== 'reel' || reel.location === 'lost' || this.#state.items.some(item => item.location === 'reel-spool' && item.reelId === reelId)) return false;
     }
     return this.#send('move-line', { lineId, reelId, expectedSequence: this.#state.stateSequence, inputSequence: String(++this.#next) });
+  }
+  archiveLost(event = null) {
+    if (!this.#ready(event) || this.#state.retry || this.#next === Number.MAX_SAFE_INTEGER || !this.#state.items.some(item => item.location === 'lost')) return false;
+    return this.#send('archive-lost', { expectedSequence: this.#state.stateSequence, inputSequence: String(++this.#next) });
   }
   retry(event = null) { if (!this.#ready(event) || !this.#state.retry) return false; return this.#send('retry', { operationId: this.#state.retry.operationId }); }
   cancel(event = null) { if (!this.#ready(event) || !this.#state.retry) return false; return this.#send('cancel'); }

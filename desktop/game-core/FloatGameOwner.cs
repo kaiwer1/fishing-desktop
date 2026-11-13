@@ -128,7 +128,7 @@ namespace FishingDesktop.GameCore
             return new FloatCommitResult(code, null, null, false, false, false);
         }
         static bool UserType(FloatCommand command)
-        { return command is CastFloat || command is CastFloatWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
+        { return command is CastFloat || command is CastFloatWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is ArchiveLostFloatEquipment || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
         bool HasRecordedRequest(FloatCommand command)
         {
             if (command == null) return false;

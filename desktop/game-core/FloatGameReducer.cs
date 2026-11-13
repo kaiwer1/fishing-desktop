@@ -215,7 +215,7 @@ namespace FishingDesktop.GameCore
         static bool FishWasCreated(FloatGameState state,Guid id)
         {foreach(var row in state.Receipts)if(row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected)foreach(var fish in row.FishIds)if(fish==id)return true;return false;}
         static bool EncounterWasUsed(FloatGameState state,Guid id)
-        {foreach(var row in state.Receipts)if(((row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected||row.Outcome==FloatOutcome.Unhooked||row.Outcome==FloatOutcome.TerminalLost)&&row.EncounterId==id)||(row.Outcome==FloatOutcome.TerminalLost&&row.EventId==id))return true;return false;}
+        {if(state.ArchivedEquipmentIdentityWasUsed(id))return true;foreach(var row in state.Receipts)if(((row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected||row.Outcome==FloatOutcome.Unhooked||row.Outcome==FloatOutcome.TerminalLost)&&row.EncounterId==id)||(row.Outcome==FloatOutcome.TerminalLost&&row.EventId==id))return true;return false;}
         // New loss identities are durable reservations. Only histories containing
         // this new outcome acquire the rule; old journals replay identically.
         static bool TerminalLossIdentityWasUsed(FloatGameState state,Guid id)
@@ -225,7 +225,7 @@ namespace FishingDesktop.GameCore
         static bool RequestWasUsed(FloatGameState state,Guid id)
         {foreach(var row in state.Receipts)if(row.RequestId==id)return true;return false;}
         static bool AssetExists(FloatGameState state,Guid id)
-        {var ids=new HashSet<Guid>();state.AddEquipmentAssets(ids);ids.Add(state.BaitStackId);if(state.FoodStackId!=Guid.Empty)ids.Add(state.FoodStackId);if(state.OwnedNet!=null)ids.Add(state.OwnedNet.Id);foreach(var fish in state.Creel)ids.Add(fish.Id);if(state.Session!=null&&state.Session.PendingFish!=null)ids.Add(state.Session.PendingFish.Id);return ids.Contains(id)||TerminalLossIdentityWasUsed(state,id);}
+        {var ids=new HashSet<Guid>();state.AddEquipmentAssets(ids);ids.Add(state.BaitStackId);if(state.FoodStackId!=Guid.Empty)ids.Add(state.FoodStackId);if(state.OwnedNet!=null)ids.Add(state.OwnedNet.Id);foreach(var fish in state.Creel)ids.Add(fish.Id);if(state.Session!=null&&state.Session.PendingFish!=null)ids.Add(state.Session.PendingFish.Id);return ids.Contains(id)||TerminalLossIdentityWasUsed(state,id)||state.ArchivedEquipmentIdentityWasUsed(id);}
         static bool EquipmentPurchaseIdentityUsed(FloatGameState state,FloatCommand command,Guid id)
         {
             if(id==state.ProfileId||id==state.BranchId||id==command.RequestId||id==command.EventId||AssetExists(state,id)||FishWasCreated(state,id)||UsedSession(state,id)||EncounterWasUsed(state,id)||EventWasUsed(state,id)||RequestWasUsed(state,id))return true;
@@ -233,7 +233,7 @@ namespace FishingDesktop.GameCore
             return false;
         }
         static string Code(FloatOutcome outcome)
-        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";case FloatOutcome.ProfileUpgraded:return "upgrade-candidate";case FloatOutcome.SuppliesPurchased:return "purchase-candidate";case FloatOutcome.NetEquipped:return "equip-candidate";case FloatOutcome.FoodUsed:return "food-candidate";case FloatOutcome.Unhooked:return "unhooked-candidate";case FloatOutcome.SlotReplaced:return "assembly-candidate";case FloatOutcome.LineMoved:return "line-move-candidate";case FloatOutcome.TerminalLost:return "terminal-loss-candidate";case FloatOutcome.EquipmentOffersConfigured:return "equipment-offers-candidate";case FloatOutcome.EquipmentPurchased:return "equipment-purchase-candidate";case FloatOutcome.EquipmentProfileUpgraded:return "equipment-upgrade-candidate";default:return "sale-candidate";}}
+        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";case FloatOutcome.ProfileUpgraded:return "upgrade-candidate";case FloatOutcome.SuppliesPurchased:return "purchase-candidate";case FloatOutcome.NetEquipped:return "equip-candidate";case FloatOutcome.FoodUsed:return "food-candidate";case FloatOutcome.Unhooked:return "unhooked-candidate";case FloatOutcome.SlotReplaced:return "assembly-candidate";case FloatOutcome.LineMoved:return "line-move-candidate";case FloatOutcome.TerminalLost:return "terminal-loss-candidate";case FloatOutcome.EquipmentOffersConfigured:return "equipment-offers-candidate";case FloatOutcome.EquipmentPurchased:return "equipment-purchase-candidate";case FloatOutcome.EquipmentProfileUpgraded:return "equipment-upgrade-candidate";case FloatOutcome.EquipmentArchived:return "equipment-archive-candidate";default:return "sale-candidate";}}
         public static FloatReduction Reduce(FloatGameState state,FloatCommand command,FloatGameRules rules)
         {
             if(state==null)throw new ArgumentNullException("state");if(command==null)throw new ArgumentNullException("command");
@@ -241,6 +241,9 @@ namespace FishingDesktop.GameCore
             string fingerprint=command.Fingerprint;
             foreach(var row in state.Receipts)if(row.RequestId==command.RequestId)
                 return row.Fingerprint==fingerprint?new FloatReduction(Code(row.Outcome),receipt:row,replay:true):Reject("request-conflict");
+            if(state.ArchivedEquipmentIdentityWasUsed(command.RequestId))return Reject("request-identity-used");
+            if(state.ArchivedEquipmentIdentityWasUsed(command.EventId))return Reject("event-identity-used");
+            if(state.ArchivedEquipmentIdentityWasUsed(command.SessionId))return Reject("session-identity-used");
             if(TerminalLossIdentityWasUsed(state,command.RequestId))return Reject("request-identity-used");
             foreach(var row in state.Receipts)if(row.EventId==command.EventId)return Reject("event-already-used");
             if(TerminalLossIdentityWasUsed(state,command.EventId))return Reject("event-identity-used");
@@ -253,11 +256,37 @@ namespace FishingDesktop.GameCore
                 if(state.SchemaVersion!=3)return Reject("equipment-schema-required");
                 if(equipmentCommand.ExpectedInventoryRevision!=state.Equipment.InventoryRevision||equipmentCommand.ExpectedEquipmentVersion!=state.Equipment.RulesVersion)return Reject("equipment-version-conflict");
             }
+            var archiveCommand=command as ArchiveLostFloatEquipment;
+            if(archiveCommand!=null){
+                if(state.SchemaVersion!=3)return Reject("equipment-schema-required");
+                if(archiveCommand.ExpectedInventoryRevision!=state.Equipment.InventoryRevision||archiveCommand.ExpectedEquipmentVersion!=state.Equipment.RulesVersion)return Reject("equipment-version-conflict");
+            }
             long wallet=state.WalletMinor;int stamina=state.Stamina,baits=state.BaitCount;var fish=new List<FloatFish>(state.Creel);var session=state.Session;var affected=new List<Guid>();Guid encounterId=Guid.Empty;FloatOutcome outcome;
             int schema=state.SchemaVersion,foods=state.FoodCount;Guid branch=state.BranchId,foodStack=state.FoodStackId,equipped=state.EquippedNetId;var net=state.OwnedNet;var catalog=state.CommerceCatalog;var origin=state.UpgradeOrigin;
-            var equipment=state.Equipment;var equipmentOffers=state.EquipmentOffers;var equipmentOrigin=state.EquipmentUpgradeOrigin;FloatEquipmentLossSummary equipmentLoss=null;
+            var equipment=state.Equipment;var equipmentOffers=state.EquipmentOffers;var equipmentOrigin=state.EquipmentUpgradeOrigin;FloatEquipmentLossSummary equipmentLoss=null;FloatEquipmentArchiveSummary equipmentArchive=null;
             try{
-                if(command is UpgradeFloatEquipment){
+                if(archiveCommand!=null){
+                    if(session!=null)return Reject("session-busy");
+                    var selected=new HashSet<Guid>(archiveCommand.ItemIds);var owners=new HashSet<Guid>();long lineMm=0;
+                    foreach(var id in archiveCommand.ItemIds){
+                        var item=equipment.Find(id);if(item==null)return Reject("item-not-found");
+                        if(item.Location.Place!=FloatEquipmentPlace.Lost||item.RemainingLineMm!=0)return Reject("item-not-lost");
+                        owners.Add(item.Location.OwnerId);lineMm=checked(lineMm+item.InitialLineMm);
+                    }
+                    // Old genesis tombstones can lack a loss receipt. Their
+                    // owner identities must survive removal too, but cannot
+                    // become aliases of retained ownership or this transaction.
+                    var retainedAssets=new HashSet<Guid>();state.AddEquipmentAssets(retainedAssets);retainedAssets.ExceptWith(selected);
+                    retainedAssets.Add(state.ProfileId);retainedAssets.Add(state.BranchId);retainedAssets.Add(state.BaitStackId);retainedAssets.Add(state.FoodStackId);
+                    if(state.OwnedNet!=null)retainedAssets.Add(state.OwnedNet.Id);foreach(var caught in state.Creel)retainedAssets.Add(caught.Id);
+                    foreach(var id in selected)if(id==command.RequestId||id==command.EventId||retainedAssets.Contains(id))return Reject("archive-identity-invalid");
+                    foreach(var id in owners)if(id==command.RequestId||id==command.EventId||selected.Contains(id)||retainedAssets.Contains(id))return Reject("archive-identity-invalid");
+                    var items=new List<FloatEquipmentInstance>();foreach(var item in equipment.Instances)if(!selected.Contains(item.Id))items.Add(item);
+                    var nextEquipment=new FloatEquipmentLedger(equipment.RigId,equipment.RigRevision,checked(equipment.InventoryRevision+1),equipment.Catalog,items);
+                    if(equipment.InitialLineMm-nextEquipment.InitialLineMm!=lineMm||equipment.RemainingLineMm!=nextEquipment.RemainingLineMm||equipment.LostLineMm-nextEquipment.LostLineMm!=lineMm)
+                        throw new InvalidOperationException("Equipment archive violated line conservation.");
+                    equipmentArchive=new FloatEquipmentArchiveSummary(archiveCommand.ItemIds,owners,lineMm);equipment=nextEquipment;outcome=FloatOutcome.EquipmentArchived;
+                }else if(command is UpgradeFloatEquipment){
                     if(schema!=2)return Reject("equipment-upgrade-source-required");if(session!=null)return Reject("session-busy");
                     var upgrade=(UpgradeFloatEquipment)command;
                     if(AssetExists(state,upgrade.NewBranchId)||FishWasCreated(state,upgrade.NewBranchId)||UsedSession(state,upgrade.NewBranchId)||EncounterWasUsed(state,upgrade.NewBranchId)||EventWasUsed(state,upgrade.NewBranchId)||RequestWasUsed(state,upgrade.NewBranchId)||
@@ -389,7 +418,7 @@ namespace FishingDesktop.GameCore
                     fish.RemoveAll(row=>selected.Contains(row.Id));outcome=FloatOutcome.Sold;
                 }else return Reject("command-unsupported");
                 long sequence=checked(state.Sequence+1);
-                var receipt=new FloatReceipt(command,sequence,rules.Version,outcome,encounterId,state.WalletMinor,wallet,state.Stamina,stamina,state.BaitCount,baits,affected,state.FoodCount,foods,state.OwnedNet==null?Guid.Empty:state.OwnedNet.Id,net==null?Guid.Empty:net.Id,state.EquippedNetId,equipped,equipmentLoss);
+                var receipt=new FloatReceipt(command,sequence,rules.Version,outcome,encounterId,state.WalletMinor,wallet,state.Stamina,stamina,state.BaitCount,baits,affected,state.FoodCount,foods,state.OwnedNet==null?Guid.Empty:state.OwnedNet.Id,net==null?Guid.Empty:net.Id,state.EquippedNetId,equipped,equipmentLoss,equipmentArchive);
                 var history=new List<FloatReceipt>(state.Receipts);history.Add(receipt);
                 var candidate=new FloatGameState(state.ProfileId,branch,sequence,wallet,stamina,state.BaitStackId,state.BaitDefinitionKey,baits,schema==3?null:state.LegacyRig,session,fish,history,rules,schema,catalog,foodStack,foods,net,equipped,origin,equipment,equipmentOffers,equipmentOrigin);
                 return new FloatReduction(Code(outcome),candidate,receipt);

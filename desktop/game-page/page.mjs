@@ -290,8 +290,9 @@ Object.assign(codes, { 'failure-pending': '失败结果尚未保存确认，请�
   'failure-result-required': '请先确认当前失败结果，不能用收回来跳过。', 'slack-unhooked': '已确认松线脱钩，本竿结束；不退饵、不退体力，装备无损失。',
   'unhooked-candidate': '已确认松线脱钩，本竿结束；没有鱼入护，装备无损失。' });
 Object.assign(codes, { 'assembly-candidate': '装备变更已保存。', 'line-move-candidate': '鱼线位置已保存，长度保持不变。',
-  'equipment-not-written': '换件确认未写入，请重试原操作或取消。', 'equipment-retry-required': '请先处理上一次未写入的换件。', 'equipment-cancelled': '已取消未写入的换件。',
-  'equipment-schema-required': '此存档尚未支持装备编辑。', 'equipment-intent-not-current': '这次换件操作已失效，请重新选择。',
+  'equipment-archive-candidate': '损失记录已整理，名额已腾出；历史仍保留，没有返还装备或银币。',
+  'equipment-not-written': '装备操作确认未写入，请重试原操作或取消。', 'equipment-retry-required': '请先处理上一次未写入的装备操作。', 'equipment-cancelled': '已取消未写入的装备操作。',
+  'equipment-schema-required': '此存档尚未支持装备编辑。', 'equipment-intent-not-current': '这次装备操作已失效，请重新选择。',
   'menu-required': '请先打开菜单。', 'result-pending': '请先处理当前尚未确认的结果。',
   'equipment-version-conflict': '装备已更新，请重新选择。', 'missing-component': '钓组缺少部件，请先在菜单装配。', 'missing-line': '当前渔轮没有鱼线，请先装线。',
   'insufficient-line': '已装鱼线长度不足。', 'assembly-unchanged': '当前装备未变化。', 'line-unchanged': '鱼线位置未变化。' });

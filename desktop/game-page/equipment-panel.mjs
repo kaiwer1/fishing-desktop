@@ -8,6 +8,10 @@ const reasons = { 'control-required': '开启交互后可以换件。', 'menu-re
   'line-capacity-exceeded': '鱼线超过线杯容量', 'incompatible-bait': '鱼钩不适合当前鱼饵', 'bobber-load-out-of-range': '沉子重量不适合浮漂', 'cast-mass-out-of-range': '钓组重量超出鱼竿适配范围' };
 const title = item => names[item.definitionKey] ?? item.definitionKey;
 const meters = mm => `${(mm / 1000).toLocaleString('zh-CN', { maximumFractionDigits: 3 })} 米`;
+const archivedMeters = mm => {
+  const value = BigInt(mm), fraction = String(value % 1000n).padStart(3, '0').replace(/0+$/, '');
+  return `${(value / 1000n).toLocaleString('zh-CN')}${fraction ? `.${fraction}` : ''} 米`;
+};
 
 // All displayed ownership comes from the validated host projection. This
 // panel sends existing-instance choices only; it never creates equipment.
@@ -28,6 +32,7 @@ export class EquipmentPanel {
     const $ = id => document.getElementById(id);
     for (const id of ['equipment-line', 'equipment-reel']) $(id).addEventListener('change', () => { this.#chosen.add(id); this.render(); });
     this.#action($('equipment-move-line'), event => this.#input.moveLine($('equipment-line').value, $('equipment-reel').value || null, event));
+    this.#action($('equipment-archive-lost'), event => this.#input.archiveLost(event));
     for (const [id, action] of [['equipment-retry', 'retry'], ['equipment-cancel', 'cancel']])
       this.#action($(id), event => this.#input[action](event));
   }
@@ -49,8 +54,9 @@ export class EquipmentPanel {
     const $ = id => document.getElementById(id), state = this.#view.state(), input = this.#input.state();
     $('equipment').hidden = !this.#snapshot()?.MenuOpen;
     $('equipment-status').textContent = !state ? '等待装备信息' : state.schemaVersion !== 3 ? reasons[state.reason] ?? '此存档尚未支持装备编辑。' :
-      input.retry ? '上次换件确认未写入，请重试原操作或取消。' : input.inflight || input.awaitingState ? '正在确认装备变更…' : state.available ? '装配会立即保存；卸下的部件回到背包。' : reasons[state.reason] ?? '当前不能换件。';
+      input.retry ? '上次装备操作确认未写入，请重试原操作或取消。' : input.inflight || input.awaitingState ? '正在确认装备变更…' : state.available ? '装配会立即保存；卸下的部件回到背包。' : reasons[state.reason] ?? '当前不能换件。';
     const items = state?.items ?? [], issues = state?.issues ?? [], equipped = slot => items.find(item => item.location === 'rig-slot' && item.slot === slot);
+    $('equipment-capacity').textContent = `当前名额 ${items.length} / 128 · 已归档 ${state?.archivedItemsCount ?? 0} 件 · 归档累计损失鱼线 ${archivedMeters(state?.archivedLineMm ?? '0')}`;
     $('equipment-readiness').textContent = state?.schemaVersion !== 3 ? '' : issues.length ? issues.map(issue => `${slotNames[issue.slot] ? `${slotNames[issue.slot]}：` : ''}${reasons[issue.code] ?? issue.code}`).join('；') : '钓组完整，可在关闭菜单后抛竿。';
     const reel = equipped('reel'), line = items.find(item => item.location === 'reel-spool' && item.reelId === reel?.id);
     $('equipment-line-status').textContent = line ? `当前渔轮：${title(line)} · 剩余 ${meters(line.remainingLineMm)}` : '当前渔轮未装可用鱼线';
@@ -69,6 +75,7 @@ export class EquipmentPanel {
       const lost = items.filter(item => item.location === 'lost'); $('equipment-lost').textContent = lost.length ? `已损失 ${lost.length} 件，不能再次装备。` : '';
     }
     const ready = input.ready && !input.inflight && !input.awaitingState && !input.faulted && this.#canAct();
+    $('equipment-archive-lost').disabled = !ready || Boolean(input.retry) || !items.some(item => item.location === 'lost');
     for (const slot of Object.keys(slotNames)) {
       $(`equipment-current-${slot}`).textContent = equipped(slot) ? title(equipped(slot)) : '尚未装配';
       const select = $(`equipment-slot-${slot}`); select.disabled = !ready || Boolean(input.retry);

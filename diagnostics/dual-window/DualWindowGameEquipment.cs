@@ -9,6 +9,8 @@ sealed partial class DualWindowContext
     // Exact wire intents: kind/documentId/lease/transportId/action plus
     // replace-slot: slot,itemId(null or D-Guid),inputSequence,expectedSequence
     // move-line: lineId,reelId(null or D-Guid),inputSequence,expectedSequence
+    // archive-lost: inputSequence,expectedSequence; the host freezes current
+    // lost instances. The page cannot supply identities or claimed line totals.
     // retry: operationId; cancel: no additional fields.
     // All versions are canonical Int64 decimal strings. Only the host creates
     // durable request/event IDs and captures current equipment revisions.
@@ -120,7 +122,9 @@ sealed partial class DualWindowContext
             schemaVersion=state==null?0:state.SchemaVersion,available=reason==null,reason=reason,lease=authorized?binding.WireLease:null,
             stateSequence=equipment==null?null:GameEquipmentNumber(state.Sequence),rigRevision=equipment==null?null:GameEquipmentNumber(equipment.RigRevision),
             inventoryRevision=equipment==null?null:GameEquipmentNumber(equipment.InventoryRevision),equipmentVersion=equipment==null?null:GameEquipmentNumber(equipment.RulesVersion),
-            items=items,issues=issues,retry=retry}});
+            items=items,issues=issues,retry=retry,
+            archivedItemsCount=equipment==null?0:state.ArchivedEquipmentIds.Count,
+            archivedLineMm=equipment==null?"0":GameEquipmentNumber(state.ArchivedEquipmentLineMm)}});
     }
     void GameEquipmentReply(ProbeWindow pane,string transport,string code)
     {GameReply(pane,transport,code);Broadcast();}
@@ -140,14 +144,15 @@ sealed partial class DualWindowContext
             valid=GameEquipmentKeys(message,"lineId","reelId","inputSequence","expectedSequence")&&message.TryGetValue("lineId",out raw)&&GameGuid(raw,false,out item)&&
                 message.TryGetValue("reelId",out raw)&&GameGuid(raw,true,out reel)&&GameInputSequence(message,out inputSequence)&&GameEquipmentExpectedSequence(message,out expectedSequence);
             nullableReel=reel==Guid.Empty;
-        }else if(action=="retry")valid=GameEquipmentKeys(message,"operationId")&&StringField(message,"operationId",out operationId)&&GameGuid(operationId,false,out opaque);
+        }else if(action=="archive-lost")valid=GameEquipmentKeys(message,"inputSequence","expectedSequence")&&GameInputSequence(message,out inputSequence)&&GameEquipmentExpectedSequence(message,out expectedSequence);
+        else if(action=="retry")valid=GameEquipmentKeys(message,"operationId")&&StringField(message,"operationId",out operationId)&&GameGuid(operationId,false,out opaque);
         else if(action=="cancel")valid=GameEquipmentKeys(message);
         if(!valid){GameEquipmentReply(pane,transport,"invalid-intent");return;}
         AdvanceActivity();
         if(!GameEquipmentAuthorized(pane,binding,document,lease)){GameEquipmentReply(pane,transport,"control-required");return;}
         // Consume a fresh authorized edge even when business state rejects it.
         // Replaying it after opening a menu cannot turn it into a future edit.
-        if(action=="replace-slot"||action=="move-line"){
+        if(action=="replace-slot"||action=="move-line"||action=="archive-lost"){
             if(inputSequence<=binding.EquipmentHighWater){GameEquipmentReply(pane,transport,"stale-input");return;}binding.EquipmentHighWater=inputSequence;
         }
         var snapshot=game.Snapshot;string reason=GameEquipmentReason(snapshot,true);ReconcileGameEquipment(binding,snapshot,true);
@@ -164,7 +169,12 @@ sealed partial class DualWindowContext
         FloatCommand command;
         if(action=="replace-slot")command=new ReplaceFloatSlot(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),slot,nullableItem?(Guid?)null:item,
             state.Sequence,state.Rig.Revision,state.RulesVersion,state.Equipment.InventoryRevision,state.Equipment.RulesVersion);
-        else command=new MoveFloatLine(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),item,nullableReel?(Guid?)null:reel,
+        else if(action=="archive-lost"){
+            var lostIds=new List<Guid>();foreach(var lost in state.Equipment.Instances)if(lost.Location.Place==FloatEquipmentPlace.Lost)lostIds.Add(lost.Id);
+            if(lostIds.Count==0){GameEquipmentReply(pane,transport,"equipment-archive-empty");return;}
+            command=new ArchiveLostFloatEquipment(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),lostIds,
+                state.Sequence,state.Rig.Revision,state.RulesVersion,state.Equipment.InventoryRevision,state.Equipment.RulesVersion);
+        }else command=new MoveFloatLine(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),item,nullableReel?(Guid?)null:reel,
             state.Sequence,state.Rig.Revision,state.RulesVersion,state.Equipment.InventoryRevision,state.Equipment.RulesVersion);
         var next=new GameEquipmentPending{Id=Guid.NewGuid().ToString("D"),Action=action,View=binding.View,Document=binding.Document,Lease=binding.Lease,
             WireLease=binding.WireLease,Command=command};binding.Equipment=next;

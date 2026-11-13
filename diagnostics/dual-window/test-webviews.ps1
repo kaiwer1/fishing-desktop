@@ -113,10 +113,11 @@ try{
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if($taskGameExit.normalExit -or $taskGameExit.code -ne 'unconfirmed-failure-no-settlement'){throw 'Unconfirmed failure exit was not preserved.'}
   }elseif($GameSpares){
-    if(-not $taskReport.passed -or -not $taskReport.gameLoaded -or $taskReport.schemaVersion -ne 3 -or $taskReport.value -ne 11420 -or $taskReport.sequence -ne 14 -or $taskReport.checks.Count -ne 12){throw 'Spares integration transaction report mismatch.'}
-    if(-not $taskReport.sparesMenuConnected -or -not $taskReport.controlledTerminalLoss -or $taskReport.equipmentDamageImplemented -or $taskReport.equipmentInstances -ne 10 -or $taskReport.initialLineMm -ne 100000 -or $taskReport.remainingLineMm -ne 80000 -or $taskReport.lostLineMm -ne 20000){throw 'Spares integration ownership report mismatch.'}
+    if(-not $taskReport.passed -or -not $taskReport.gameLoaded -or $taskReport.schemaVersion -ne 3 -or $taskReport.value -ne 11385 -or $taskReport.sequence -ne 16 -or $taskReport.checks.Count -ne 15){throw 'Spares integration transaction report mismatch.'}
+    if(-not $taskReport.sparesMenuConnected -or -not $taskReport.controlledTerminalLoss -or $taskReport.equipmentDamageImplemented -or $taskReport.equipmentInstances -ne 8 -or $taskReport.initialLineMm -ne 100000 -or $taskReport.remainingLineMm -ne 80000 -or $taskReport.lostLineMm -ne 20000 -or -not $taskReport.equipmentArchiveConnected -or $taskReport.archivedEquipmentInstances -ne 3){throw 'Spares integration ownership report mismatch.'}
     if($taskReport.baitCount -ne 10 -or $taskReport.stamina -ne 96 -or $taskReport.foodCount -ne 0 -or $taskReport.ownedNetEquipped -or $taskReport.gameFlightEmissions -ne 2 -or $taskReport.terminalLossConfirmations -ne 1){throw 'Spares integration resource report mismatch.'}
     if(-not (Test-Path -LiteralPath (Join-Path $taskRun 'game-spares-panel.png') -PathType Leaf)){throw 'Spares menu preview was not captured.'}
+    if(-not (Test-Path -LiteralPath (Join-Path $taskRun 'game-archive-panel.png') -PathType Leaf)){throw 'Equipment archive preview was not captured.'}
     if(Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt')){throw 'Spares integration reported an unexpected host error.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session'){throw 'Spares shutdown was not confirmed.'}

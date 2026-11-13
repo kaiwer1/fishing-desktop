@@ -11,7 +11,7 @@ const items = () => [item(1, 'rod', { location: 'rig-slot', slot: 'rod' }), item
   item(7, 'rod'), item(8, 'reel'), item(9, 'line'), item(10, 'hook', { location: 'lost' }),
   item(11, 'line', { location: 'lost', remainingLineMm: 0 }), item(12, 'reel', { location: 'lost' })];
 const state = extra => ({ schemaVersion: 3, available: true, reason: null, lease: 'first', stateSequence: '12', rigRevision: '2',
-  inventoryRevision: '3', equipmentVersion: '1', items: items(), issues: [], retry: null, ...extra });
+  inventoryRevision: '3', equipmentVersion: '1', archivedItemsCount: 0, archivedLineMm: '0', items: items(), issues: [], retry: null, ...extra });
 const packet = (revision = 1, extra = {}, documentId = 'current') => ({ kind: 'game-equipment-state', documentId, revision, state: state(extra) });
 const retry = () => ({ operationId: id(100), action: 'replace-slot' });
 function fixture() {
@@ -25,6 +25,33 @@ function fixture() {
     complete(extra = {}, code) { this.reply(code); this.project(extra); }
   };
 }
+
+test('archive totals are required bounded display data and old profiles carry zero totals', () => {
+  const view = new EquipmentView('current');
+  for (const bad of [{ archivedItemsCount: undefined }, { archivedLineMm: undefined }, { archivedItemsCount: -1 },
+    { archivedItemsCount: 1280001 }, { archivedItemsCount: 0.5 }, { archivedLineMm: 0 }, { archivedLineMm: '00' },
+    { archivedLineMm: '-1' }, { archivedLineMm: '9223372036854775808' }]) assert.equal(view.apply(packet(1, bad)), false);
+  assert.equal(view.apply(packet(1, { archivedItemsCount: 1280000, archivedLineMm: '9007199254740993' })), true);
+  assert.equal(view.state().archivedLineMm, '9007199254740993');
+  const legacy = { schemaVersion: 2, available: false, reason: 'equipment-schema-required', lease: null,
+    stateSequence: null, rigRevision: null, inventoryRevision: null, equipmentVersion: null, items: [], issues: [] };
+  assert.equal(view.apply(packet(2, { ...legacy, archivedItemsCount: 1 })), false);
+  assert.equal(view.apply(packet(2, { ...legacy, archivedLineMm: '1' })), false);
+  assert.equal(view.apply(packet(2, legacy)), true);
+});
+
+test('archiving sends only sequence authority, shares ordering, and retries only its original opaque operation', () => {
+  const f = fixture(); f.project({ items: items().filter(item => item.location !== 'lost') });
+  assert.equal(f.input.archiveLost(), false); f.project();
+  assert.equal(f.input.archiveLost({ detail: 2 }), false); assert.equal(f.input.archiveLost(), true); assert.equal(f.input.archiveLost(), false);
+  assert.deepEqual(f.messages[0], { kind: 'game-equipment', documentId: 'current', lease: 'first', transportId: 'equipment-1',
+    action: 'archive-lost', expectedSequence: '12', inputSequence: '1' });
+  f.complete({ retry: { operationId: id(100), action: 'archive-lost' } }, 'equipment-not-written');
+  assert.equal(f.input.archiveLost(), false); assert.equal(f.input.replaceSlot('rod', id(7)), false); assert.equal(f.input.retry(), true);
+  assert.equal(f.messages[1].operationId, id(100));
+  f.complete({ items: items().filter(item => item.location !== 'lost'), archivedItemsCount: 3, archivedLineMm: '50000' }, 'equipment-archive-candidate');
+  assert.equal(f.input.archiveLost(), false); assert.equal(f.input.replaceSlot('rod', id(7)), true); assert.equal(f.messages[2].inputSequence, '2');
+});
 
 test('equipment accepts only current document and strictly newer valid host projections', () => {
   const view = new EquipmentView('current'); assert.equal(view.apply(packet()), true);

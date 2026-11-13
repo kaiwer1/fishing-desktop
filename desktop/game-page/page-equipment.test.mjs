@@ -44,7 +44,7 @@ async function pageFixture() {
     Sequence: '1', RigRevision: '1', RulesVersion: '1', WalletMinor: '12000', Stamina: 80, BaitDefinitionKey: 'worm', BaitCount: 12, Creel: [], CreelCount: 0, CreelCapacity: 2, CreelOffset: 0 };
   const shop = { schemaVersion: 3, available: true, reason: null, walletMinor: '12000', baitCount: 12, foodCount: 2, netOwned: false, netEquipped: false,
     catalogVersion: '1', netPriceMinor: '2400', baitPackPriceMinor: '20', foodPriceMinor: '20', baitPackUnits: 5, foodStaminaRestore: 20, maxPacks: 100, quote: null, retry: null };
-  const equipment = { schemaVersion: 3, available: true, reason: null, lease: 'first', stateSequence: '1', rigRevision: '1', inventoryRevision: '1', equipmentVersion: '1', items: inventory(), issues: [], retry: null };
+  const equipment = { schemaVersion: 3, available: true, reason: null, lease: 'first', stateSequence: '1', rigRevision: '1', inventoryRevision: '1', equipmentVersion: '1', archivedItemsCount: 0, archivedLineMm: '0', items: inventory(), issues: [], retry: null };
   const spares = { schemaVersion: 3, available: true, reason: null, lease: 'first', stateSequence: '1', catalogVersion: '1', walletMinor: '12000', instancesCount: 7,
     items: [{ sku: 'hook-single', definitionKey: 'single-hook', kind: 'hook', priceMinor: '35', lineLengthMm: 0 }], quote: null, retry: null };
   let snapshotRevision = 0, shopRevision = 0, equipmentRevision = 0, sparesRevision = 0, leaseRevision = 0;
@@ -75,6 +75,41 @@ test('page initializes after empty placeholders with current equipment selected 
   }
   assert.equal(f.nodes.get('equipment-line').value, id(3)); assert.equal(f.nodes.get('equipment-reel').value, id(2));
   assert.equal(f.nodes.get('equipment-move-line').disabled, true); assert.equal(f.messages.length, 0);
+});
+
+test('archive button confirms freed slots and exact archived line totals without changing owned gear or money', async () => {
+  const f = await pageFixture(); assert.equal(f.nodes.get('equipment-archive-lost').disabled, true);
+  f.equipment.items.push(row(8, 'hook', { location: 'lost', slot: null })); f.broadcast();
+  assert.equal(f.nodes.get('equipment-archive-lost').disabled, false); assert.match(f.nodes.get('equipment-capacity').textContent, /当前名额 8 \/ 128/);
+  f.click('equipment-archive-lost'); assert.equal(f.messages.at(-1).action, 'archive-lost');
+  assert.deepEqual(Object.keys(f.messages.at(-1)).sort(), ['kind', 'documentId', 'lease', 'transportId', 'action', 'inputSequence', 'expectedSequence'].sort());
+  f.equipment.items = f.equipment.items.filter(item => item.location !== 'lost');
+  f.equipment.archivedItemsCount = 1; f.equipment.archivedLineMm = '9007199254740993'; f.advance(); f.reply('equipment-archive-candidate'); f.broadcast();
+  assert.equal(f.nodes.get('equipment-archive-lost').disabled, true);
+  assert.equal(f.nodes.get('equipment-capacity').textContent, '当前名额 7 / 128 · 已归档 1 件 · 归档累计损失鱼线 9,007,199,254,740.993 米');
+  assert.equal(f.equipment.items.length, 7); assert.equal(f.shop.walletMinor, '12000'); assert.equal(f.spares.walletMinor, '12000');
+});
+
+test('archive known-not-written blocks both shops and explicit retry releases all three menus', async () => {
+  const f = await pageFixture(); f.equipment.items.push(row(8, 'hook', { location: 'lost', slot: null })); f.broadcast();
+  f.click('equipment-archive-lost'); f.equipment.retry = { operationId: id(300), action: 'archive-lost' }; f.reply('equipment-not-written'); f.broadcast();
+  assert.equal(f.nodes.get('equipment-archive-lost').disabled, true); assert.equal(f.nodes.get('equipment-retry').disabled, false);
+  for (const button of ['quote-bait', 'spares-quote-hook-single', 'equipment-archive-lost']) {
+    assert.equal(f.nodes.get(button).disabled, true); f.click(button, {}, true);
+  }
+  assert.equal(f.messages.length, 1); f.click('equipment-retry'); assert.equal(f.messages.at(-1).operationId, id(300));
+  f.equipment.retry = null; f.equipment.items.pop(); f.equipment.archivedItemsCount = 1; f.advance(); f.reply('equipment-archive-candidate'); f.broadcast();
+  assert.equal(f.nodes.get('quote-bait').disabled, false); assert.equal(f.nodes.get('spares-quote-hook-single').disabled, false);
+});
+
+test('archiving obeys competing menu activity, revoked authority and an unknown-save latch', async () => {
+  const f = await pageFixture(); f.equipment.items.push(row(8, 'hook', { location: 'lost', slot: null })); f.broadcast();
+  f.click('spares-quote-hook-single'); f.click('equipment-archive-lost', {}, true); assert.equal(f.messages.length, 1);
+  f.reply('spares-cancelled'); f.broadcast(); f.grant(null);
+  assert.equal(f.nodes.get('equipment-archive-lost').disabled, true); f.click('equipment-archive-lost', {}, true); assert.equal(f.messages.length, 1);
+  f.equipment.lease = f.spares.lease = 'second'; f.grant('second'); f.broadcast(); f.click('equipment-archive-lost');
+  assert.equal(f.messages.length, 2); f.reply('save-outcome-unknown'); f.broadcast();
+  assert.equal(f.nodes.get('equipment-archive-lost').disabled, true); f.click('equipment-archive-lost', {}, true); assert.equal(f.messages.length, 2);
 });
 
 test('equipment completion enables an immediate shop action in the real shop-before-equipment message order', async () => {

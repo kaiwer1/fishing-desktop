@@ -12,7 +12,7 @@ namespace FishingDesktop.GameCore
     {
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
-        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17,EquipmentUpgrade=18;
+        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17,EquipmentUpgrade=18,ArchiveEquipment=19;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -129,7 +129,7 @@ namespace FishingDesktop.GameCore
             if(command is CastFloat)return Cast;if(command is RecallFloat)return Recall;if(command is ReleaseCurrentFloatFish)return Release;
             if(command is SellFloatFish)return Sale;if(command is HostFloatFish)return HostFish;if(command is RecoverFloatSession)return Recovery;
             if(command is UpgradeFloatProfile)return Upgrade;if(command is BuyFloatSupply)return Purchase;if(command is EquipFloatNet)return Equip;if(command is UseFloatFood)return Food;if(command is HostFloatUnhooked)return Unhooked;
-            if(command is ReplaceFloatSlot)return ReplaceSlot;if(command is MoveFloatLine)return MoveLine;if(command is CastFloatWithEquipment)return EquipmentCast;if(command is HostFloatTerminalLoss)return TerminalLoss;if(command is ConfigureFloatEquipmentOffers)return ConfigureOffers;if(command is BuyFloatEquipment)return BuyEquipment;if(command is UpgradeFloatEquipment)return EquipmentUpgrade;throw Invalid("Unsupported journal command type.");
+            if(command is ReplaceFloatSlot)return ReplaceSlot;if(command is MoveFloatLine)return MoveLine;if(command is CastFloatWithEquipment)return EquipmentCast;if(command is HostFloatTerminalLoss)return TerminalLoss;if(command is ConfigureFloatEquipmentOffers)return ConfigureOffers;if(command is BuyFloatEquipment)return BuyEquipment;if(command is UpgradeFloatEquipment)return EquipmentUpgrade;if(command is ArchiveLostFloatEquipment)return ArchiveEquipment;throw Invalid("Unsupported journal command type.");
         }
         static void Catalog(Writer writer,FloatCommerceCatalog catalog)
         {
@@ -143,6 +143,11 @@ namespace FishingDesktop.GameCore
         {
             if(ids.Count<1||ids.Count>MaximumSaleIds)throw Invalid("Sale identity count is invalid.");
             for(int i=0;i<ids.Count;i++)if(ids[i]==Guid.Empty||(i>0&&ids[i-1].CompareTo(ids[i])>=0))throw Invalid("Sale identities are not canonical and unique.");
+        }
+        static void ArchiveIds(IList<Guid> ids)
+        {
+            if(ids.Count<1||ids.Count>FloatEquipmentGuard.MaximumInstances)throw Invalid("Archive identity count is invalid.");
+            for(int i=0;i<ids.Count;i++)if(ids[i]==Guid.Empty||(i>0&&ids[i-1].CompareTo(ids[i])>=0))throw Invalid("Archive identities are not canonical and unique.");
         }
         internal static byte[] EncodeCommand(FloatCommand command)
         {return EncodeCommand(command,Type(command)>Unhooked?3:Type(command)>Recovery?2:1);}
@@ -169,7 +174,11 @@ namespace FishingDesktop.GameCore
                 }else if(type==Equip)writer.Guid(((EquipFloatNet)command).NetId);
                 else if(type==Food)writer.Guid(((UseFloatFood)command).FoodStackId);
                 else if(type==Unhooked){var unhooked=(HostFloatUnhooked)command;writer.Guid(unhooked.EncounterId);writer.I32(unhooked.FightModelVersion);}
-                else if(type==EquipmentUpgrade){
+                else if(type==ArchiveEquipment){
+                    if(command.SessionId!=Guid.Empty)throw Invalid("Equipment archive contains a session.");
+                    var archive=(ArchiveLostFloatEquipment)command;writer.I64(archive.ExpectedInventoryRevision);writer.I64(archive.ExpectedEquipmentVersion);
+                    ArchiveIds(archive.ItemIds);writer.U16((ushort)archive.ItemIds.Count);foreach(var id in archive.ItemIds)writer.Guid(id);
+                }else if(type==EquipmentUpgrade){
                     var upgrade=(UpgradeFloatEquipment)command;writer.Guid(upgrade.NewBranchId);writer.Text(upgrade.Origin.SourceSha256);writer.Text(upgrade.Origin.SourceTipSha256);writer.I64(upgrade.Origin.SourceLength);
                     writer.I64(upgrade.PolicyVersion);writer.Text(upgrade.SourceRigDefinitionKey);
                     var equipment=upgrade.CopyEquipmentPayload();var offers=upgrade.CopyOffersPayload();writer.I32(equipment.Length);writer.Bytes(equipment);writer.I32(offers.Length);writer.Bytes(offers);
@@ -191,9 +200,15 @@ namespace FishingDesktop.GameCore
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,(reader,schema)=>{
-                byte type=reader.Byte();if(type<Cast||type>EquipmentUpgrade||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(type<Cast||type>ArchiveEquipment||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
+                if(type==ArchiveEquipment){
+                    if(session!=Guid.Empty)throw Invalid("Equipment archive contains a session.");long inventory=reader.I64(),equipment=reader.I64();
+                    int count=reader.U16();if(count<1||count>FloatEquipmentGuard.MaximumInstances)throw Invalid("Archive identity count is invalid.");
+                    var ids=new List<Guid>(count);for(int i=0;i<count;i++)ids.Add(reader.Guid());ArchiveIds(ids);
+                    return new ArchiveLostFloatEquipment(profile,branch,request,businessEvent,ids,sequence,rig,rules,inventory,equipment);
+                }
                 if(type==EquipmentUpgrade){
                     if(session!=Guid.Empty)throw Invalid("Equipment upgrade contains a session.");
                     Guid newBranch=reader.Guid();string sha=reader.Text(),tip=reader.Text();long sourceLength=reader.I64(),policy=reader.I64();string sourceKey=reader.Text();

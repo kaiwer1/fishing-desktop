@@ -155,7 +155,7 @@ namespace FishingDesktop.GameCore
         }
     }
     public enum FloatRecoveryReason { StartupInterrupted=1,OwnerShutdown=2 }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived }
     public sealed class FloatEquipmentLossSummary
     {
         public readonly Guid LineId;
@@ -181,9 +181,10 @@ namespace FishingDesktop.GameCore
         public readonly FloatRecoveryReason? RecoveryReason;
         public readonly ReadOnlyCollection<Guid> FishIds;
         public readonly FloatEquipmentLossSummary EquipmentLoss;
+        public readonly FloatEquipmentArchiveSummary EquipmentArchive;
         internal readonly string Fingerprint;
         internal bool Terminal{get{return Outcome==FloatOutcome.Recalled||Outcome==FloatOutcome.Landed||Outcome==FloatOutcome.Released||Outcome==FloatOutcome.Recovered||Outcome==FloatOutcome.Unhooked||Outcome==FloatOutcome.TerminalLost;}}
-        internal FloatReceipt(FloatCommand command,long sequence,long rulesVersion,FloatOutcome outcome,Guid encounterId,long walletBefore,long walletAfter,int staminaBefore,int staminaAfter,int baitBefore,int baitAfter,IEnumerable<Guid> fishIds,int foodBefore=0,int foodAfter=0,Guid ownedNetBefore=default(Guid),Guid ownedNetAfter=default(Guid),Guid equippedNetBefore=default(Guid),Guid equippedNetAfter=default(Guid),FloatEquipmentLossSummary equipmentLoss=null)
+        internal FloatReceipt(FloatCommand command,long sequence,long rulesVersion,FloatOutcome outcome,Guid encounterId,long walletBefore,long walletAfter,int staminaBefore,int staminaAfter,int baitBefore,int baitAfter,IEnumerable<Guid> fishIds,int foodBefore=0,int foodAfter=0,Guid ownedNetBefore=default(Guid),Guid ownedNetAfter=default(Guid),Guid equippedNetBefore=default(Guid),Guid equippedNetAfter=default(Guid),FloatEquipmentLossSummary equipmentLoss=null,FloatEquipmentArchiveSummary equipmentArchive=null)
         {
             RequestId=command.RequestId;EventId=command.EventId;SessionId=command.SessionId;EncounterId=encounterId;Sequence=sequence;RulesVersion=rulesVersion;Outcome=outcome;Fingerprint=command.Fingerprint;
             var recovery=command as RecoverFloatSession;RecoveryReason=recovery==null?(FloatRecoveryReason?)null:recovery.Reason;
@@ -191,6 +192,7 @@ namespace FishingDesktop.GameCore
             FoodBefore=foodBefore;FoodAfter=foodAfter;OwnedNetBefore=ownedNetBefore;OwnedNetAfter=ownedNetAfter;EquippedNetBefore=equippedNetBefore;EquippedNetAfter=equippedNetAfter;
             var copy=new List<Guid>(fishIds);var unique=new HashSet<Guid>();foreach(var id in copy)FloatGuard.Unique(unique,id);FishIds=copy.AsReadOnly();
             if((outcome==FloatOutcome.TerminalLost)!=(equipmentLoss!=null)||(equipmentLoss!=null&&copy.Count!=0))throw new ArgumentException("Invalid equipment loss receipt.");EquipmentLoss=equipmentLoss;
+            if((outcome==FloatOutcome.EquipmentArchived)!=(equipmentArchive!=null)||(equipmentArchive!=null&&(copy.Count!=0||command.SessionId!=Guid.Empty||encounterId!=Guid.Empty)))throw new ArgumentException("Invalid equipment archive receipt.");EquipmentArchive=equipmentArchive;
         }
     }
     public sealed class FloatGameState
@@ -203,6 +205,9 @@ namespace FishingDesktop.GameCore
         internal readonly FixedFloatRig LegacyRig;
         internal readonly FloatEquipmentLedger Equipment;
         internal readonly FloatEquipmentOffers EquipmentOffers;
+        internal readonly ReadOnlyCollection<Guid> ArchivedEquipmentIds,ArchivedLossOwnerIds;
+        internal readonly long ArchivedEquipmentLineMm;
+        readonly HashSet<Guid> archivedIdentities;
         public readonly FloatSession Session;
         public readonly ReadOnlyCollection<FloatFish> Creel;
         public readonly ReadOnlyCollection<FloatReceipt> Receipts;
@@ -240,8 +245,21 @@ namespace FishingDesktop.GameCore
             }else throw new ArgumentException("Unsupported profile schema.");
             foreach(var row in fish){if(row==null||row.RulesVersion!=rules.Version)throw new ArgumentException("Invalid fish.");FloatGuard.Unique(assets,row.Id);}
             var requests=new HashSet<Guid>();var events=new HashSet<Guid>();var casts=new HashSet<Guid>();var terminals=new HashSet<Guid>();
+            var archivedItems=new HashSet<Guid>();var archivedOwners=new HashSet<Guid>();var reservedArchiveIds=new HashSet<Guid>();long archivedLine=0;
             for(int i=0;i<history.Count;i++){
                 var row=history[i];if(row==null||row.Sequence!=(long)i+1||row.RulesVersion!=rules.Version||!requests.Add(row.RequestId)||!events.Add(row.EventId))throw new ArgumentException("Invalid receipt history.");
+                // Reserve only identities whose archive was already confirmed.
+                // Earlier receipt namespaces remain replay-compatible.
+                if(reservedArchiveIds.Contains(row.RequestId)||reservedArchiveIds.Contains(row.EventId)||reservedArchiveIds.Contains(row.SessionId)||reservedArchiveIds.Contains(row.EncounterId))throw new ArgumentException("A later receipt reused an archived identity.");
+                foreach(var id in row.FishIds)if(reservedArchiveIds.Contains(id))throw new ArgumentException("A later fish reused an archived identity.");
+                if(row.EquipmentArchive!=null){
+                    if(schemaVersion!=3)throw new ArgumentException("Only schema3 can archive equipment.");
+                    var archived=row.EquipmentArchive;
+                    foreach(var id in archived.ItemIds){if(!archivedItems.Add(id)||archivedOwners.Contains(id))throw new ArgumentException("An equipment identity was archived twice or reused.");reservedArchiveIds.Add(id);}
+                    foreach(var id in archived.LossOwnerIds){if(archivedItems.Contains(id))throw new ArgumentException("An archived loss owner reused an item identity.");archivedOwners.Add(id);reservedArchiveIds.Add(id);}
+                    if(reservedArchiveIds.Contains(row.RequestId)||reservedArchiveIds.Contains(row.EventId))throw new ArgumentException("The archive transaction reused its archived identity.");
+                    archivedLine=checked(archivedLine+archived.LineMm);
+                }
                 if(row.Outcome==FloatOutcome.CastCommitted&&!casts.Add(row.SessionId))throw new ArgumentException("Repeated cast session.");
                 if(row.Terminal&&!terminals.Add(row.SessionId))throw new ArgumentException("Repeated terminal session.");
             }
@@ -255,6 +273,12 @@ namespace FishingDesktop.GameCore
                 }else if(session.EquipmentInventoryRevision!=0||session.EquipmentRulesVersion!=0||session.RequiredLineMm!=0)throw new ArgumentException("Legacy session contains equipment data.");
                 if(session.PendingFish!=null){if(session.PendingFish.RulesVersion!=rules.Version)throw new ArgumentException("Invalid pending rules.");FloatGuard.Unique(assets,session.PendingFish.Id);}
             }
+            foreach(var id in assets)if(reservedArchiveIds.Contains(id))throw new ArgumentException("Current ownership reused an archived identity.");
+            if(reservedArchiveIds.Contains(profile)||reservedArchiveIds.Contains(branch))throw new ArgumentException("Current profile or branch reused an archived identity.");
+            if(session!=null&&reservedArchiveIds.Contains(session.Id))throw new ArgumentException("Current session reused an archived identity.");
+            var archiveIds=new List<Guid>(archivedItems);archiveIds.Sort();ArchivedEquipmentIds=archiveIds.AsReadOnly();
+            var lossOwners=new List<Guid>(archivedOwners);lossOwners.Sort();ArchivedLossOwnerIds=lossOwners.AsReadOnly();
+            ArchivedEquipmentLineMm=archivedLine;archivedIdentities=reservedArchiveIds;
             ProfileId=profile;BranchId=branch;Sequence=sequence;RulesVersion=rules.Version;WalletMinor=wallet;Stamina=stamina;BaitStackId=baitStack;BaitDefinitionKey=baitDefinition;BaitCount=baitCount;Rig=description;LegacyRig=rig;Equipment=equipment;Session=session;Creel=fish.AsReadOnly();Receipts=history.AsReadOnly();Rules=rules;
             SchemaVersion=schemaVersion;CommerceCatalog=catalog;FoodStackId=foodStack;FoodCount=foodCount;OwnedNet=ownedNet;EquippedNetId=equippedNet;UpgradeOrigin=origin;
             EquipmentOffers=equipmentOffers;
@@ -269,5 +293,6 @@ namespace FishingDesktop.GameCore
         {return new FloatGameState(profile,branch,0,walletMinor,stamina,baitStack,baitDefinition,baitCount,null,null,new FloatFish[0],new FloatReceipt[0],rules,3,catalog,foodStackId,0,null,Guid.Empty,null,equipment);}
         internal void AddEquipmentAssets(HashSet<Guid> ids)
         {if(LegacyRig!=null)LegacyRig.AddAssets(ids);else{FloatGuard.Unique(ids,Equipment.RigId);foreach(var item in Equipment.Instances)FloatGuard.Unique(ids,item.Id);}}
+        internal bool ArchivedEquipmentIdentityWasUsed(Guid id){return archivedIdentities.Contains(id);}
     }
 }

@@ -20,9 +20,11 @@ static class FloatJournalTool
         foreach(var item in equipment.Instances)if(item.Location.Place==FloatEquipmentPlace.Lost)lost++;
         foreach(var receipt in state.Receipts)if(receipt.Outcome==FloatOutcome.TerminalLost)confirmedLosses++;
         return new {instances=equipment.Instances.Count,lostInstances=lost,confirmedLosses=confirmedLosses,
-            initialLineMm=equipment.InitialLineMm.ToString(CultureInfo.InvariantCulture),
+            archivedInstances=state.ArchivedEquipmentIds.Count,
+            archivedLineMm=state.ArchivedEquipmentLineMm.ToString(CultureInfo.InvariantCulture),
+            initialLineMm=checked(equipment.InitialLineMm+state.ArchivedEquipmentLineMm).ToString(CultureInfo.InvariantCulture),
             remainingLineMm=equipment.RemainingLineMm.ToString(CultureInfo.InvariantCulture),
-            lostLineMm=equipment.LostLineMm.ToString(CultureInfo.InvariantCulture),
+            lostLineMm=checked(equipment.LostLineMm+state.ArchivedEquipmentLineMm).ToString(CultureInfo.InvariantCulture),
             installedLineMm=state.Rig.LineLengthMm.HasValue?state.Rig.LineLengthMm.Value.ToString(CultureInfo.InvariantCulture):null,
             missingSlots=missing.ToArray()};
     }

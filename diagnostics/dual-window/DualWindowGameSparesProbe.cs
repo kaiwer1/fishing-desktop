@@ -86,7 +86,7 @@ sealed partial class DualWindowContext
             Require(game.Snapshot.State.Sequence==4&&game.Snapshot.State.WalletMinor==11965&&game.Snapshot.State.Rig.HookId==null,"Retry did not buy exactly one unequipped hook.");
             string afterHook=GameShopJournalDigest();GameCode(await GameShopWire(control,SparesProbeMessage(control,lease,"buy",offer)),"spares-intent-not-current",false);
             Require(GameShopJournalDigest()==afterHook,"Consumed purchase charged twice.");
-            checks.Add("known prewrite failure retains the exact purchase and only explicit retry buys one hook");
+            checks.Add("known prewrite failure leaves the journal unchanged and explicit retry buys one hook");
 
             await GameShopClick(control,"quote-bait","shop-quoted",false);await GameShopClick(control,"shop-cancel","shop-cancelled",false);
             await GameEquipmentProbeReady(control);await SparesProbeReady(control);
@@ -134,12 +134,45 @@ sealed partial class DualWindowContext
             Require(s.Equipment.InitialLineMm==100000&&s.Equipment.RemainingLineMm==80000&&s.Equipment.LostLineMm==20000&&s.Equipment.Instances.Count==10,"Final line budget does not conserve purchases and losses.");
             foreach(Guid id in new[]{oldHook,oldBobber,oldSinker})Require(s.Equipment.Find(id).Location.Place==FloatEquipmentPlace.Lost,"Lost terminal identity was resurrected.");
             checks.Add("repaired rig casts and recalls with exactly two total bait and stamina charges and conserved line loss");
-            PrepareGameShutdown();Require(game.Snapshot.ShutdownConfirmed&&gameShutdownCode=="no-active-session"&&game.Snapshot.State.Sequence==14,"Idle shutdown changed the completed cycle.");
+            await GameMenu(control,lease,true);await GameEquipmentProbeReady(control);
+            string beforeArchive=GameShopJournalDigest();long beforeRig=s.Rig.Revision;
+            var injection=GameEquipmentProbeMessage(control,lease,"archive-lost");
+            injection.Add("inputSequence","999");injection.Add("expectedSequence","14");injection.Add("itemIds",new[]{oldHook.ToString("D")});
+            GameCode(await GameEquipmentProbeWire(control,injection),"invalid-intent",false);
+            Require(GameShopJournalDigest()==beforeArchive,"Page-supplied archive identities wrote state.");
+            checks.Add("archive intent rejects injected item identities without consuming the menu input edge");
+
+            ArmGameEquipmentPrewriteFailure();
+            await GameEquipmentProbeClick(control,"equipment-archive-lost","equipment-not-written",false);
+            var frozenArchive=gameViews[control].Equipment.Command;
+            Require(GameShopJournalDigest()==beforeArchive&&game.Snapshot.State.Equipment.Instances.Count==10,"Failed archive removed equipment.");
+            await GameEquipmentProbeClick(control,"equipment-retry","equipment-archive-candidate",true);
+            s=game.Snapshot.State;var archiveReceipt=s.Receipts[s.Receipts.Count-1];
+            Require(s.Sequence==15&&s.Equipment.Instances.Count==7&&s.ArchivedEquipmentIds.Count==3&&s.ArchivedEquipmentLineMm==0&&s.Rig.Revision==beforeRig&&
+                archiveReceipt.RequestId==frozenArchive.RequestId&&archiveReceipt.EventId==frozenArchive.EventId&&archiveReceipt.Fingerprint==frozenArchive.Fingerprint,
+                "Archive retry changed the frozen command or current rig.");
+            foreach(Guid id in new[]{oldHook,oldBobber,oldSinker})Require(s.Equipment.Find(id)==null&&s.ArchivedEquipmentIds.Contains(id),"Archived identity was forgotten.");
+            Require(s.WalletMinor==11420&&s.Equipment.InitialLineMm==100000&&s.Equipment.RemainingLineMm==80000&&s.Equipment.LostLineMm==20000,"Archive refunded money or lost line history.");
+            checks.Add("actual archive button and explicit retry preserve exact command identities loss history money and line totals");
+
+            await SparesProbeClick(control,"spares-quote-hook-single","spares-quoted",false);
+            await SparesProbeClick(control,"spares-buy","equipment-purchase-candidate",true);
+            document=control.Ticket.DocumentId;Reload(control);
+            await Wait(control,p=>(string)p["documentId"]!=document&&Field(p,"equipmentState")!=null);
+            lease=await Activate(control);page=await GameEquipmentProbeReady(control);s=game.Snapshot.State;
+            Require(s.Sequence==16&&s.WalletMinor==11385&&s.Equipment.Instances.Count==8&&s.ArchivedEquipmentIds.Count==3&&
+                Convert.ToInt32(Field(page,"equipmentState")["archivedItemsCount"])==3&&(string)Field(page,"equipmentState")["archivedLineMm"]=="0",
+                "Reload lost archived history or another purchase failed.");
+            await control.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('equipment-archive-lost').scrollIntoView()");
+            using(var preview=File.Create(Path.Combine(root,"game-archive-panel.png")))await control.View.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,preview);
+            checks.Add("another purchase and real page reload retain archived identity counts with no starter grants");
+            PrepareGameShutdown();Require(game.Snapshot.ShutdownConfirmed&&gameShutdownCode=="no-active-session"&&game.Snapshot.State.Sequence==16,"Idle shutdown changed the completed cycle.");
             Require(owner.Snapshot().Sequence==0,"Spares test wrote the diagnostic counter.");
             checks.Add("idle shutdown confirms without another transaction or diagnostic counter write");
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{passed=true,checks=checks.ToArray(),gameLoaded=true,schemaVersion=3,
                 value=s.WalletMinor,sequence=s.Sequence,sparesMenuConnected=true,controlledTerminalLoss=true,equipmentDamageImplemented=false,
-                equipmentInstances=s.Equipment.Instances.Count,initialLineMm=s.Equipment.InitialLineMm,remainingLineMm=s.Equipment.RemainingLineMm,lostLineMm=s.Equipment.LostLineMm,
+                equipmentInstances=s.Equipment.Instances.Count,archivedEquipmentInstances=s.ArchivedEquipmentIds.Count,equipmentArchiveConnected=true,
+                initialLineMm=s.Equipment.InitialLineMm+s.ArchivedEquipmentLineMm,remainingLineMm=s.Equipment.RemainingLineMm,lostLineMm=s.Equipment.LostLineMm+s.ArchivedEquipmentLineMm,
                 baitCount=s.BaitCount,stamina=s.Stamina,foodCount=s.FoodCount,ownedNetEquipped=false,gameFlightEmissions=gameFlightEmissions,terminalLossConfirmations=losses,
                 controlledFishFacts=false,castPreparationConnected=true,flatWaterFlightConnected=true,commerceConnected=true,equipmentMenuConnected=true,
                 nativeInputTested=false,desktopLayer=false,personalSaveRead=false,realDiskFailureTested=false}),Encoding.UTF8);

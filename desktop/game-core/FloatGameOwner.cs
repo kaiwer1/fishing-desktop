@@ -43,6 +43,22 @@ namespace FishingDesktop.GameCore
         internal static FloatGameOwner CreateNew(string path, FloatGameState genesis, Action<FloatSaveFaultPoint> hook)
         { return new FloatGameOwner(FloatGameStore.CreateNew(path, genesis, hook)); }
 
+        internal static FloatGameOwner CreateNewWithEquipmentOffers(string path,FloatGameState initial,FloatEquipmentOffers offers)
+        {return CreateNewWithEquipmentOffers(path,initial,offers,null);}
+        internal static FloatGameOwner CreateNewWithEquipmentOffers(string path,FloatGameState initial,FloatEquipmentOffers offers,Action<FloatSaveFaultPoint> hook)
+        {
+            if(initial==null||initial.SchemaVersion!=3||initial.Sequence!=0||initial.EquipmentOffers!=null||offers==null)throw new ArgumentException("A new schema3 profile and explicit offers are required.");
+            offers.ValidateAgainst(initial.Equipment.Catalog,initial.Rules.MaximumWalletMinor);
+            var configure=new ConfigureFloatEquipmentOffers(initial.ProfileId,initial.BranchId,Guid.NewGuid(),Guid.NewGuid(),FloatEquipmentOffersCodec.Encode(offers),0,initial.Rig.Revision,initial.RulesVersion,initial.Equipment.InventoryRevision,initial.Equipment.RulesVersion);
+            // The ordinary genesis format remains unchanged. A factory failure
+            // retains the new file as written; never overwrite, delete or repair.
+            var store=FloatGameStore.CreateNew(path,initial,hook);
+            try{
+                var result=store.Execute(configure);if(!result.Committed||!result.Written||result.IsReplay)throw new InvalidOperationException("Initial equipment offers were not confirmed: "+result.Code);
+                return new FloatGameOwner(store);
+            }catch{store.Dispose();throw;}
+        }
+
         public static FloatGameOwner OpenExisting(string path)
         { return OpenExisting(path, null); }
         internal static FloatGameOwner OpenExisting(string path, Action<FloatSaveFaultPoint> hook)
@@ -109,7 +125,7 @@ namespace FishingDesktop.GameCore
             return new FloatCommitResult(code, null, null, false, false, false);
         }
         static bool UserType(FloatCommand command)
-        { return command is CastFloat || command is CastFloatWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
+        { return command is CastFloat || command is CastFloatWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
         bool HasRecordedRequest(FloatCommand command)
         {
             if (command == null) return false;

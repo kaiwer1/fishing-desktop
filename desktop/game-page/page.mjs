@@ -6,6 +6,8 @@ import { FightView, FightInput } from './fight-view.mjs';
 import { ShopView, ShopInput, formatMinor } from './shop-view.mjs';
 import { EquipmentView, EquipmentInput } from './equipment-view.mjs';
 import { EquipmentPanel } from './equipment-panel.mjs';
+import { SparesView, SparesInput } from './spares-view.mjs';
+import { SparesPanel } from './spares-panel.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -19,6 +21,7 @@ const biteView = new BiteView(documentId);
 const fightView = new FightView(documentId);
 const shopView = new ShopView(documentId);
 const equipmentView = new EquipmentView(documentId);
+const sparesView = new SparesView(documentId);
 let saveFaulted = false;
 let speedKeyHeld = false;
 const selected = new Set();
@@ -26,7 +29,7 @@ const $ = id => document.getElementById(id);
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
 const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
-const canPrepare = () => canControl() && !inflight && !shopBusy() && !equipmentBusy() && !snapshot.SessionId && !snapshot.MenuOpen;
+const canPrepare = () => canControl() && !inflight && !shopBusy() && !equipmentBusy() && !sparesBusy() && !snapshot.SessionId && !snapshot.MenuOpen;
 const castInput = new CastInput({ readContext: () => ({ lease: authority.state().lease, allowed: canPrepare() }), post: send, newTransportId: () => crypto.randomUUID() });
 function strikeContext() {
   const bite = biteView.state();
@@ -60,12 +63,20 @@ function equipmentContext() {
 }
 const equipmentInput = new EquipmentInput({ readContext: equipmentContext, post: send, newTransportId: () => crypto.randomUUID() });
 function equipmentBusy() { const s = equipmentInput.state(); return Boolean(s.inflight || s.awaitingState); }
+function sparesContext() {
+  return { ...equipmentContext(), schemaVersion: sparesView.state()?.schemaVersion };
+}
+const sparesInput = new SparesInput({ readContext: sparesContext, post: send, newTransportId: () => crypto.randomUUID() });
+function sparesBusy() { const s = sparesInput.state(); return Boolean(s.inflight || s.awaitingState); }
 // Another menu operation blocks new intent, not delivery of a current host
 // projection. Otherwise the fixed shop/equipment send order loses readiness.
-const canUseShop = () => !equipmentBusy() && !equipmentInput.state().retry;
-const canUseEquipment = () => !shopBusy() && !shopInput.state().retry;
+const canUseShop = () => !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
+const canUseEquipment = () => !shopBusy() && !shopInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
+const canUseSpares = () => !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry;
 const equipmentPanel = new EquipmentPanel({ view: equipmentView, input: equipmentInput, snapshot: () => snapshot,
   canAct: canUseEquipment, changed: () => updateButtons() });
+const sparesPanel = new SparesPanel({ view: sparesView, input: sparesInput, snapshot: () => snapshot,
+  canAct: canUseSpares, changed: () => updateButtons() });
 const names = { carp: '鲤鱼', crucian: '鲫鱼', worm: '蚯蚓' };
 function decimal(value, scale = 2) {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) return '—';
@@ -79,6 +90,7 @@ function render() {
   const previousShopLease = shopInput.state().lease;
   shopInput.reconcile();
   equipmentInput.reconcile();
+  sparesInput.reconcile();
   if (!shopContext().allowed || previousShopLease !== shopInput.state().lease) shopView.clearReferences();
   if (!fightContext().allowed) speedKeyHeld = false;
   $('status').textContent = snapshot?.Faulted || saveFaulted ? '保存结果待核验，请退出后重新打开原存档。' : snapshot?.HostPaused ? '当前暂停' : readOnly ? '观赏窗口' : canControl() ? '交互已开启' : '请从窗口顶部开启交互';
@@ -204,7 +216,7 @@ function renderShop() {
   $('shop-cancel').hidden = !input.quote && !input.retry;
 }
 function updateButtons() {
-  const active = canControl() && !inflight && !shopBusy() && !equipmentBusy();
+  const active = canControl() && !inflight && !shopBusy() && !equipmentBusy() && !sparesBusy();
   const input = castInput.state();
   $('cast').disabled = !canPrepare() || Boolean(input);
   $('cast-release').disabled = !canPrepare() || input?.phase !== 'charging' || input.source !== 'button';
@@ -240,6 +252,7 @@ function updateButtons() {
   $('shop-retry-confirm').disabled = !shopping || !shopState.retry;
   $('shop-cancel').disabled = !shopping || !shopState.quote && !shopState.retry;
   equipmentPanel.render();
+  sparesPanel.render();
 }
 function revoke(reason) {
   castInput.cancel();
@@ -249,7 +262,7 @@ function revoke(reason) {
   render();
 }
 function intent(action) {
-  if (!canControl() || inflight || shopBusy() || equipmentBusy() || action === 'recall' && failurePending()) return;
+  if (!canControl() || inflight || shopBusy() || equipmentBusy() || sparesBusy() || action === 'recall' && failurePending()) return;
   fightInput.cancel();
   const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : snapshot.SessionId,
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
@@ -281,6 +294,11 @@ Object.assign(codes, { 'assembly-candidate': '装备变更已保存。', 'line-m
   'menu-required': '请先打开菜单。', 'result-pending': '请先处理当前尚未确认的结果。',
   'equipment-version-conflict': '装备已更新，请重新选择。', 'missing-component': '钓组缺少部件，请先在菜单装配。', 'missing-line': '当前渔轮没有鱼线，请先装线。',
   'insufficient-line': '已装鱼线长度不足。', 'assembly-unchanged': '当前装备未变化。', 'line-unchanged': '鱼线位置未变化。' });
+Object.assign(codes, { 'spares-quoted': '备件报价已确认，请核对后购买。', 'equipment-purchase-candidate': '备件已购买，可到钓组中装配。',
+  'spares-not-configured': '此存档尚未配置备件商店。', 'spares-not-written': '购买确认未写入，请重试原购买或取消。',
+  'spares-retry-required': '请先处理上一次未写入的备件购买。', 'spares-cancelled': '已取消备件报价或未写入操作。',
+  'spares-intent-not-current': '备件报价已失效，请重新查看报价。', 'equipment-quote-stale': '装备或进度已变化，请重新查看备件报价。',
+  'equipment-capacity-exceeded': '装备数量已达当前存档上限，本次未扣款。', 'equipment-offers-missing': '此存档尚未配置备件商店。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
   if (m.kind === 'game-flight-state') {
@@ -315,6 +333,13 @@ window.chrome.webview.addEventListener('message', event => {
     }
     return;
   }
+  if (m.kind === 'game-spares-state') {
+    if (sparesView.apply(m)) {
+      if (m.state.reason === 'save-outcome-unknown') saveFaulted = true;
+      sparesInput.hostState(m); updateButtons();
+    }
+    return;
+  }
   if (m.kind === 'prepare-activation') {
     if (!landscape() || (!m.allowUnfocused && (document.hidden || !document.hasFocus()))) return;
     lastActivation = { requestId: m.requestId };
@@ -327,7 +352,7 @@ window.chrome.webview.addEventListener('message', event => {
   }
   if (m.kind === 'game-snapshot' && Number.isSafeInteger(m.revision) && m.revision > revision) { snapshot = m.snapshot; revision = m.revision; }
   if (m.kind === 'game-reply') {
-    lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m); equipmentInput.reply(m);
+    lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m); equipmentInput.reply(m); sparesInput.reply(m);
     if (['save-outcome-unknown', 'failure-save-unknown', 'landing-save-unknown'].includes(m.code)) saveFaulted = true;
     if (inflight === m.transportId) inflight = null; $('notice').textContent = codes[m.code] ?? `操作未完成：${m.code}`;
   }
@@ -366,7 +391,7 @@ $('recall').addEventListener('click', () => intent('recall'));
 $('release').addEventListener('click', () => intent('release-current'));
 $('sell').addEventListener('click', () => intent('sell'));
 $('menu').addEventListener('click', () => {
-  if (!canControl() || inflight || shopBusy() || equipmentBusy()) return;
+  if (!canControl() || inflight || shopBusy() || equipmentBusy() || sparesBusy()) return;
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
   if (snapshot.MenuOpen) shopInput.cancel();
@@ -478,6 +503,7 @@ window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authorit
   biteState: biteView.state(), biteRevision: biteView.revision, strikeInputState: strikeInput.state(),
   fightState: fightView.state(), fightRevision: fightView.revision, fightInputState: fightInput.state(),
   shopState: shopView.state(), shopRevision: shopView.revision, shopInputState: shopInput.state(),
-  equipmentState: equipmentView.state(), equipmentRevision: equipmentView.revision, equipmentInputState: equipmentInput.state() }),
+  equipmentState: equipmentView.state(), equipmentRevision: equipmentView.revision, equipmentInputState: equipmentInput.state(),
+  sparesState: sparesView.state(), sparesRevision: sparesView.revision, sparesInputState: sparesInput.state() }),
   sendRaw: message => window.chrome.webview.postMessage(message), cancel: () => revoke('test-cancel') };
 render(); renderFlight();

@@ -45,21 +45,24 @@ async function pageFixture() {
   const shop = { schemaVersion: 3, available: true, reason: null, walletMinor: '12000', baitCount: 12, foodCount: 2, netOwned: false, netEquipped: false,
     catalogVersion: '1', netPriceMinor: '2400', baitPackPriceMinor: '20', foodPriceMinor: '20', baitPackUnits: 5, foodStaminaRestore: 20, maxPacks: 100, quote: null, retry: null };
   const equipment = { schemaVersion: 3, available: true, reason: null, lease: 'first', stateSequence: '1', rigRevision: '1', inventoryRevision: '1', equipmentVersion: '1', items: inventory(), issues: [], retry: null };
-  let snapshotRevision = 0, shopRevision = 0, equipmentRevision = 0, leaseRevision = 0;
+  const spares = { schemaVersion: 3, available: true, reason: null, lease: 'first', stateSequence: '1', catalogVersion: '1', walletMinor: '12000', instancesCount: 7,
+    items: [{ sku: 'hook-single', definitionKey: 'single-hook', kind: 'hook', priceMinor: '35', lineLengthMm: 0 }], quote: null, retry: null };
+  let snapshotRevision = 0, shopRevision = 0, equipmentRevision = 0, sparesRevision = 0, leaseRevision = 0;
   const emit = message => receive({ data: { documentId, ...message } });
   const broadcast = () => {
     emit({ kind: 'game-snapshot', revision: ++snapshotRevision, snapshot: { ...snapshot } });
     // Deliberately mirror the real host: shop state precedes equipment state.
     emit({ kind: 'game-shop-state', revision: ++shopRevision, state: structuredClone(shop) });
     emit({ kind: 'game-equipment-state', revision: ++equipmentRevision, state: structuredClone(equipment) });
+    emit({ kind: 'game-spares-state', revision: ++sparesRevision, state: structuredClone(spares) });
   };
   const grant = lease => emit({ kind: 'lease', revision: ++leaseRevision, cancellationEpoch: 0, lease });
   emit({ kind: 'role', role: '交互' }); emit({ kind: 'game-snapshot', revision: ++snapshotRevision, snapshot: { ...snapshot } }); grant('first'); broadcast();
-  return { nodes, messages, snapshot, shop, equipment, probe, broadcast, grant, emit,
+  return { nodes, messages, snapshot, shop, equipment, spares, probe, broadcast, grant, emit,
     click: (id, event, force) => nodes.get(id).dispatch('click', event, force),
     select(id, value) { nodes.get(id).value = value; nodes.get(id).dispatch('change'); },
     reply(code, transportId = messages.at(-1).transportId) { emit({ kind: 'game-reply', transportId, code }); },
-    advance() { snapshot.Sequence = String(Number(snapshot.Sequence) + 1); equipment.stateSequence = snapshot.Sequence; },
+    advance() { snapshot.Sequence = String(Number(snapshot.Sequence) + 1); equipment.stateSequence = spares.stateSequence = snapshot.Sequence; },
     replaceRod() { equipment.items = equipment.items.map(item => item.id === id(1) ? { ...item, location: 'inventory', slot: null, revision: '2' } : item.id === id(7) ? { ...item, location: 'rig-slot', slot: 'rod', revision: '2' } : item); this.advance(); }
   };
 }
@@ -143,4 +146,41 @@ test('host schema, pending-result and assembly issues display the matching Chine
     { code: 'bobber-load-out-of-range', slot: 'sinker', itemId: id(6), relatedId: id(5) }] }); f.broadcast();
   assert.equal(f.nodes.get('equipment-status').textContent, '请先处理当前尚未确认的结果。');
   assert.equal(f.nodes.get('equipment-readiness').textContent, '渔轮：鱼线超过线杯容量；沉子：沉子重量不适合浮漂');
+});
+
+test('equipment completion accepts the third spares projection and the real quote and buy buttons work', async () => {
+  const f = await pageFixture(); f.select('equipment-slot-rod', id(7)); f.click('equipment-apply-rod');
+  assert.equal(f.nodes.get('spares-quote-hook-single').disabled, true);
+  f.replaceRod(); f.reply('assembly-candidate'); f.broadcast();
+  assert.equal(f.nodes.get('spares-quote-hook-single').disabled, false); f.click('spares-quote-hook-single');
+  assert.equal(f.messages.at(-1).kind, 'game-spares'); f.spares.quote = { offerId: id(200), ...f.spares.items[0] }; f.reply('spares-quoted'); f.broadcast();
+  assert.equal(f.nodes.get('spares-offer').hidden, false); f.click('spares-buy'); assert.equal(f.messages.at(-1).offerId, id(200));
+  f.spares.quote = null; f.spares.walletMinor = f.shop.walletMinor = '11965'; f.advance(); f.reply('equipment-purchase-candidate'); f.broadcast();
+  assert.equal(f.nodes.get('quote-bait').disabled, false); assert.equal(f.probe.state().equipmentInputState.ready, true);
+});
+
+test('known spares retry blocks both other menus until explicit cancellation', async () => {
+  const f = await pageFixture(); f.select('equipment-slot-rod', id(7)); f.click('spares-quote-hook-single');
+  f.spares.retry = { operationId: id(200) }; f.reply('spares-not-written'); f.broadcast();
+  assert.equal(f.nodes.get('quote-bait').disabled, true); assert.equal(f.nodes.get('equipment-apply-rod').disabled, true);
+  assert.equal(f.nodes.get('spares-retry').disabled, false); f.click('quote-bait', {}, true); f.click('equipment-apply-rod', {}, true); assert.equal(f.messages.length, 1);
+  f.click('spares-cancel'); f.spares.retry = null; f.reply('spares-cancelled'); f.broadcast();
+  assert.equal(f.nodes.get('quote-bait').disabled, false); assert.equal(f.nodes.get('equipment-apply-rod').disabled, false);
+});
+
+test('known equipment retry retains spares projection but blocks a new spare quote', async () => {
+  const f = await pageFixture(); f.select('equipment-slot-rod', id(7)); f.click('equipment-apply-rod');
+  f.equipment.retry = { operationId: id(200), action: 'replace-slot' }; f.reply('equipment-not-written'); f.broadcast();
+  assert.equal(f.probe.state().sparesInputState.ready, true); assert.equal(f.nodes.get('spares-quote-hook-single').disabled, true);
+  f.click('spares-quote-hook-single', {}, true); assert.equal(f.messages.length, 1);
+  f.click('equipment-cancel'); f.equipment.retry = null; f.reply('equipment-cancelled'); f.broadcast();
+  f.click('spares-quote-hook-single'); assert.equal(f.messages.at(-1).kind, 'game-spares');
+});
+
+test('unknown spares save disables all three menus even if the following snapshots appear healthy', async () => {
+  const f = await pageFixture(); f.select('equipment-slot-rod', id(7)); f.click('spares-quote-hook-single'); f.reply('save-outcome-unknown'); f.broadcast();
+  for (const button of ['spares-quote-hook-single', 'equipment-apply-rod', 'quote-bait']) {
+    assert.equal(f.nodes.get(button).disabled, true); f.click(button, {}, true);
+  }
+  assert.equal(f.messages.length, 1);
 });

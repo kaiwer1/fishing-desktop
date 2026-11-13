@@ -12,7 +12,7 @@ namespace FishingDesktop.GameCore
     {
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
-        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15;
+        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -81,7 +81,7 @@ namespace FishingDesktop.GameCore
         internal static byte[] EncodeGenesis(FloatGameState state)
         {
             return Encode(Genesis,state==null?1:state.SchemaVersion,writer=>{
-                if(state==null||state.Sequence!=0||state.Session!=null||state.Creel.Count!=0||state.Receipts.Count!=0)throw Invalid("Genesis must be an explicit initial profile.");
+                if(state==null||state.Sequence!=0||state.Session!=null||state.Creel.Count!=0||state.Receipts.Count!=0||state.EquipmentOffers!=null)throw Invalid("Genesis must be an explicit initial profile without equipment offers.");
                 var rig=state.LegacyRig;var rules=state.Rules;
                 if((state.SchemaVersion==3?state.Equipment==null:rig==null)||rules==null||state.RulesVersion!=rules.Version)throw Invalid("Genesis configuration is invalid.");
                 writer.Guid(state.ProfileId);writer.Guid(state.BranchId);writer.I64(state.Sequence);writer.I64(state.WalletMinor);writer.I32(state.Stamina);
@@ -129,7 +129,7 @@ namespace FishingDesktop.GameCore
             if(command is CastFloat)return Cast;if(command is RecallFloat)return Recall;if(command is ReleaseCurrentFloatFish)return Release;
             if(command is SellFloatFish)return Sale;if(command is HostFloatFish)return HostFish;if(command is RecoverFloatSession)return Recovery;
             if(command is UpgradeFloatProfile)return Upgrade;if(command is BuyFloatSupply)return Purchase;if(command is EquipFloatNet)return Equip;if(command is UseFloatFood)return Food;if(command is HostFloatUnhooked)return Unhooked;
-            if(command is ReplaceFloatSlot)return ReplaceSlot;if(command is MoveFloatLine)return MoveLine;if(command is CastFloatWithEquipment)return EquipmentCast;if(command is HostFloatTerminalLoss)return TerminalLoss;throw Invalid("Unsupported journal command type.");
+            if(command is ReplaceFloatSlot)return ReplaceSlot;if(command is MoveFloatLine)return MoveLine;if(command is CastFloatWithEquipment)return EquipmentCast;if(command is HostFloatTerminalLoss)return TerminalLoss;if(command is ConfigureFloatEquipmentOffers)return ConfigureOffers;if(command is BuyFloatEquipment)return BuyEquipment;throw Invalid("Unsupported journal command type.");
         }
         static void Catalog(Writer writer,FloatCommerceCatalog catalog)
         {
@@ -169,7 +169,12 @@ namespace FishingDesktop.GameCore
                 }else if(type==Equip)writer.Guid(((EquipFloatNet)command).NetId);
                 else if(type==Food)writer.Guid(((UseFloatFood)command).FoodStackId);
                 else if(type==Unhooked){var unhooked=(HostFloatUnhooked)command;writer.Guid(unhooked.EncounterId);writer.I32(unhooked.FightModelVersion);}
-                else if(type==TerminalLoss){
+                else if(type==ConfigureOffers){
+                    var configure=(ConfigureFloatEquipmentOffers)command;writer.I64(configure.ExpectedInventoryRevision);writer.I64(configure.ExpectedEquipmentVersion);var payload=configure.CopyPayload();writer.I32(payload.Length);writer.Bytes(payload);
+                }else if(type==BuyEquipment){
+                    var buy=(BuyFloatEquipment)command;var quote=buy.Quote;writer.I64(buy.ExpectedInventoryRevision);writer.I64(buy.ExpectedEquipmentVersion);
+                    writer.Guid(quote.ProfileId);writer.Guid(quote.BranchId);writer.I64(quote.StateSequence);writer.I64(quote.RigRevision);writer.I64(quote.RulesVersion);writer.I64(quote.InventoryRevision);writer.I64(quote.EquipmentVersion);writer.I64(quote.CatalogVersion);writer.Text(quote.CatalogSignature);writer.Text(quote.Sku);writer.Text(quote.DefinitionKey);writer.Byte((byte)quote.Kind);writer.I64(quote.PriceMinor);writer.I64(quote.LineLengthMm);writer.Guid(buy.NewItemId);
+                }else if(type==TerminalLoss){
                     var loss=(HostFloatTerminalLoss)command;writer.I64(loss.ExpectedInventoryRevision);writer.I64(loss.ExpectedEquipmentVersion);writer.Guid(loss.EncounterId);writer.Guid(loss.LineId);writer.I64(loss.ExpectedLineRevision);writer.Text(loss.LossRuleKey);writer.I64(loss.OutLineMm);writer.I64(loss.CutDistanceFromReelMm);writer.I32(loss.LossModelVersion);
                 }else if(type>=ReplaceSlot&&type<=EquipmentCast){
                     var equipment=(FloatEquipmentCommand)command;writer.I64(equipment.ExpectedInventoryRevision);writer.I64(equipment.ExpectedEquipmentVersion);
@@ -182,9 +187,19 @@ namespace FishingDesktop.GameCore
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,(reader,schema)=>{
-                byte type=reader.Byte();if(type<Cast||type>TerminalLoss||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(type<Cast||type>BuyEquipment||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
+                if(type==ConfigureOffers){
+                    if(session!=Guid.Empty)throw Invalid("Offer configuration contains a session.");long inventory=reader.I64(),equipment=reader.I64();int length=reader.I32();if(length<6||length>ConfigureFloatEquipmentOffers.MaximumPayloadBytes)throw Invalid("Invalid bounded offer payload length.");
+                    return new ConfigureFloatEquipmentOffers(profile,branch,request,businessEvent,reader.Bytes(length),sequence,rig,rules,inventory,equipment);
+                }
+                if(type==BuyEquipment){
+                    if(session!=Guid.Empty)throw Invalid("Equipment purchase contains a session.");long inventory=reader.I64(),equipment=reader.I64();
+                    var quote=new FloatEquipmentPurchaseQuote(reader.Guid(),reader.Guid(),reader.I64(),reader.I64(),reader.I64(),reader.I64(),reader.I64(),reader.I64(),reader.Text(),reader.Text(),reader.Text(),(FloatEquipmentKind)reader.Byte(),reader.I64(),reader.I64());Guid newItem=reader.Guid();
+                    if(quote.StateSequence!=sequence||quote.RigRevision!=rig||quote.RulesVersion!=rules||quote.InventoryRevision!=inventory||quote.EquipmentVersion!=equipment)throw Invalid("Equipment quote and command versions disagree.");
+                    return new BuyFloatEquipment(profile,branch,request,businessEvent,quote,newItem);
+                }
                 if(type==TerminalLoss){
                     long inventory=reader.I64(),equipment=reader.I64();Guid lossEncounter=reader.Guid(),line=reader.Guid();long lineRevision=reader.I64();string lossRule=reader.Text();long outLine=reader.I64(),cut=reader.I64();int model=reader.I32();
                     return new HostFloatTerminalLoss(profile,branch,request,businessEvent,session,lossEncounter,line,lineRevision,lossRule,outLine,cut,sequence,rig,rules,inventory,equipment,model);

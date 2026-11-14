@@ -1,7 +1,8 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak)
 $ErrorActionPreference='Stop'
+if($GameLineBreak -and ($GameSpares -or $GameCamp)){throw 'Run line-break integration separately.'}
 if(($GameSpares -and $GameFailureCase) -or ($GameCamp -and ($GameSpares -or $GameFailureCase))){throw 'Run game integration modes separately.'}
-if($GameFailureCase -or $GameSpares -or $GameCamp){$Game=$true}
+if($GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak){$Game=$true}
 if($Game -and ($ThreeScene -or $DesktopLayer -or $VisibleDesktop -or $HostPolicy -or $NativePolicy -or $RendererPolicy -or $WallpaperPolicy -or $DisplayPolicy -or $StartupPreparation -or $OperatorFullscreen -or $DisplaySoak -or $SoakSeconds -gt 0)){throw 'Run game data integration separately from diagnostic modes.'}
 if($ThreeScene){
   if($DisplaySoak -or $OperatorFullscreen -or $StartupPreparation -or $DisplayPolicy -or $NativePolicy -or $WallpaperPolicy -or $VisibleDesktop -or $HostPolicy -or $RendererPolicy){throw 'Choose the independent three-dimensional scene mode without other switches.'}
@@ -92,6 +93,7 @@ try{
   if($GameFailureCase){$taskMode='--game-failure-self-test '+$GameFailureCase}
   if($GameSpares){$taskMode='--game-spares-self-test'}
   if($GameCamp){$taskMode='--game-camp-self-test'}
+  if($GameLineBreak){$taskMode=if($GameFailureCase){'--game-line-break-failure-self-test '+$GameFailureCase}else{'--game-line-break-self-test'}}
   $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList $taskMode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
   $taskRootIdentity=[pscustomobject]@{id=$taskProcess.Id;startTicks=$taskProcess.StartTime.ToUniversalTime().Ticks;path=$taskBuild.executable}
   $taskKnown[$taskRootIdentity.id]=$taskRootIdentity
@@ -107,12 +109,21 @@ try{
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
   $taskExpectedChecks=if($Game){60}elseif($ThreeScene){if($SoakSeconds -gt 0){31}else{30}}elseif($DisplaySoak){29}elseif($OperatorFullscreen){34}elseif($StartupPreparation){16}elseif($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
   if($GameFailureCase){
-    $taskReopened=if($GameFailureCase -eq 'known-close'){'interrupted-recovery'}elseif($GameFailureCase -eq 'after-flush'){'confirmed-unhook'}else{'corrupt-rejected'}
+    $taskReopened=if($GameFailureCase -eq 'known-close'){'interrupted-recovery'}elseif($GameFailureCase -eq 'after-flush'){if($GameLineBreak){'confirmed-line-break'}else{'confirmed-unhook'}}else{'corrupt-rejected'}
+    if($GameLineBreak -and (-not $taskReport.lineBreakConnected -or $taskReport.controlledSlackSetup)){throw 'Physical loss failure scope mismatch.'}
     if($taskReport.documentReloadTested -ne ($GameFailureCase -eq 'known-close')){throw 'Failure reload evidence scope mismatch.'}
     if(-not $taskReport.passed -or $taskReport.checks.Count -ne 6 -or $taskReport.failureBoundary -ne $GameFailureCase -or $taskReport.expectedExitCode -ne 4 -or $taskReport.reopened -ne $taskReopened -or -not $taskReport.sourcePreserved -or -not $taskReport.privateCopyReopen -or $taskReport.secondHostProcessTested -or $taskReport.realDiskFailureTested){throw 'Failure boundary report mismatch.'}
     if(Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt')){throw 'Failure boundary test reported an unexpected host error.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if($taskGameExit.normalExit -or $taskGameExit.code -ne 'unconfirmed-failure-no-settlement'){throw 'Unconfirmed failure exit was not preserved.'}
+  }elseif($GameLineBreak){
+    if(-not $taskReport.passed -or -not $taskReport.lineBreakConnected -or -not $taskReport.physicalOverload -or $taskReport.controlledTerminalLoss -or $taskReport.checks.Count -ne 10 -or $taskReport.sequence -ne 14 -or $taskReport.value -ne 11420){throw 'Physical line-break report mismatch.'}
+    if($taskReport.gameLineBreakConfirmations -ne 1 -or $taskReport.baitCount -ne 10 -or $taskReport.stamina -ne 96 -or $taskReport.gameFlightEmissions -ne 2 -or $taskReport.equipmentInstances -ne 10){throw 'Physical loss resource mismatch.'}
+    if($taskReport.initialLineMm -ne 100000 -or $taskReport.lostLineMm -le 0 -or ($taskReport.remainingLineMm+$taskReport.lostLineMm) -ne 100000 -or $taskReport.breakTensionN -le 5 -or $taskReport.breakThresholdMilliN -ne 5000){throw 'Physical loss conservation or evidence mismatch.'}
+    if(-not (Test-Path -LiteralPath (Join-Path $taskRun 'game-line-break-panel.png') -PathType Leaf)){throw 'Physical loss page preview missing.'}
+    if(Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt')){throw 'Physical line-break integration reported an error.'}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session'){throw 'Physical line-break shutdown was not confirmed.'}
   }elseif($GameCamp){
     if(-not $taskReport.passed -or -not $taskReport.gameLoaded -or -not $taskReport.campWorkConnected -or $taskReport.checks.Count -ne 12 -or $taskReport.schemaVersion -ne 3 -or $taskReport.sequence -ne 12 -or $taskReport.value -ne 760){throw 'Camp recovery transaction report mismatch.'}
     if($taskReport.campRewardConfirmations -ne 4 -or -not $taskReport.controlledCampTime -or $taskReport.realFullMinute -or -not $taskReport.shortHostClockSample){throw 'Camp active-time evidence mismatch.'}
@@ -205,6 +216,7 @@ if($taskFailure){
   throw $taskFailure
 }
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;failureBoundary=$taskReport.failureBoundary;expectedExitCode=$taskExpectedExit;reopened=$taskReport.reopened;sourcePreserved=$taskReport.sourcePreserved;privateCopyReopen=$taskReport.privateCopyReopen;documentReloadTested=$taskReport.documentReloadTested;secondHostProcessTested=$false;realDiskFailureTested=$false;
+  lineBreakConnected=$taskReport.lineBreakConnected;physicalOverload=$taskReport.physicalOverload;gameLineBreakConfirmations=$taskReport.gameLineBreakConfirmations;
   campWorkConnected=$taskReport.campWorkConnected;campRewardConfirmations=$taskReport.campRewardConfirmations;controlledCampTime=$taskReport.controlledCampTime;realFullMinute=$taskReport.realFullMinute;sparesMenuConnected=$taskReport.sparesMenuConnected;controlledTerminalLoss=$taskReport.controlledTerminalLoss;terminalLossConfirmations=$taskReport.terminalLossConfirmations;initialLineMm=$taskReport.initialLineMm;lostLineMm=$taskReport.lostLineMm;
   realWebViewMessages=$true;gameLoaded=[bool]$Game;gameSimulationImplemented=$false;controlledFishFacts=$taskReport.controlledFishFacts;castPreparationConnected=$taskReport.castPreparationConnected;gameFlightEmissions=$taskReport.gameFlightEmissions;flatWaterFlightConnected=$taskReport.flatWaterFlightConnected;realWaterAndFlight=$false;biteSimulationConnected=$taskReport.biteSimulationConnected;gameHookedEmissions=$taskReport.gameHookedEmissions;naturalFishLanded=$taskReport.naturalFishLanded;fightSimulationConnected=$taskReport.fightSimulationConnected;gameNaturalLandings=$taskReport.gameNaturalLandings;fixtureNetCapability=$taskReport.fixtureNetCapability;commerceConnected=$taskReport.commerceConnected;equipmentMenuConnected=$taskReport.equipmentMenuConnected;schemaVersion=$taskReport.schemaVersion;equipmentInstances=$taskReport.equipmentInstances;remainingLineMm=$taskReport.remainingLineMm;ownedNetEquipped=$taskReport.ownedNetEquipped;foodCount=$taskReport.foodCount;baitCount=$taskReport.baitCount;stamina=$taskReport.stamina;slackUnhookConnected=$taskReport.slackUnhookConnected;controlledSlackSetup=$taskReport.controlledSlackSetup;gameUnhookedConfirmations=$taskReport.gameUnhookedConfirmations;equipmentDamageImplemented=$false;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;availability=$taskReport.availability;nativePolicy=$taskReport.nativePolicy;nativeForegroundTestSkipped=$taskReport.nativeForegroundTestSkipped;nativeSignals=$taskReport.nativeSignals;display=$taskReport.display;renderer=$taskReport.renderer;soak=$taskReport.soak;scene=$taskReport.scene;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |
   ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $taskRun 'summary.json')

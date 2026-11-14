@@ -138,7 +138,7 @@ sealed partial class DualWindowContext : ApplicationContext
             await Open(false);var interaction=await Open(true);
             if(ManualMode && !ManualUnattended && Live(interaction)){GuardPresentation(()=>{interaction.Hide();interaction.Show();});}
             if(GameMode && !stopping)await StartGamePresentation();
-            if(automated && !stopping){if(GameFailureCase!=null)RunGameFailureBoundaryProbe();else if(GameSparesSelfTest)RunGameSparesProbe();else if(GameCampSelfTest)RunGameCampProbe();else if(GameSelfTest)RunGameProbe();else RunProbe();}
+            if(automated && !stopping){if(GameFailureCase!=null)RunGameFailureBoundaryProbe();else if(GameSparesSelfTest)RunGameSparesProbe();else if(GameCampSelfTest)RunGameCampProbe();else if(GameLineBreakSelfTest)RunGameLineBreakProbe();else if(GameSelfTest)RunGameProbe();else RunProbe();}
         }catch(Exception e){Fail(e);}
     }
     bool Live(ProbeWindow pane)
@@ -377,12 +377,12 @@ sealed partial class DualWindowContext : ApplicationContext
     [STAThread] static int Main(string[] args)
     {
         string gameMode=null;
-        if(args.Length==1){if(args[0]=="--game-new")gameMode="new";else if(args[0]=="--game-open")gameMode="open";else if(args[0]=="--game-self-test")gameMode="self-test";else if(args[0]=="--game-spares-self-test")gameMode="spares-self-test";else if(args[0]=="--game-camp-self-test")gameMode="camp-self-test";}
-        if(args.Length==2 && args[0]=="--game-failure-self-test"){
+        if(args.Length==1){if(args[0]=="--game-new")gameMode="new";else if(args[0]=="--game-open")gameMode="open";else if(args[0]=="--game-self-test")gameMode="self-test";else if(args[0]=="--game-spares-self-test")gameMode="spares-self-test";else if(args[0]=="--game-camp-self-test")gameMode="camp-self-test";else if(args[0]=="--game-line-break-self-test")gameMode="line-break-self-test";else if(args[0]=="--game-line-break-new")gameMode="line-break-new";else if(args[0]=="--game-line-break-open")gameMode="line-break-open";}
+        if(args.Length==2 && (args[0]=="--game-failure-self-test" || args[0]=="--game-line-break-failure-self-test")){
             if(args[1]!="known-close" && args[1]!="after-flush" && args[1]!="after-prefix")return 5;
-            gameMode="failure-"+args[1];
+            gameMode=(args[0]=="--game-line-break-failure-self-test"?"line-break-failure-":"failure-")+args[1];
         }
-        bool gameUser=gameMode=="new" || gameMode=="open",gameSelfTest=gameMode=="self-test" || gameMode=="spares-self-test" || gameMode=="camp-self-test" || (gameMode!=null && gameMode.StartsWith("failure-",StringComparison.Ordinal));
+        bool gameUser=gameMode=="new" || gameMode=="open" || gameMode=="line-break-new" || gameMode=="line-break-open",gameSelfTest=gameMode=="self-test" || gameMode=="spares-self-test" || gameMode=="camp-self-test" || gameMode=="line-break-self-test" || (gameMode!=null && (gameMode.StartsWith("failure-",StringComparison.Ordinal)||gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)));
         int manualSeconds=0;bool manualUnattended=args.Length>0 && args[0]=="--manual-desktop-timeout-probe";
         bool manual=manualUnattended || (args.Length>0 && args[0]=="--manual-desktop-probe");
         if(manual && (args.Length!=2 || !Int32.TryParse(args[1],out manualSeconds) || manualSeconds<60 || manualSeconds>600))return 5;

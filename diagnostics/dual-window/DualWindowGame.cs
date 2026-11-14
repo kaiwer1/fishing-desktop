@@ -11,10 +11,12 @@ sealed partial class DualWindowContext
 {
     readonly string gameMode;
     internal bool GameMode { get { return gameMode != null; } }
-    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameFailureCase!=null; } }
+    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameFailureCase!=null; } }
+    bool GameLineBreakSelfTest { get { return gameMode == "line-break-self-test"; } }
+    bool GameLineBreakMode { get { return GameLineBreakSelfTest || gameMode=="line-break-new" || gameMode=="line-break-open" || (gameMode!=null&&gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)); } }
     bool GameSparesSelfTest { get { return gameMode == "spares-self-test"; } }
     bool GameCampSelfTest { get { return gameMode == "camp-self-test"; } }
-    string GameFailureCase { get { return gameMode!=null && gameMode.StartsWith("failure-",StringComparison.Ordinal)?gameMode.Substring(8):null; } }
+    string GameFailureCase { get { return gameMode==null?null:gameMode.StartsWith("failure-",StringComparison.Ordinal)?gameMode.Substring(8):gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)?gameMode.Substring(19):null; } }
     FloatGameOwner game;
     bool gameShutdownAttempted;
     string gameShutdownCode;
@@ -37,14 +39,15 @@ sealed partial class DualWindowContext
     {
         if (!GameMode) return;
         string path = Path.Combine(root, "game.fltj");
-        if (gameMode == "open") {
+        if (gameMode == "open" || gameMode=="line-break-open") {
             var inspection=FloatJournalArchive.Inspect(path);
             if(inspection.State.SchemaVersion!=2&&inspection.State.SchemaVersion!=3)throw new InvalidOperationException("This legacy profile requires an explicit backed-up candidate upgrade; opening did not change it.");
-            game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion);
+            if(GameLineBreakMode)ValidateGameLineBreakCatalog(inspection.State);
+            game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion,GameLineBreakMode?(Action<FloatGameState>)ValidateGameLineBreakCatalog:null);
         }
-        else if(gameMode=="new" || GameSparesSelfTest || GameCampSelfTest){
+        else if(gameMode=="new" || GameLineBreakMode || GameSparesSelfTest || GameCampSelfTest){
             var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture();
-            game=FloatGameOwner.CreateNewWithEquipmentOffers(path,initial,CreateGameSparesCatalog(initial),(GameSparesSelfTest||GameCampSelfTest)?(Action<FloatSaveFaultPoint>)GameShopSaveFault:null);
+            game=FloatGameOwner.CreateNewWithEquipmentOffers(path,initial,CreateGameSparesCatalog(initial),GameSelfTest?(Action<FloatSaveFaultPoint>)GameShopSaveFault:null);
         }
         else if(GameSelfTest) game=FloatGameOwner.CreateNew(path,CreateGameFixture(),GameShopSaveFault);
         else throw new ArgumentException("Unknown game mode.");

@@ -6,9 +6,22 @@ const guid = value => typeof value === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3
 const counter = value => typeof value === 'string' && /^(0|[1-9]\d{0,18})$/.test(value) && (value.length < 19 || value <= '9223372036854775807');
 const integer = (value, minimum, maximum) => Number.isInteger(value) && value >= minimum && value <= maximum;
 const reason = value => value === null || typeof value === 'string' && value.length <= 128;
+const breakFields = ['breakEnabled', 'breakThresholdMilliN', 'overloadExposureSteps', 'overloadRequiredSteps'];
 const fields = ['sessionId', 'encounterId', 'phase', 'reason', 'landingReason', 'stepIndex', 'xMm', 'yMm', 'zMm', 'outLineMm', 'spoolRemainingMm', 'slackMm',
-  'tensionMilliN', 'dragMilliN', 'rodDeflectionMm', 'energyPermille', 'reeling', 'dragLevel', 'reelLevel', 'canRetryLanding', 'unhookExposureSteps', 'canRetryFailure'];
+  'tensionMilliN', 'dragMilliN', 'rodDeflectionMm', 'energyPermille', 'reeling', 'dragLevel', 'reelLevel', 'canRetryLanding', 'unhookExposureSteps', 'canRetryFailure', ...breakFields];
 const copy = state => Object.fromEntries(fields.map(key => [key, state[key]]));
+function breakProjection(state) {
+  const count = breakFields.filter(key => Object.hasOwn(state, key)).length;
+  // Older hosts omit the entire extension. A partial extension cannot safely
+  // describe the threshold or accumulated exposure for this fight.
+  if (count === 0) return { breakEnabled: false, breakThresholdMilliN: 0, overloadExposureSteps: 0, overloadRequiredSteps: 0 };
+  if (count !== breakFields.length || typeof state.breakEnabled !== 'boolean' ||
+      !integer(state.breakThresholdMilliN, 0, 10000000) || !integer(state.overloadRequiredSteps, 0, 12000) ||
+      !integer(state.overloadExposureSteps, 0, state.overloadRequiredSteps)) return null;
+  if (state.breakEnabled ? state.breakThresholdMilliN === 0 || state.overloadRequiredSteps === 0 :
+      state.breakThresholdMilliN !== 0 || state.overloadExposureSteps !== 0 || state.overloadRequiredSteps !== 0) return null;
+  return Object.fromEntries(breakFields.map(key => [key, state[key]]));
+}
 
 // Rendering reads only current host measurements. It never integrates fish,
 // changes line, predicts a catch or exposes the locked species/body mass.
@@ -32,7 +45,8 @@ export class FightView {
     if (s.phase === 'idle' ? s.sessionId !== null || s.encounterId !== null : !guid(s.sessionId) || !guid(s.encounterId)) return false;
     if (s.canRetryLanding && s.phase !== 'landing-pending' || s.canRetryFailure && s.phase !== 'failure-pending' ||
         ['failure-pending', 'escaped'].includes(s.phase) && s.reeling) return false;
-    this.#state = copy(s); this.#revision = message.revision; return true;
+    const overload = breakProjection(s); if (!overload) return false;
+    this.#state = { ...copy(s), ...overload }; this.#revision = message.revision; return true;
   }
   diagram() {
     const s = this.#state;

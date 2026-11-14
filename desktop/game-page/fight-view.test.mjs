@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { FightView, FightInput } from './fight-view.mjs';
 
 const session = '10000000-0000-0000-0000-000000000001';
@@ -10,6 +11,7 @@ const state = extra => ({ sessionId: session, encounterId: encounter, phase: 'fi
   tensionMilliN: 0, dragMilliN: 6000, rodDeflectionMm: 0, energyPermille: 1000, reeling: false, dragLevel: 5, reelLevel: 5,
   canRetryLanding: false, unhookExposureSteps: 0, canRetryFailure: false, ...extra });
 const packet = (revision = 1, extra = {}) => ({ kind: 'game-fight-state', documentId: 'current', revision, state: state(extra) });
+const overload = extra => ({ breakEnabled: true, breakThresholdMilliN: 8000, overloadExposureSteps: 3, overloadRequiredSteps: 8, ...extra });
 function fixture() {
   const context = { lease: 'first', allowed: true, sessionId: session, encounterId: encounter, phase: 'fighting', canRetryLanding: false, canRetryFailure: false }, messages = [];
   let transport = 0;
@@ -187,4 +189,89 @@ test('unknown failure reply permanently blocks all fight actions even across rep
     f.context.phase = 'landing-eligible'; assert.equal(f.input.land(), false);
     assert.equal(f.input.state().faulted, true); assert.equal(f.messages.length, 1);
   }
+});
+
+test('complete overload measurements copy host values while older projections disable the extension', () => {
+  const view = new FightView('current'); assert.equal(view.apply(packet()), true);
+  const disabled = { breakEnabled: false, breakThresholdMilliN: 0, overloadExposureSteps: 0, overloadRequiredSteps: 0 };
+  for (const [key, value] of Object.entries(disabled)) assert.equal(view.state()[key], value);
+  const p = packet(2, overload({ lossLineMm: 9999, brokenItemIds: ['private'] })); assert.equal(view.apply(p), true);
+  p.state.overloadExposureSteps = 7; const projected = view.state(); projected.breakThresholdMilliN = 1;
+  assert.equal(view.state().overloadExposureSteps, 3); assert.equal(view.state().breakThresholdMilliN, 8000);
+  assert.equal('lossLineMm' in projected, false); assert.equal('brokenItemIds' in projected, false);
+  for (let i = 0; i < 20; i++) assert.equal(view.state().overloadExposureSteps, 3);
+  assert.equal(view.apply(packet(3, disabled)), true); assert.equal(view.state().breakEnabled, false);
+  assert.equal(view.apply(packet(4, overload())), true); assert.equal(view.apply(packet(5)), true);
+  assert.equal(view.state().breakEnabled, false); assert.equal(view.state().overloadExposureSteps, 0);
+});
+
+test('partial or inconsistent overload extensions are rejected without consuming the host revision', () => {
+  const view = new FightView('current'); const fields = Object.keys(overload());
+  const invalid = fields.map(key => { const values = overload(); delete values[key]; return values; });
+  invalid.push(...[
+    { breakEnabled: 1 }, { breakEnabled: undefined }, { breakEnabled: false }, { breakThresholdMilliN: 0 },
+    { breakThresholdMilliN: 10000001 }, { breakThresholdMilliN: 1.5 }, { overloadRequiredSteps: 0 },
+    { overloadRequiredSteps: 12001 }, { overloadRequiredSteps: Infinity }, { overloadExposureSteps: -1 },
+    { overloadExposureSteps: 9 }, { overloadExposureSteps: 0.5 }, { overloadExposureSteps: NaN }
+  ].map(values => overload(values)));
+  for (const values of invalid) assert.equal(view.apply(packet(1, values)), false);
+  for (const key of fields.slice(1)) {
+    const values = { breakEnabled: false, breakThresholdMilliN: 0, overloadExposureSteps: 0, overloadRequiredSteps: 0, [key]: 1 };
+    assert.equal(view.apply(packet(1, values)), false);
+  }
+  assert.equal(view.revision, 0);
+  assert.equal(view.apply(packet(1, overload({ breakThresholdMilliN: 10000000, overloadRequiredSteps: 12000, overloadExposureSteps: 12000 }))), true);
+});
+
+// Execute the real page's fight renderer against its actual HTML IDs. This
+// checks user-visible settlement wording without duplicating the renderer or
+// claiming browser layout/native input coverage.
+async function fightRenderer(view) {
+  const [source, html] = await Promise.all([
+    readFile(new URL('./page.mjs', import.meta.url), 'utf8'), readFile(new URL('./game.html', import.meta.url), 'utf8')
+  ]);
+  const nodes = new Map([...html.matchAll(/\bid="([^"]+)"/g)].map(([, id]) => [id, {
+    attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }
+  }]));
+  const renderSource = source.match(/function renderFight\(\) \{[\s\S]*?(?=\nfunction renderShop\()/)?.[0];
+  assert.ok(renderSource, 'Actual fight renderer must be present');
+  const render = new Function('fightView', '$', `${renderSource}\nrenderFight();`);
+  return { nodes, render: () => render(view, id => { assert.ok(nodes.has(id), `Missing DOM id ${id}`); return nodes.get(id); }) };
+}
+
+test('real fight renderer confirms break losses only after the matching host terminal result', async () => {
+  const view = new FightView('current'), ui = await fightRenderer(view); let revision = 0;
+  view.apply(packet(++revision, overload())); ui.render();
+  assert.equal(ui.nodes.get('fight-overload').hidden, false);
+  assert.equal(ui.nodes.get('fight-overload').textContent, '主线断裂阈值 8.00 N · 过载累计 3 / 8 步');
+  assert.equal(ui.nodes.get('fight-status').textContent, '遛鱼中');
+  for (const reason of ['line-overloaded', 'failure-not-written', 'failure-save-unknown']) {
+    view.apply(packet(++revision, { ...overload({ overloadExposureSteps: 8 }), phase: 'failure-pending', reason, canRetryFailure: reason === 'failure-not-written' })); ui.render();
+    assert.equal(ui.nodes.get('fight-status').textContent, '正在确认本竿失败结果');
+    assert.doesNotMatch(ui.nodes.get('fight-detail').textContent, /损失已确认|装备没有损失|可重新抛竿/);
+    assert.equal(ui.nodes.get('fight-marks').attributes.visibility, 'visible');
+  }
+  view.apply(packet(++revision, { ...overload({ overloadExposureSteps: 8 }), phase: 'escaped', reason: 'line-overloaded' })); ui.render();
+  assert.equal(ui.nodes.get('fight-status').textContent, '已确认主线过载断线，损失已保存');
+  assert.match(ui.nodes.get('fight-detail').textContent, /断线损失已确认/);
+  assert.match(ui.nodes.get('fight-detail').textContent, /检查并补齐钓组/);
+  assert.doesNotMatch(ui.nodes.get('fight-detail').textContent, /装备没有损失|可重新抛竿/);
+  assert.equal(ui.nodes.get('fight-marks').attributes.visibility, 'hidden');
+  view.apply(packet(++revision, { ...overload(), phase: 'escaped', reason: 'slack-unhooked' })); ui.render();
+  assert.equal(ui.nodes.get('fight-status').textContent, '已确认松线脱钩，本竿结束');
+  assert.match(ui.nodes.get('fight-detail').textContent, /装备没有损失/);
+  view.apply(packet(++revision)); ui.render(); assert.equal(ui.nodes.get('fight-overload').hidden, true);
+});
+
+test('overload failure retries send only original encounter intent and never predict or resend losses', () => {
+  const f = fixture(); Object.assign(f.context, overload({ overloadExposureSteps: 8 }), {
+    phase: 'failure-pending', reason: 'failure-not-written', canRetryFailure: true, lossLineMm: 10000, brokenItemIds: ['private']
+  });
+  for (let i = 0; i < 20; i++) f.input.reconcile(); assert.deepEqual(f.messages, []);
+  assert.equal(f.input.retryFailure(), true); assert.equal(f.input.retryFailure(), false);
+  assert.deepEqual(f.messages[0], { kind: 'game-fight', lease: 'first', transportId: 'fight-1', sessionId: session, encounterId: encounter, inputSequence: '1', action: 'retry-escape' });
+  f.input.reply({ transportId: 'fight-1', code: 'failure-not-written' }); assert.equal(f.messages.length, 1);
+  assert.equal(f.input.retryFailure(), true);
+  f.input.reply({ transportId: 'fight-2', code: 'failure-save-unknown' }); assert.equal(f.input.retryFailure(), false);
+  assert.equal(f.input.state().faulted, true); assert.equal(f.messages.length, 2);
 });

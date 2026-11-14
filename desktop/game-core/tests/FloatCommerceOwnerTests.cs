@@ -29,6 +29,26 @@ static class FloatCommerceOwnerTests
     static void Domain(FloatCommitResult r,string code){Need(r.Code==code&&!r.Committed&&!r.Written&&r.Receipt==null,"Expected domain refusal: "+code+" got "+r.Code);}
     static byte[] Bytes(string path){using(var f=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.ReadWrite)){var b=new byte[(int)f.Length];int at=0;while(at<b.Length){int n=f.Read(b,at,b.Length-at);if(n==0)throw new EndOfStreamException();at+=n;}return b;}}
     static bool Same(byte[] a,byte[] b){if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if(a[i]!=b[i])return false;return true;}
+    static FloatGameState NewEquipment()
+    {
+        var s=New();var r=s.Rig;
+        var catalog=new FloatEquipmentCatalog(1,"worm",new[]{
+            new FloatEquipmentDefinition("rod",FloatEquipmentKind.Rod,150000,0,1000,25000),new FloatEquipmentDefinition("reel",FloatEquipmentKind.Reel,200000),
+            new FloatEquipmentDefinition("line",FloatEquipmentKind.Line,0,180),new FloatEquipmentDefinition("hook",FloatEquipmentKind.Hook,200),
+            new FloatEquipmentDefinition("bobber",FloatEquipmentKind.Bobber,3000,0,2000,3000),new FloatEquipmentDefinition("sinker",FloatEquipmentKind.Sinker,2500)},
+            new[]{new FloatEquipmentPairRule("rod","reel",true)},new[]{new FloatEquipmentSpoolRule("reel","line",180,50000)},
+            new[]{new FloatEquipmentPairRule("hook","worm",true)},new[]{new FloatEquipmentLossRule("terminal",new[]{FloatEquipmentSlot.Hook,FloatEquipmentSlot.Bobber,FloatEquipmentSlot.Sinker})});
+        var equipment=new FloatEquipmentLedger(r.Id,1,1,catalog,new[]{
+            new FloatEquipmentInstance(r.RodId.Value,"rod",FloatEquipmentKind.Rod,1,FloatEquipmentLocation.RigSlot(r.Id,FloatEquipmentSlot.Rod)),
+            new FloatEquipmentInstance(r.ReelId.Value,"reel",FloatEquipmentKind.Reel,1,FloatEquipmentLocation.RigSlot(r.Id,FloatEquipmentSlot.Reel)),
+            new FloatEquipmentInstance(r.LineId.Value,"line",FloatEquipmentKind.Line,1,FloatEquipmentLocation.ReelSpool(r.ReelId.Value),50000,50000),
+            new FloatEquipmentInstance(r.HookId.Value,"hook",FloatEquipmentKind.Hook,1,FloatEquipmentLocation.RigSlot(r.Id,FloatEquipmentSlot.Hook)),
+            new FloatEquipmentInstance(r.BobberId.Value,"bobber",FloatEquipmentKind.Bobber,1,FloatEquipmentLocation.RigSlot(r.Id,FloatEquipmentSlot.Bobber)),
+            new FloatEquipmentInstance(r.SinkerId.Value,"sinker",FloatEquipmentKind.Sinker,1,FloatEquipmentLocation.RigSlot(r.Id,FloatEquipmentSlot.Sinker))});
+        return FloatGameState.CreateNewWithEquipment(s.ProfileId,s.BranchId,s.WalletMinor,s.Stamina,s.BaitStackId,"worm",s.BaitCount,equipment,s.Rules,s.CommerceCatalog,s.FoodStackId);
+    }
+    static CastFloatWithEquipment EquipmentCast(FloatGameState s)
+    {return new CastFloatWithEquipment(s.ProfileId,s.BranchId,G(),G(),G(),15000,s.Sequence,s.Rig.Revision,s.RulesVersion,s.Equipment.InventoryRevision,s.Equipment.RulesVersion);}
     sealed class Control
     {
         internal readonly FloatGameOwner Owner;internal FloatViewTicket View;internal FloatDocumentTicket Document;internal FloatControlLease Lease;
@@ -73,6 +93,35 @@ static class FloatCommerceOwnerTests
         Test("required schema2 open preserves owned supplies during explicit startup recovery",()=>{
             string path=PathFor("commerce-open");Guid net;using(var owner=FloatGameOwner.CreateNew(path,New())){var c=new Control(owner);Commit(c.Send(Buy(c.State,FloatSupplyProduct.Net)));Commit(c.Send(Equip(c.State,c.State.OwnedNet.Id)));Commit(c.Send(Buy(c.State,FloatSupplyProduct.Food,2)));Commit(c.Send(Cast(c.State)));net=c.State.EquippedNetId;}
             using(var owner=FloatGameOwner.OpenExisting(path,null,2)){var s=owner.Snapshot.State;Need(s.SchemaVersion==2&&s.Session==null&&s.EquippedNetId==net&&s.OwnedNet.Id==net&&s.FoodCount==2&&s.BaitCount==11&&s.Stamina==68,"Startup recovery lost supplies or refunded.");}
+        });
+        Test("feature validation rejects an active schema3 profile under the writer lock before any recovery and releases the lock",()=>{
+            string path=PathFor("equipment-validation-refused");FloatGameState active;
+            using(var store=FloatGameStore.CreateNew(path,NewEquipment())){Commit(store.Execute(EquipmentCast(store.State)));active=store.State;}
+            byte[] before=Bytes(path);int calls=0,writes=0;
+            Throws<InvalidOperationException>(()=>{using(var owner=FloatGameOwner.OpenExisting(path,point=>writes++,3,s=>{
+                calls++;Need(s.SchemaVersion==3&&s.Sequence==1&&s.Session.Id==active.Session.Id,"Validation did not see the original active profile.");
+                Throws<IOException>(()=>{using(var other=new FileStream(path,FileMode.Open,FileAccess.ReadWrite,FileShare.Read)){}});
+                throw new InvalidOperationException("Unsupported explicit feature policy.");
+            })) {}});
+            Need(calls==1&&writes==0&&Same(before,Bytes(path)),"Rejected validation wrote or did not run exactly once.");
+            using(var unlocked=new FileStream(path,FileMode.Open,FileAccess.ReadWrite,FileShare.None))Need(unlocked.Length==before.Length,"Rejected owner retained its writer lock.");
+            using(var store=FloatGameStore.OpenExisting(path))Need(store.State.Session.Id==active.Session.Id&&store.State.Sequence==1,"Rejected validation settled the active cast.");
+        });
+        Test("accepted feature validation precedes exactly one schema3 startup recovery without changing equipment or resources",()=>{
+            string path=PathFor("equipment-validation-accepted");FloatGameState active;
+            using(var store=FloatGameStore.CreateNew(path,NewEquipment())){Commit(store.Execute(EquipmentCast(store.State)));active=store.State;}
+            byte[] before=Bytes(path),equipment=FloatEquipmentCodec.Encode(active.Equipment);int calls=0,writes=0;
+            using(var owner=FloatGameOwner.OpenExisting(path,point=>{if(point==FloatSaveFaultPoint.BeforeWrite)writes++;},3,s=>{
+                calls++;Need(s.Sequence==1&&s.Session.Id==active.Session.Id&&writes==0&&Same(before,Bytes(path)),"Recovery ran before feature validation.");
+                Need(Same(equipment,FloatEquipmentCodec.Encode(s.Equipment)),"Validation received altered equipment.");
+                Throws<IOException>(()=>{using(var other=new FileStream(path,FileMode.Open,FileAccess.ReadWrite,FileShare.Read)){}});
+            })){
+                var s=owner.Snapshot.State;
+                Need(calls==1&&writes==1&&s.Sequence==2&&s.Session==null&&s.Receipts[1].Outcome==FloatOutcome.Recovered&&s.Receipts[1].RecoveryReason==FloatRecoveryReason.StartupInterrupted,"Accepted profile did not recover exactly once.");
+                Need(Same(equipment,FloatEquipmentCodec.Encode(s.Equipment))&&s.WalletMinor==active.WalletMinor&&s.BaitCount==active.BaitCount&&s.Stamina==active.Stamina&&s.FoodCount==active.FoodCount&&s.Creel.Count==0,"Startup recovery changed owned equipment or resources.");
+            }
+            byte[] after=Bytes(path);using(var owner=FloatGameOwner.OpenExisting(path,null,3,s=>{calls++;Need(s.Session==null&&s.Sequence==2,"Reopen resurrected the cast.");})){}
+            Need(calls==2&&Same(after,Bytes(path)),"An accepted idle reopen appended another recovery.");
         });
         Test("known prewrite purchase failure retains authorization for exact retry",()=>{
             string path=PathFor("known");bool armed=false;using(var owner=FloatGameOwner.CreateNew(path,New(),point=>{if(armed&&point==FloatSaveFaultPoint.BeforeWrite)throw new IOException("fixture");})){var c=new Control(owner);var buy=Buy(c.State,FloatSupplyProduct.Food,2);byte[] before=Bytes(path);armed=true;Throws<IOException>(()=>c.Send(buy));Need(!owner.Snapshot.Faulted&&c.State.FoodCount==0&&Same(before,Bytes(path)),"Known failure altered state.");armed=false;Commit(c.Send(buy));Need(c.Send(buy).IsReplay&&c.State.FoodCount==2&&c.State.WalletMinor==11960,"Retry purchased twice.");}

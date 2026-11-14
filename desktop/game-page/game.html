@@ -68,7 +68,8 @@
 <p class="muted">在操作区滚轮调泄力，R＋滚轮调速度。需先在菜单购买并装备抄网，鱼靠近后满足条件才可抄鱼。</p></div></div>
 <p id="fight-metrics" class="muted">出线 — · 线杯余量 — · 张力 —</p><p id="fight-clipped" hidden>鱼的位置超出示意图范围，边缘标记仅表示方向。</p>
 <p id="fight-exposure" class="muted">松线暴露 —</p>
-<p class="muted">这是原创简化受力模型；张力以牛顿显示。松线脱钩由宿主按实际受力状态判定，失败结果保存确认后才结束本竿，不退还已经使用的鱼饵和体力。本阶段没有装备损失、断线和真实抄网动画。</p></section>
+<p id="fight-overload" class="muted" hidden>主线过载 —</p>
+<p class="muted">这是原创简化受力模型；张力以牛顿显示。松线脱钩与主线过载由当前钓组及宿主受力状态判定。失败结果保存确认后才结束本竿，断线损失以保存后的装备记录为准，不退还已使用的鱼饵和体力。真实抄网动画尚未接入。</p></section>
 <div class="interactive"><button id="recall" disabled>收回这一竿</button><button id="release" disabled>放流当前鱼</button><button id="menu" disabled>打开鱼护与商店</button></div>
 <p id="notice" role="status"></p>
 <section id="shop" hidden><h2>渔具与食品商店</h2><p id="shop-status" role="status">等待商店信息</p><p id="shop-wallet">余额 — 银币</p>

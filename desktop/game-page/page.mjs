@@ -171,9 +171,10 @@ function renderBite() {
 }
 function renderFight() {
   const state = fightView.state(), graph = fightView.diagram();
+  const lineBroken = state?.phase === 'escaped' && state.reason === 'line-overloaded';
   const labels = { idle: '中鱼后开始遛鱼', fighting: '遛鱼中', 'landing-eligible': '已进入可抄范围，按空格抄鱼',
     'landing-pending': '正在确认收鱼结果', landed: '已确认收鱼入护', 'capacity-blocked': '鱼护已满，请明确放流当前鱼',
-    'failure-pending': '正在确认本竿失败结果', escaped: '已确认松线脱钩，本竿结束',
+    'failure-pending': '正在确认本竿失败结果', escaped: lineBroken ? '已确认主线过载断线，损失已保存' : state?.reason === 'slack-unhooked' ? '已确认松线脱钩，本竿结束' : '已确认本竿失败，本竿结束',
     faulted: '遛鱼已暂停，当前结果未确认', ended: '本次遛鱼已结束' };
   const reasons = { 'fish-too-far': '鱼距岸还远', 'fish-too-deep': '鱼所在水层超出抄网范围', 'fish-moving': '鱼还在快速游动', 'fish-active': '鱼仍有较多体力',
     'net-unavailable': '没有可用抄网', eligible: '可抄鱼', 'landing-not-written': '尚未写入，点击下方按钮重试原收鱼结果',
@@ -184,7 +185,8 @@ function renderFight() {
     'load-outside-supported-range': '当前负载超出简化模型支持范围，请收回这一竿', 'speed-outside-supported-range': '当前速度超出简化模型支持范围，请收回这一竿' };
   $('fight-status').textContent = labels[state?.phase ?? 'idle'];
   $('fight-detail').textContent = state && ['faulted', 'landing-pending', 'failure-pending'].includes(state.phase) ? reasons[state.reason] ?? '等待宿主确认，当前结果尚未保存。' :
-    state?.phase === 'escaped' ? '本次没有鱼入护；已使用的鱼饵和体力不退还，装备没有损失。可重新抛竿。' :
+    lineBroken ? '本次没有鱼入护；断线损失已确认，已使用的鱼饵和体力不退还。请打开菜单检查并补齐钓组，再抛竿。' :
+    state?.phase === 'escaped' ? state.reason === 'slack-unhooked' ? '本次没有鱼入护；已使用的鱼饵和体力不退还，装备没有损失。可重新抛竿。' : '本次没有鱼入护；已使用的鱼饵和体力不退还，请检查当前钓组。' :
     state && ['fighting', 'landing-eligible'].includes(state.phase) ? `${state.reeling ? '正在主动收线' : '尚未主动收线'} · ${reasons[state.landingReason] ?? '观察鱼的位置与线张力'}` : '左键按住收线；松开停止绞入，鱼仍可能向外拉线。';
   $('fight-marks').setAttribute('visibility', graph ? 'visible' : 'hidden');
   $('fight-clipped').hidden = !graph?.clipped;
@@ -192,6 +194,8 @@ function renderFight() {
   $('fight-energy-value').textContent = state && state.phase !== 'idle' ? `${(state.energyPermille / 10).toFixed(1)}%` : '—';
   $('fight-reeling').textContent = state?.reeling ? '收线中' : '未收线';
   $('fight-exposure').textContent = state && !['idle', 'ended', 'escaped'].includes(state.phase) ? `宿主记录的松线暴露：${state.unhookExposureSteps} 步` : '松线暴露 —';
+  $('fight-overload').hidden = !state?.breakEnabled || ['idle', 'ended'].includes(state.phase);
+  $('fight-overload').textContent = state?.breakEnabled ? `主线断裂阈值 ${(state.breakThresholdMilliN / 1000).toFixed(2)} N · 过载累计 ${state.overloadExposureSteps} / ${state.overloadRequiredSteps} 步` : '主线过载 —';
   $('drag-level').textContent = `${state?.dragLevel ?? 0} / 10`;
   $('reel-level').textContent = `${state?.reelLevel ?? 0} / 10`;
   if (!graph) { $('fight-metrics').textContent = '出线 — · 线杯余量 — · 张力 —'; return; }

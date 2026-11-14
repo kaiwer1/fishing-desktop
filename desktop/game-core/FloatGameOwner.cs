@@ -66,12 +66,18 @@ namespace FishingDesktop.GameCore
         // A host with a newer feature set may require a schema before startup
         // settlement. The already-held writer closes the inspection/open gap.
         internal static FloatGameOwner OpenExisting(string path,Action<FloatSaveFaultPoint> hook,int requiredSchemaVersion)
+        { return OpenExisting(path,hook,requiredSchemaVersion,null); }
+        internal static FloatGameOwner OpenExisting(string path,Action<FloatSaveFaultPoint> hook,int requiredSchemaVersion,Action<FloatGameState> preStartupValidation)
         {
             var owner = new FloatGameOwner(FloatGameStore.OpenExisting(path, hook));
             try
             {
                 if(requiredSchemaVersion!=0&&owner._store.State.SchemaVersion!=requiredSchemaVersion)
                     throw new InvalidOperationException("An explicitly upgraded profile candidate is required before opening this game.");
+                // Feature-specific admission sees the state under the same
+                // writer lock that will settle startup. Rejection cannot write
+                // a Recovery or leave this unopened owner holding the file.
+                if(preStartupValidation!=null)preStartupValidation(owner._store.State);
                 var recovery = owner.Run(() => FloatGameLifecycle.Startup(owner._store));
                 if (!recovery.Confirmed) throw new InvalidOperationException("Startup settlement was not confirmed: " + recovery.Code);
                 return owner;

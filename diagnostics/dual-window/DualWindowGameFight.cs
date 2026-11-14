@@ -7,6 +7,7 @@ using FishingDesktop.GameCore;
 sealed partial class DualWindowContext
 {
     FloatFightSimulation gameFight;
+    FloatLineBreakRules gameLineBreakRules;
     double gameFightMillisecondRemainder;
     GameCastInput gameReelInput;
     HostFloatFish gameLandingCommand;
@@ -29,6 +30,7 @@ sealed partial class DualWindowContext
         // line paid out and a resting fish. Ordinary play uses its real landing.
         bool failureFixture=GameSelfTest&&gameFailureFixture;
         long installedLineMm=GameInstalledLineMm(state);
+        gameLineBreakRules=CreateGameLineBreakRules(state);
         double initialLine=failureFixture?Math.Min(installedLineMm/1000.0,distance+2):distance;
         // Original development equipment/flat-depth slice. The extra depth
         // uses the real existing spool budget; this is not new inventory line.
@@ -36,7 +38,7 @@ sealed partial class DualWindowContext
             new FloatFightWater(0,-2,-40,40,3,80),new FloatFightRigRules(80,1,40,200,1,20,.2,1.6,40,3,3,5,5),
             new FloatFightFishRules(bite.Target.SpeciesId=="carp"?3:2,2,20,.05,.005,10,failureFixture?FloatFightBehavior.Rest:FloatFightBehavior.Seeded),
             new FloatLandingRules(state.OwnedNet!=null && state.EquippedNetId==state.OwnedNet.Id,5,1,1,.5),GameSelfTest?91u:BitConverter.ToUInt32(bite.EncounterId.ToByteArray(),0),
-            new FloatUnhookRules(.25,60,2));
+            new FloatUnhookRules(.25,60,2),gameLineBreakRules);
         gameFight=new FloatFightSimulation(setup);gameFightMillisecondRemainder=0;gameReelInput=null;
         gameLandingCommand=null;gameLandingTicket=null;gameLandingRetry=false;
         gameFailureCommand=null;gameFailureTicket=null;gameFailureRetry=false;
@@ -106,7 +108,11 @@ sealed partial class DualWindowContext
             energyPermille=fight==null?0:FightUnits(fight.Energy),reeling=fight!=null && fight.Reeling,dragLevel=fight==null?5:fight.DragLevel,reelLevel=fight==null?5:fight.ReelLevel,
             canRetryLanding=gameLandingRetry && fight!=null && fight.Phase==FloatFightPhase.LandingPending,
             canRetryFailure=gameFailureRetry && fight!=null && fight.Phase==FloatFightPhase.FailurePending,
-            unhookExposureSteps=fight==null?0:fight.UnhookExposureSteps}});
+            unhookExposureSteps=fight==null?0:fight.UnhookExposureSteps,
+            breakEnabled=fight!=null&&gameLineBreakRules!=null,
+            breakThresholdMilliN=fight==null||gameLineBreakRules==null?0:checked((int)gameLineBreakRules.BreakMilliN),
+            overloadExposureSteps=fight==null?0:fight.LineBreakExposureSteps,
+            overloadRequiredSteps=fight==null||gameLineBreakRules==null?0:gameLineBreakRules.ExposureSteps}});
     }
     void BroadcastGameFight(){foreach(var pane in windows.Values)SendGameFight(pane);}
     void ReceiveGameFight(ProbeWindow pane,GameBinding binding,Dictionary<string,object> message,string transport)

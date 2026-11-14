@@ -90,6 +90,26 @@ namespace FishingDesktop.GameCore
             MinimumSlackM=minimumSlackM;ExposureSteps=exposureSteps;RecoveryStepsPerTick=recoveryStepsPerTick;
         }
     }
+    internal sealed class FloatLineBreakRules
+    {
+        // Explicit host policy for an actual equipped line. This pure model
+        // neither resolves an equipment catalog nor supplies missing strength.
+        internal readonly Guid LineId;
+        internal readonly long LineRevision,PolicyVersion,BreakMilliN;
+        internal readonly string LossRuleKey;
+        internal readonly int ExposureSteps;
+        internal FloatLineBreakRules(Guid lineId,long lineRevision,long policyVersion,string lossRuleKey,long breakMilliN,int exposureSteps)
+        {
+            if(lineId==Guid.Empty)throw new ArgumentException("A line identity is required.","lineId");
+            if(lineRevision<1)throw new ArgumentOutOfRangeException("lineRevision");
+            if(policyVersion!=1)throw new ArgumentOutOfRangeException("policyVersion");
+            if(String.IsNullOrEmpty(lossRuleKey)||lossRuleKey.Length>96)throw new ArgumentException("A bounded loss rule key is required.","lossRuleKey");
+            foreach(char c in lossRuleKey)if(!((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'||c=='_'||c=='.'))throw new ArgumentException("Loss rule keys use lowercase ASCII identifiers.","lossRuleKey");
+            if(breakMilliN<1||breakMilliN>10000000)throw new ArgumentOutOfRangeException("breakMilliN");
+            if(exposureSteps<1||exposureSteps>12000)throw new ArgumentOutOfRangeException("exposureSteps");
+            LineId=lineId;LineRevision=lineRevision;PolicyVersion=policyVersion;LossRuleKey=lossRuleKey;BreakMilliN=breakMilliN;ExposureSteps=exposureSteps;
+        }
+    }
     internal sealed class FloatFightSetup
     {
         internal readonly Guid SessionId,EncounterId;
@@ -102,9 +122,10 @@ namespace FishingDesktop.GameCore
         internal readonly FloatFightFishRules Fish;
         internal readonly FloatLandingRules Landing;
         internal readonly FloatUnhookRules Unhook;
+        internal readonly FloatLineBreakRules LineBreak;
         internal readonly uint Seed;
         internal FloatFightSetup(Guid sessionId,Guid encounterId,FloatBiteTarget target,long rigRevision,FloatFightPoint anchor,FloatFightPoint fishStart,
-            long totalLineMm,double initialOutLineM,FloatFightWater water,FloatFightRigRules rig,FloatFightFishRules fish,FloatLandingRules landing,uint seed,FloatUnhookRules unhook=null)
+            long totalLineMm,double initialOutLineM,FloatFightWater water,FloatFightRigRules rig,FloatFightFishRules fish,FloatLandingRules landing,uint seed,FloatUnhookRules unhook=null,FloatLineBreakRules lineBreak=null)
         {
             if(sessionId==Guid.Empty||encounterId==Guid.Empty||sessionId==encounterId)throw new ArgumentException("Distinct session and encounter identities are required.");
             if(target==null||anchor==null||fishStart==null||water==null||rig==null||fish==null||landing==null)throw new ArgumentNullException("fight dependency");
@@ -115,19 +136,37 @@ namespace FishingDesktop.GameCore
             FloatFightGuard.Range(initialOutLineM,rig.MinimumOutLineM,totalLineMm/1000.0,"initialOutLineM");
             double dx=fishStart.X-anchor.X,dy=fishStart.Y-anchor.Y,dz=fishStart.Z-anchor.Z;
             if(initialOutLineM+1e-9<Math.Sqrt(dx*dx+dy*dy+dz*dz))throw new ArgumentException("Initial line cannot be shorter than the fish path.");
+            if(lineBreak!=null&&(lineBreak.LineId==sessionId||lineBreak.LineId==encounterId||lineBreak.BreakMilliN/1000.0>=rig.MaximumSupportedTensionN))
+                throw new ArgumentException("The line identity must be distinct and its strength below the numerical support limit.","lineBreak");
             SessionId=sessionId;EncounterId=encounterId;Target=target;RigRevision=rigRevision;Anchor=anchor;FishStart=fishStart;
-            TotalLineMm=totalLineMm;InitialOutLineM=initialOutLineM;Water=water;Rig=rig;Fish=fish;Landing=landing;Seed=seed;Unhook=unhook;
+            TotalLineMm=totalLineMm;InitialOutLineM=initialOutLineM;Water=water;Rig=rig;Fish=fish;Landing=landing;Seed=seed;Unhook=unhook;LineBreak=lineBreak;
         }
     }
     internal enum FloatFightPhase { Fighting,LandingEligible,LandingPending,Landed,CapacityBlocked,Faulted,Ended,FailurePending,Escaped }
     internal enum FloatLandingOutcome { Landed,CapacityBlocked,KnownNotWritten,Unknown }
     internal enum FloatFailureOutcome { Confirmed,KnownNotWritten,Unknown }
+    internal sealed class FloatLineBreakEvidence
+    {
+        internal readonly Guid LineId;
+        internal readonly long LineRevision,PolicyVersion,BreakMilliN,OutLineMm,CutDistanceFromReelMm,TotalLineMm,StepIndex;
+        internal readonly string LossRuleKey;
+        internal readonly int ExposureSteps;
+        internal readonly double TensionN;
+        internal FloatLineBreakEvidence(FloatFightSetup setup,long stepIndex,long outLineMm,double tensionN)
+        {
+            var rules=setup.LineBreak;
+            LineId=rules.LineId;LineRevision=rules.LineRevision;PolicyVersion=rules.PolicyVersion;BreakMilliN=rules.BreakMilliN;
+            LossRuleKey=rules.LossRuleKey;ExposureSteps=rules.ExposureSteps;OutLineMm=outLineMm;CutDistanceFromReelMm=0;
+            TotalLineMm=setup.TotalLineMm;StepIndex=stepIndex;TensionN=tensionN;
+        }
+    }
     internal sealed class FloatFailureTicket
     {
         internal readonly Guid FailureId,SessionId,EncounterId;
         internal readonly string Reason;
-        internal FloatFailureTicket(Guid failure,Guid session,Guid encounter,string reason)
-        {FailureId=failure;SessionId=session;EncounterId=encounter;Reason=reason;}
+        internal readonly FloatLineBreakEvidence LineBreakEvidence;
+        internal FloatFailureTicket(Guid failure,Guid session,Guid encounter,string reason,FloatLineBreakEvidence lineBreakEvidence=null)
+        {FailureId=failure;SessionId=session;EncounterId=encounter;Reason=reason;LineBreakEvidence=lineBreakEvidence;}
     }
     internal sealed class FloatLandingTicket
     {
@@ -138,7 +177,7 @@ namespace FishingDesktop.GameCore
     {
         internal readonly Guid SessionId,EncounterId;
         internal readonly long RigRevision,StepIndex;
-        internal readonly int RemainderMilliseconds,DragLevel,ReelLevel,LandingAttempt,UnhookExposureSteps,FailureAttempt;
+        internal readonly int RemainderMilliseconds,DragLevel,ReelLevel,LandingAttempt,UnhookExposureSteps,FailureAttempt,LineBreakExposureSteps;
         internal readonly FloatFightPhase Phase;
         internal readonly string Reason,LandingReason;
         internal readonly FloatFightPoint Position,Velocity;
@@ -147,11 +186,11 @@ namespace FishingDesktop.GameCore
         internal readonly FloatBiteTarget Target;
         internal FloatFightSnapshot(FloatFightSetup setup,long step,int remainder,FloatFightPhase phase,string reason,string landingReason,
             FloatFightPoint position,FloatFightPoint velocity,double line,double slack,double tension,double drag,double energy,bool reeling,int dragLevel,int reelLevel,
-            double reeled,double paidOut,int landingAttempt,int unhookExposureSteps,int failureAttempt)
+            double reeled,double paidOut,int landingAttempt,int unhookExposureSteps,int failureAttempt,int lineBreakExposureSteps)
         {SessionId=setup.SessionId;EncounterId=setup.EncounterId;RigRevision=setup.RigRevision;Target=setup.Target;StepIndex=step;RemainderMilliseconds=remainder;
             Phase=phase;Reason=reason;LandingReason=landingReason;Position=position;Velocity=velocity;OutLineM=line;SpoolRemainingM=setup.TotalLineMm/1000.0-line;
             SlackM=slack;TensionN=tension;DragN=drag;RodDeflectionM=tension/setup.Rig.RodSpringNPerM;Energy=energy;Reeling=reeling;DragLevel=dragLevel;ReelLevel=reelLevel;
-            ReeledThisStepM=reeled;PaidOutThisStepM=paidOut;LandingAttempt=landingAttempt;UnhookExposureSteps=unhookExposureSteps;FailureAttempt=failureAttempt;}
+            ReeledThisStepM=reeled;PaidOutThisStepM=paidOut;LandingAttempt=landingAttempt;UnhookExposureSteps=unhookExposureSteps;FailureAttempt=failureAttempt;LineBreakExposureSteps=lineBreakExposureSteps;}
     }
     internal sealed class FloatFightResult
     {
@@ -183,7 +222,7 @@ namespace FishingDesktop.GameCore
         string solveFailure="solver-unresolved";
         FloatLandingTicket landingTicket;
         FloatFailureTicket failureTicket;
-        int landingAttempt,unhookExposureSteps,failureAttempt;
+        int landingAttempt,unhookExposureSteps,failureAttempt,lineBreakExposureSteps;
         internal FloatFightSimulation(FloatFightSetup setup)
         {
             if(setup==null)throw new ArgumentNullException("setup");this.setup=setup;random=new FloatBiteRandom(setup.Seed^0x657832cbu);
@@ -209,20 +248,41 @@ namespace FishingDesktop.GameCore
         }
         void UpdateEligibility(){if(!Active)return;bool ready=LandingReason()=="eligible";phase=ready?FloatFightPhase.LandingEligible:FloatFightPhase.Fighting;reason=ready?"landing-eligible":"fighting";}
         void Fault(string why){phase=FloatFightPhase.Faulted;reason=why;reeling=false;remainder=0;}
-        Guid FailureIdentity()
+        Guid FailureIdentity(bool lineBreak=false)
         {
             // Domain-separated from bite/landing identities, stable across
             // rendering partitions and independent of the fish random stream.
-            var bytes=new byte[64];var domain=System.Text.Encoding.ASCII.GetBytes("float-slack-v2");Array.Copy(domain,bytes,domain.Length);
+            var bytes=new byte[lineBreak?204:64];var domain=System.Text.Encoding.ASCII.GetBytes(lineBreak?"float-break-v1":"float-slack-v2");Array.Copy(domain,bytes,domain.Length);
             Array.Copy(setup.SessionId.ToByteArray(),0,bytes,16,16);Array.Copy(setup.EncounterId.ToByteArray(),0,bytes,32,16);
             ulong at=(ulong)step;for(int i=0;i<8;i++)bytes[48+i]=(byte)(at>>(8*i));
+            if(lineBreak){
+                var rules=setup.LineBreak;Array.Copy(rules.LineId.ToByteArray(),0,bytes,64,16);
+                long[] values={rules.LineRevision,rules.PolicyVersion,rules.BreakMilliN};
+                for(int j=0;j<values.Length;j++)for(int i=0;i<8;i++)bytes[80+j*8+i]=(byte)((ulong)values[j]>>(8*i));
+                for(int i=0;i<4;i++)bytes[104+i]=(byte)((uint)rules.ExposureSteps>>(8*i));
+                var key=System.Text.Encoding.ASCII.GetBytes(rules.LossRuleKey);Array.Copy(key,0,bytes,108,key.Length);
+            }
             byte[] hash;using(var sha=SHA256.Create())hash=sha.ComputeHash(bytes);
             var value=new byte[16];Array.Copy(hash,value,16);value[7]=(byte)((value[7]&15)|128);value[8]=(byte)((value[8]&63)|128);
             Guid id=new Guid(value);
-            // There are only three excluded identities, so this bounded
-            // sequence always finds a distinct identity within four trials.
-            for(int i=0;i<4;i++){if(id!=Guid.Empty&&id!=setup.SessionId&&id!=setup.EncounterId)return id;value[15]=(byte)((value[15]+1)&255);id=new Guid(value);}
+            // Three exclusions for legacy unhook, four for line break. Keep
+            // the old domain, bytes and fallback sequence exactly unchanged.
+            for(int i=0;i<(lineBreak?5:4);i++){if(id!=Guid.Empty&&id!=setup.SessionId&&id!=setup.EncounterId&&(!lineBreak||id!=setup.LineBreak.LineId))return id;value[15]=(byte)((value[15]+1)&255);id=new Guid(value);}
             throw new InvalidOperationException("Failure identity allocation failed.");
+        }
+        void UpdateLineBreak()
+        {
+            var rules=setup.LineBreak;if(rules==null)return;
+            if(tension>rules.BreakMilliN/1000.0)lineBreakExposureSteps++;
+            else lineBreakExposureSteps=0;
+            if(lineBreakExposureSteps<rules.ExposureSteps)return;
+            // Quantize only the validated physical line, never presentation
+            // units. At exact total payout preserve the authoritative integer.
+            long outLineMm=line==total?setup.TotalLineMm:(long)Math.Floor(line*1000.0);
+            if(outLineMm<1||outLineMm>setup.TotalLineMm){Fault("line-conservation-failed");return;}
+            var evidence=new FloatLineBreakEvidence(setup,step,outLineMm,tension);
+            failureTicket=new FloatFailureTicket(FailureIdentity(true),setup.SessionId,setup.EncounterId,"line-overloaded",evidence);
+            failureAttempt=1;failureSubmitted=true;phase=FloatFightPhase.FailurePending;reason=failureTicket.Reason;reeling=false;remainder=0;
         }
         void UpdateUnhook(double slack)
         {
@@ -325,10 +385,11 @@ namespace FishingDesktop.GameCore
                 candidateLine+=payout;solved=Solve(candidateLine,predictedVx,predictedVz);
             }
             if(solved==null){Fault(solveFailure);return;}
+            if(Double.IsNaN(solved.Tension)||Double.IsInfinity(solved.Tension)||solved.Tension<0){Fault("solver-unresolved");return;}
             if(solved.Tension>setup.Rig.MaximumSupportedTensionN){Fault("load-outside-supported-range");return;}
             double speed=Math.Sqrt(solved.Vx*solved.Vx+solved.Vz*solved.Vz);
             if(Double.IsNaN(speed)||Double.IsInfinity(speed)||speed>setup.Fish.MaximumSupportedSpeedMps){Fault("speed-outside-supported-range");return;}
-            if(candidateLine<setup.Rig.MinimumOutLineM-1e-9||candidateLine>total+1e-9){Fault("line-conservation-failed");return;}
+            if(Double.IsNaN(candidateLine)||Double.IsInfinity(candidateLine)||candidateLine<setup.Rig.MinimumOutLineM-1e-9||candidateLine>total+1e-9){Fault("line-conservation-failed");return;}
             double actualTravel=Math.Sqrt((solved.X-x)*(solved.X-x)+(solved.Z-z)*(solved.Z-z));
             // Equivalent effort includes positive propulsive work, resisting
             // line work and a 0.03 m/s contraction proxy only under load. It
@@ -339,14 +400,15 @@ namespace FishingDesktop.GameCore
             energy=Math.Max(0,Math.Min(1,energy-effort*setup.Fish.FatiguePerJoule+recovery));
             x=solved.X;z=solved.Z;vx=solved.Vx;vz=solved.Vz;tension=solved.Tension;line=Math.Max(setup.Rig.MinimumOutLineM,Math.Min(total,candidateLine));
             reeled=requested;paidOut=payout;
-            // Only a successfully validated physical step exposes the hook.
+            // Only a successfully validated physical step exposes equipment.
             // Unsupported solver/load/speed faults above must win this step.
-            UpdateUnhook(Math.Max(0,line-Distance(x,z)));
+            UpdateLineBreak();
+            if(Active)UpdateUnhook(Math.Max(0,line-Distance(x,z)));
             UpdateEligibility();
         }
         FloatFightSnapshot Describe()
         {return new FloatFightSnapshot(setup,step,remainder,phase,reason,LandingReason(),new FloatFightPoint(x,setup.FishStart.Y,z),new FloatFightPoint(vx,0,vz),
-            line,Math.Max(0,line-Distance(x,z)),tension,Drag,energy,reeling,dragLevel,reelLevel,reeled,paidOut,landingAttempt,unhookExposureSteps,failureAttempt);}
+            line,Math.Max(0,line-Distance(x,z)),tension,Drag,energy,reeling,dragLevel,reelLevel,reeled,paidOut,landingAttempt,unhookExposureSteps,failureAttempt,lineBreakExposureSteps);}
         internal FloatFightSnapshot Snapshot{get{Check();return Describe();}}
         FloatFightResult Result(bool accepted,bool submit,bool terminal,string code,bool submitFailure=false)
         {return new FloatFightResult(accepted,submit,terminal,code,landingTicket,landingAttempt,Describe(),submitFailure,failureTicket,failureAttempt);}
@@ -392,11 +454,16 @@ namespace FishingDesktop.GameCore
             phase=outcome==FloatLandingOutcome.Landed?FloatFightPhase.Landed:FloatFightPhase.CapacityBlocked;reason=outcome==FloatLandingOutcome.Landed?"landed":"creel-capacity-exceeded";
             bool emit=outcome==FloatLandingOutcome.Landed&&!terminalEmitted;terminalEmitted|=emit;return Result(true,false,emit,reason);
         }
+        internal bool IsCurrentFailureSubmission(FloatFailureTicket ticket,int attempt)
+        {
+            Check();return ticket!=null&&Object.ReferenceEquals(ticket,failureTicket)&&phase==FloatFightPhase.FailurePending&&
+                failureSubmitted&&!failureUnknown&&attempt==failureAttempt;
+        }
         internal FloatFightResult RetryFailure(FloatFailureTicket ticket)
         {
             Check();if(!Object.ReferenceEquals(ticket,failureTicket)||ticket==null)return Result(false,false,false,"failure-ticket-invalid");
             if(phase!=FloatFightPhase.FailurePending||failureSubmitted||failureUnknown)return Result(false,false,false,"failure-retry-unavailable");
-            failureAttempt=checked(failureAttempt+1);failureSubmitted=true;reason="slack-unhooked";return Result(true,false,false,reason,true);
+            failureAttempt=checked(failureAttempt+1);failureSubmitted=true;reason=ticket.Reason;return Result(true,false,false,reason,true);
         }
         internal FloatFightResult ConfirmFailure(FloatFailureTicket ticket,int attempt,FloatFailureOutcome outcome)
         {
@@ -406,7 +473,7 @@ namespace FishingDesktop.GameCore
             failureSubmitted=false;
             if(outcome==FloatFailureOutcome.Unknown){failureUnknown=true;reason="failure-save-unknown";return Result(true,false,false,reason);}
             if(outcome==FloatFailureOutcome.KnownNotWritten){reason="failure-not-written";return Result(true,false,false,reason);}
-            phase=FloatFightPhase.Escaped;reason="slack-unhooked";bool emit=!terminalEmitted;terminalEmitted=true;return Result(true,false,emit,reason);
+            phase=FloatFightPhase.Escaped;reason=ticket.Reason;bool emit=!terminalEmitted;terminalEmitted=true;return Result(true,false,emit,reason);
         }
         internal FloatFightResult End(Guid sessionId)
         {

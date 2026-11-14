@@ -4,7 +4,7 @@ import { renderSize } from '../../src/display.js';
 import { createLake } from './lake.mjs';
 import { createTackle } from './tackle.mjs';
 import { sampleFightFish } from './fight-fish.mjs';
-import { aimPoint, pickAim, projectAim, setBankCamera, validWater } from './water-space.mjs';
+import { aimPoint, pickAim, projectAim, setBankCamera, waterGeometryKey } from './water-space.mjs';
 
 const viewNames=['water','cast','flight','bite','fight','sleeveColor'];
 
@@ -37,12 +37,13 @@ export function createGameScene(canvas,{onFault}={}) {
   }
   let lake=null,key=null,water=null,disposed=false,error=null,active=false;
   let width=0,height=0,aspect=0,frames=0,elapsed=0,lastFlight=null,pendingImpact=null,rodPhase='idle',fish=null;
+  let viewYaw=0,sceneBuilds=0;
   const views={water:null,cast:null,flight:null,bite:null,fight:null};
   const scheduler=createFrameScheduler({render(_now,dt){
     elapsed+=dt;
     if(pendingImpact){lake.impact(pendingImpact,elapsed);pendingImpact=null;}
     lake.animate(elapsed);
-    rodPhase=tackle.animate(views,elapsed,dt);
+    rodPhase=tackle.animate(views,elapsed,dt,viewYaw);
     renderer.render(scene,camera);frames++;
   },onError(){fault('webgl-render-failed');}});
   function fault(code){
@@ -61,17 +62,26 @@ export function createGameScene(canvas,{onFault}={}) {
     const w=r.width>0&&r.height>0?size.width:0,h=w?size.height:0;
     if(w!==width||h!==height){width=w;height=h;if(w&&h)renderer.setSize(w,h,false);}
     if(lake&&r.width>0&&r.height>0&&aspect!==r.width/r.height){
-      aspect=r.width/r.height;setBankCamera(camera,water,aspect);lake.refreshMirror();
+      aspect=r.width/r.height;viewYaw=setBankCamera(camera,water,aspect);lake.refreshMirror(true);hideAim();
     }
     sync();
   }
   function resetLake(next){
-    const nextKey=validWater(next)?JSON.stringify([next.waterId,next.spotId,next.geometryVersion,next.waterBounds,next.bounds,next.anchor,next.surfaceYmm,next.bed]):null;
-    if(nextKey===key){water=nextKey?next:null;return;}
+    const nextKey=waterGeometryKey(next);
+    if(nextKey===key){
+      if(!nextKey)return;
+      const a=next.anchor,last=water.anchor,b=next.bounds,old=water.bounds;
+      const cameraChanged=a.xMm!==last.xMm||a.yMm!==last.yMm||a.zMm!==last.zMm||
+        b.minXmm!==old.minXmm||b.maxXmm!==old.maxXmm||b.minZmm!==old.minZmm||b.maxZmm!==old.maxZmm;
+      water=next;
+      if(cameraChanged&&aspect>0){viewYaw=setBankCamera(camera,water,aspect);lake.refreshMirror();hideAim();}
+      return;
+    }
     if(lake)lake.dispose();
     lake=null;water=null;key=null;aspect=0;pendingImpact=null;lastFlight=null;fish=null;hideAim();
     if(nextKey){
-      lake=createLake(next);water=next;key=nextKey;scene.add(lake.group);resize();
+      lake=createLake(next,name=>new URL('./scene-assets/'+name,canvas.ownerDocument.baseURI).href);
+      water=next;key=nextKey;sceneBuilds++;scene.add(lake.group);resize();
     }else sync();
   }
   function update(data={}){
@@ -93,6 +103,8 @@ export function createGameScene(canvas,{onFault}={}) {
     return {ready:Boolean(lake&&!disposed&&!error),active,running:scheduler.getState().running,frames,width,height,
       triangles:renderer.info.render.triangles,calls:renderer.info.render.calls,geometryVersion:water?.geometryVersion??null,rodPhase,
       shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
+      sceneBuilds,mirrorUpdates:lake?.mirrorUpdates()??0,loadedMaterials:lake?.loadedMaterials()??0,cameraXmm:lake&&aspect>0?Math.round(camera.position.x*1000):null,
+      rodAnchorXmm:lake?tackle.anchorXmm():null,
       bobberVisible:frames>0&&Boolean(lake)&&tackle.float.visible,lineVisible:frames>0&&Boolean(lake)&&tackle.line.visible,error,disposed};
   }
   canvas.addEventListener('webglcontextlost',lost);

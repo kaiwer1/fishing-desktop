@@ -150,7 +150,7 @@ sealed partial class DualWindowContext : ApplicationContext
             if(!PlayerWindowOnly)await Open(false);var interaction=await Open(true);
             if(ManualMode && !ManualUnattended && Live(interaction)){GuardPresentation(()=>{interaction.Hide();interaction.Show();});}
             if(GameMode && !stopping)await StartGamePresentation();
-            if(automated && !stopping){if(GameFailureCase!=null)RunGameFailureBoundaryProbe();else if(GameSparesSelfTest)RunGameSparesProbe();else if(GameCampSelfTest)RunGameCampProbe();else if(GameLineBreakSelfTest)RunGameLineBreakProbe();else if(GameWaterSelfTest)RunGameWaterProbe();else if(GameSceneSelfTest)RunGameSceneProbe();else if(GameAtlasSelfTest)RunGameAtlasProbe();else if(GamePlayerSelfTest)RunGamePlayerProbe();else if(GameWardrobeSelfTest)RunGameWardrobeProbe();else if(GameCatchSelfTest)RunGameCatchProbe();else if(GameWallpaperSelfTest)RunGameWallpaperProbe();else if(GameSelfTest)RunGameProbe();else RunProbe();}
+            if(automated && !stopping){if(GameFailureCase!=null)RunGameFailureBoundaryProbe();else if(GameSparesSelfTest)RunGameSparesProbe();else if(GameCampSelfTest)RunGameCampProbe();else if(GameLineBreakSelfTest)RunGameLineBreakProbe();else if(GameWaterSelfTest)RunGameWaterProbe();else if(GameSceneSelfTest)RunGameSceneProbe();else if(GameAtlasSelfTest)RunGameAtlasProbe();else if(GamePlayerSelfTest)RunGamePlayerProbe();else if(GameWardrobeSelfTest)RunGameWardrobeProbe();else if(GameCatchSelfTest)RunGameCatchProbe();else if(GameWallpaperSelfTest)RunGameWallpaperProbe();else if(GameWalkSelfTest)RunGameWalkProbe();else if(GameSelfTest)RunGameProbe();else RunProbe();}
         }catch(Exception e){Fail(e);}
     }
     bool Live(ProbeWindow pane)
@@ -391,6 +391,7 @@ sealed partial class DualWindowContext : ApplicationContext
     {
         string gameMode=null;
         if(args.Length==1){if(args[0]=="--game-new")gameMode="new";else if(args[0]=="--game-open")gameMode="open";else if(args[0]=="--game-self-test")gameMode="self-test";else if(args[0]=="--game-spares-self-test")gameMode="spares-self-test";else if(args[0]=="--game-camp-self-test")gameMode="camp-self-test";else if(args[0]=="--game-line-break-self-test")gameMode="line-break-self-test";else if(args[0]=="--game-scene-self-test")gameMode="scene-self-test";else if(args[0]=="--game-water-self-test")gameMode="water-self-test";else if(args[0]=="--game-line-break-new")gameMode="line-break-new";else if(args[0]=="--game-line-break-open")gameMode="line-break-open";}
+        if(args.Length==1 && args[0]=="--game-walk-self-test")gameMode="walk-self-test";
         if(args.Length==1 && args[0]=="--game-wallpaper-prepare-self-test")gameMode="wallpaper-prepare-self-test";
         if(args.Length==1 && args[0]=="--game-wallpaper-self-test")gameMode="wallpaper-self-test";
         if(args.Length==1 && args[0]=="--game-catch-self-test")gameMode="catch-self-test";
@@ -403,7 +404,7 @@ sealed partial class DualWindowContext : ApplicationContext
             if(args[1]!="known-close" && args[1]!="after-flush" && args[1]!="after-prefix")return 5;
             gameMode=(args[0]=="--game-line-break-failure-self-test"?"line-break-failure-":"failure-")+args[1];
         }
-        bool gameUser=gameMode=="player-window" || gameMode=="player-wallpaper" || gameMode=="new" || gameMode=="open" || gameMode=="line-break-new" || gameMode=="line-break-open",gameSelfTest=gameMode=="self-test" || gameMode=="spares-self-test" || gameMode=="camp-self-test" || gameMode=="line-break-self-test" || gameMode=="water-self-test" || gameMode=="scene-self-test" || gameMode=="atlas-self-test" || gameMode=="player-self-test" || gameMode=="wardrobe-self-test" || gameMode=="catch-self-test" || gameMode=="wallpaper-self-test" || gameMode=="wallpaper-prepare-self-test" || (gameMode!=null && (gameMode.StartsWith("failure-",StringComparison.Ordinal)||gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)));
+        bool gameUser=gameMode=="player-window" || gameMode=="player-wallpaper" || gameMode=="new" || gameMode=="open" || gameMode=="line-break-new" || gameMode=="line-break-open",gameSelfTest=gameMode=="self-test" || gameMode=="spares-self-test" || gameMode=="camp-self-test" || gameMode=="line-break-self-test" || gameMode=="water-self-test" || gameMode=="scene-self-test" || gameMode=="atlas-self-test" || gameMode=="player-self-test" || gameMode=="wardrobe-self-test" || gameMode=="catch-self-test" || gameMode=="wallpaper-self-test" || gameMode=="wallpaper-prepare-self-test" || gameMode=="walk-self-test" || (gameMode!=null && (gameMode.StartsWith("failure-",StringComparison.Ordinal)||gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)));
         int manualSeconds=0;bool manualUnattended=args.Length>0 && args[0]=="--manual-desktop-timeout-probe";
         bool manual=manualUnattended || (args.Length>0 && args[0]=="--manual-desktop-probe");
         if(manual && (args.Length!=2 || !Int32.TryParse(args[1],out manualSeconds) || manualSeconds<60 || manualSeconds>600))return 5;

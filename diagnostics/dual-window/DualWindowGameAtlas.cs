@@ -37,10 +37,10 @@ sealed partial class DualWindowContext
         if(Object.ReferenceEquals(next,gameFishingWater)){GameReply(pane,transport,"spot-unchanged");return;}
         // Travel is only a session preference: no journal edit, no elapsed
         // fishing time, and no transfer of an old float or encounter.
-        CancelGameCast();ClearGameFightInput();
+        ClearGameWalk();CancelGameCast();ClearGameFightInput();
         gameCastInput=null;gameWaterPlan=null;gameWaterTarget=null;gameWaterLanding=null;gameWaterLandingSession=Guid.Empty;
         gameBite=null;gameFight=null;gameFishingPool=null;gameFlight=null;gameFlightTrail.Clear();
-        gameWater=next.Geometry;gameFishingWater=next;ConfigureGameWaterBudget();InitializeGameCast();InitializeGameFlight();
+        gameWater=next.Geometry;gameFishingWater=next;InitializeGameWalk();ConfigureGameWaterBudget();InitializeGameCast();InitializeGameFlight();
         GameReply(pane,transport,"spot-selected");Broadcast();
     }
 }

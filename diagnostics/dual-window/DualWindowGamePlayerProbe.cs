@@ -34,8 +34,25 @@ sealed partial class DualWindowContext
         await Wait(pane,s=>PlayerProbeDrawn(s,station) && Number(SceneProbeRenderer(s),"frames")>frames,15000);
     }
 
-    async Task<Color[]> PlayerProbePicture(ProbeWindow pane,FloatFishingWater station,string name)
+    async Task<Color[]> PlayerProbePicture(ProbeWindow pane,FloatFishingWater station,string name,int expectedMaterials,
+        Dictionary<string,int> observedMaterials)
     {
+        long loaded=-1,firstFrame=-1;
+        try{
+            await Wait(pane,page=>{
+                if(!PlayerProbeDrawn(page,station))return false;
+                var renderer=SceneProbeRenderer(page);
+                loaded=renderer.ContainsKey("loadedMaterials")?Number(renderer,"loadedMaterials"):-1;
+                if(loaded!=expectedMaterials)return false;
+                long frame=Number(renderer,"frames");
+                if(firstFrame<0)firstFrame=frame;
+                return frame>firstFrame;
+            },10000);
+        }catch(InvalidOperationException error){
+            throw new InvalidOperationException("Station "+station.Id+" did not render its scanned textures before capture; expected "+
+                expectedMaterials+", last observed "+loaded+".",error);
+        }
+        observedMaterials.Add(station.Id,(int)loaded);
         var displayed=await SceneProbeScript(pane,@"(()=>{
             const canvas=document.getElementById('scene-canvas'), r=canvas.getBoundingClientRect();
             const positions=[];
@@ -97,19 +114,20 @@ sealed partial class DualWindowContext
             await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
             checks.Add("the standalone player starts at the lake in a single hidden interaction pane with all seven sale rules");
 
+            var materials=new Dictionary<string,int>();
             await PlayerProbeTravel(pane,lease,river);
-            var riverPixels=await PlayerProbePicture(pane,river,"player-river.png");
+            var riverPixels=await PlayerProbePicture(pane,river,"player-river.png",2,materials);
             checks.Add("a real lake menu click travels to the river and produces a menu-free landscape preview with its river title");
 
             await PlayerProbeTravel(pane,lease,lake);
-            var lakePixels=await PlayerProbePicture(pane,lake,"player-lake.png");
+            var lakePixels=await PlayerProbePicture(pane,lake,"player-lake.png",2,materials);
             checks.Add("the river menu returns to the original lake and its current on-screen station agrees with the owner");
 
             await PlayerProbeTravel(pane,lease,coast);
-            var coastPixels=await PlayerProbePicture(pane,coast,"player-coast.png");
+            var coastPixels=await PlayerProbePicture(pane,coast,"player-coast.png",1,materials);
             Require(PlayerProbeDifferent(lakePixels,riverPixels) && PlayerProbeDifferent(lakePixels,coastPixels) &&
                 PlayerProbeDifferent(riverPixels,coastPixels),"Three presentations do not show distinguishable scenery outside the HUD.");
-            checks.Add("all three clean player screenshots contain distinguishable scenery independently of their HUD names");
+            checks.Add("all three player previews include the loaded shoreline scans and distinguishable scenery independently of their HUD names");
 
             var aimPoint=await SceneProbePoint(pane);
             await SceneProbeMouse(pane,aimPoint,true);
@@ -148,7 +166,7 @@ sealed partial class DualWindowContext
             checks.Add("three station changes and a document reload cost nothing while one cast spends one bait and two stamina and exits cleanly");
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new {
                 passed=true,checks=checks.ToArray(),gameLoaded=true,playerWindowConnected=true,singleInteractionWindow=true,
-                observerOpened=false,desktopLayer=false,personalSaveRead=false,playerPreviewCount=3,distinctScenery=true,
+                observerOpened=false,desktopLayer=false,personalSaveRead=false,playerPreviewCount=3,distinctScenery=true,loadedMaterials=materials,
                 mapCount=3,speciesCount=final.Rules.Species.Count,coastalCast=true,reloadRetainedStation=true,
                 devToolsMouseInput=true,nativePhysicalMouse=false,controlledCharge=false,realHostFlight=true,
                 schemaVersion=final.SchemaVersion,sequence=final.Sequence,value=final.WalletMinor,baitCount=final.BaitCount,stamina=final.Stamina,

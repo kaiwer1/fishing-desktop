@@ -23,6 +23,7 @@ body[data-scene-mode=loading] #scene-stage{visibility:hidden;pointer-events:none
 .scene-place{left:clamp(14px,3vw,42px);top:clamp(10px,3vh,30px);border-left:3px solid #cfdaa7;padding-left:12px}
 .scene-place strong{display:block;font:600 clamp(21px,2.3vw,34px)/1.15 system-ui,"Microsoft YaHei",sans-serif}
 .scene-place small{font-size:12px;color:#e4e8d8}
+#bank-position{display:block;font-variant-numeric:tabular-nums}#bank-position[hidden]{display:none}
 .scene-actions{right:clamp(14px,3vw,42px);top:clamp(10px,3vh,30px);display:flex;gap:6px}
 .scene-readout{bottom:clamp(12px,4vh,42px);left:clamp(14px,3vw,42px);max-width:min(620px,82vw);padding:12px 16px;background:linear-gradient(90deg,#101e1bde,#10221cc2 72%,transparent);border-left:2px solid #c9d599}
 .scene-readout strong{font-size:clamp(17px,2vw,24px)}.scene-readout p{margin:2px 0;font-size:14px}.scene-readout progress{width:min(280px,40vw);accent-color:#c7d891}.scene-readout button{margin:4px 6px 0 0}
@@ -46,7 +47,7 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <aside id="catch-card" role="status" aria-live="polite" hidden><small>渔获已入护</small><div id="catch-art"></div><strong id="catch-name"></strong><span id="catch-mass"></span></aside>
 <div id="scene-stage" hidden>
 <canvas id="scene-canvas" aria-label="钓场水面，按住鼠标左键蓄力，松开抛竿"></canvas>
-<div class="scene-hud"><div class="scene-place"><strong id="scene-spot-name">岸边钓位</strong><small id="scene-spot-region"></small></div>
+<div class="scene-hud"><div class="scene-place"><strong id="scene-spot-name">岸边钓位</strong><small id="scene-spot-region"></small><small id="bank-position" hidden></small></div>
 <div class="scene-actions"><button id="scene-menu">钓点与补给</button><button id="scene-to-map">俯视瞄准</button></div>
 <div class="scene-readout"><strong id="scene-action">等待钓场</strong><p id="scene-hint"></p>
 <progress id="scene-power" max="1000" value="0" aria-label="抛竿蓄力" hidden></progress><p id="scene-message" role="status" hidden></p>

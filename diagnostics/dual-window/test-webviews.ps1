@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk)
 $ErrorActionPreference='Stop'
 if($GameLineBreak -and ($GameSpares -or $GameCamp)){throw 'Run line-break integration separately.'}
 if($GameWater -and ($GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run water integration separately.'}
@@ -7,6 +7,8 @@ if($GameAtlas -and ($GameScene -or $GameWater -or $GameFailureCase -or $GameSpar
 if($GamePlayer -and ($GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run player integration separately.'}
 if($GameWardrobe -and ($GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run wardrobe integration separately.'}
 if($GameCatch -and ($GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run catch integration separately.'}
+if($GameWalk -and ($GameWallpaper -or $GameWallpaperPrepare -or $GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run bank-walk integration separately.'}
+if($GameWalk){$Game=$true}
 if($GameWallpaperPrepare){$GameWallpaper=$true}
 if($GameWallpaper -and ($GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run wallpaper game integration separately.'}
 if($GameWater -or $GameScene -or $GameAtlas -or $GamePlayer -or $GameWardrobe -or $GameCatch -or $GameWallpaper){$Game=$true}
@@ -102,6 +104,7 @@ try{
   if($GameFailureCase){$taskMode='--game-failure-self-test '+$GameFailureCase}
   if($GameSpares){$taskMode='--game-spares-self-test'}
   if($GameCamp){$taskMode='--game-camp-self-test'}
+  if($GameWalk){$taskMode='--game-walk-self-test'}
   if($GameWallpaper){$taskMode=if($GameWallpaperPrepare){'--game-wallpaper-prepare-self-test'}else{'--game-wallpaper-self-test'}}
   if($GameCatch){$taskMode='--game-catch-self-test'}
   if($GameWardrobe){$taskMode='--game-wardrobe-self-test'}
@@ -132,6 +135,11 @@ try{
     if(Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt')){throw 'Failure boundary test reported an unexpected host error.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if($taskGameExit.normalExit -or $taskGameExit.code -ne 'unconfirmed-failure-no-settlement'){throw 'Unconfirmed failure exit was not preserved.'}
+  }elseif($GameWalk){
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 9 -or -not $taskReport.walkConnected -or -not $taskReport.devToolsKeyboardInput -or -not $taskReport.devToolsMouseInput -or -not $taskReport.realHostClock -or -not $taskReport.controlledBlur -or -not $taskReport.stalePoseRejected -or -not $taskReport.heldWalkBlocksCast -or -not $taskReport.coastalCast -or $taskReport.nativeAltTabTested -or $taskReport.desktopLayer){throw 'Bank walking controls or release evidence mismatch.'}
+    if($taskReport.anchorXmm -gt -650 -or $taskReport.poseRevision -lt 1 -or $taskReport.sequence -ne 3 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.value -ne 12000 -or $taskReport.remainingLineMm -ne 50000 -or $taskReport.gameFlightEmissions -ne 1){throw 'Walking changed resources or cast origin mismatch.'}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Walking shutdown was not confirmed.'}
   }elseif($GameWallpaper){
     if($taskReport.blocked){throw ('Desktop environment did not permit wallpaper verification: '+$taskReport.reason)}
     $taskDesktopReport=Get-Content -LiteralPath (Join-Path $taskRun 'desktop-summary.json') -Raw | ConvertFrom-Json

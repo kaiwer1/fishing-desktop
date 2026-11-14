@@ -20,7 +20,7 @@ function treeTexture(kind) {
     ctx.lineWidth = Math.max(1, Math.pow(level + .5, 1.65) * .56);
     ctx.strokeStyle = kind === 1 ? '#989785' : '#564d39';
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(nextX, nextY); ctx.stroke();
-    if (level <= 2) leaves.push([nextX, nextY, 9 + random() * 12]);
+    if (level <= 2) leaves.push([nextX, nextY, 7 + random() * 10]);
     if (!level) return;
     const lean = angle * .62;
     limb(nextX, nextY, length * (.66 + random() * .13), lean - .26 - random() * .68, level - 1);
@@ -31,7 +31,7 @@ function treeTexture(kind) {
     for (let j = 0; j < count; j++) {
       const a = random() * Math.PI * 2, r = Math.sqrt(random()) * radius;
       const px = x + r * Math.cos(a), py = y + r * Math.sin(a) * elongated;
-      const light = 15 + (1 - px / 380) * 12 + random() * 11;
+      const light = 18 + (1 - px / 380) * 11 + (1 - py / 380) * 5 + random() * 13;
       ctx.fillStyle = 'hsl(' + ((kind === 2 ? 90 : kind === 1 ? 73 : 83) + random() * 13) + ' 24% ' + light + '%)';
       ctx.beginPath(); ctx.ellipse(px, py, 1.4 + random() * 3.9, 1 + random() * 2.7, random() * Math.PI, 0, Math.PI * 2); ctx.fill();
     }
@@ -49,7 +49,7 @@ function treeTexture(kind) {
     }
   } else {
     limb(190, 377, kind === 1 ? 106 : 83, (random() - .5) * .1, 5);
-    for (const [x, y, radius] of leaves) foliage(x, y, radius, 78, kind === 1 ? 1.18 : .83);
+    for (const [x, y, radius] of leaves) foliage(x, y, radius, 57, kind === 1 ? 1.18 : .83);
   }
   const texture = new THREE.CanvasTexture(image); texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
@@ -65,8 +65,9 @@ const skyShader = {
       return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+1.),f.x),f.y);}
     void main(){vec3 d=normalize(direction);float h=max(d.y,0.);
       vec3 sky=mix(horizon,zenith,pow(h,.45));
-      vec2 p=d.xz/max(.09,h+.12);float clouds=.54*noise(p*2.)+.28*noise(p*4.3)+.13*noise(p*9.1)+.05*noise(p*19.);
-      sky=mix(sky,vec3(.92,.91,.85),smoothstep(.47,.74,clouds)*smoothstep(.03,.22,h)*.82);
+      vec2 p=d.xz/max(.09,h+.12);p+=vec2(noise(p*1.4),noise(p*1.6+3.5))*.45;
+      float clouds=.50*noise(p*2.)+.27*noise(p*4.3)+.14*noise(p*9.1)+.06*noise(p*19.)+.03*noise(p*38.);
+      sky=mix(sky,mix(vec3(.67,.72,.74),vec3(.98,.95,.87),smoothstep(.46,.70,clouds)),smoothstep(.46,.68,clouds)*smoothstep(.03,.22,h)*.84);
       float sun=max(dot(d,normalize(vec3(-.47,.23,-1.))),0.);
       sky+=vec3(.64,.38,.13)*pow(sun,22.)+vec3(3.,2.3,1.4)*smoothstep(.9996,.99998,sun);
       gl_FragColor=vec4(sky,1.);
@@ -96,7 +97,7 @@ const waterShader = {
       vec3 normal=normalize(vec3(ax*rough,1.,az*rough));vec2 uv=uvMirror.xy/uvMirror.w;
       vec3 shore=texture2D(tDiffuse,clamp(uv+vec2(ax,az)*rough*(.09+.13*amp),.001,.999)).rgb;
       float fresnel=.09+.89*pow(1.-max(dot(eye,normal),0.),3.7);
-      vec3 water=mix(body,shore,fresnel);
+      vec3 water=mix(body,shore,min(.9,fresnel));
       if(fishShape.w>0. && eye.y>.012){
         // Project the fragment's viewing ray to the confirmed swimming depth.
         // The bed and shoreline mask the effect naturally at the water edge.
@@ -142,19 +143,19 @@ function earthTexture(random, kind) {
   return t;
 }
 
-function terrain(group, width, depth, xCentre, zCentre, surfaceY, height, far, texture=null, tint=0x837d5d) {
+function terrain(group, width, depth, xCentre, zCentre, surfaceY, height, far, material, tileMetres=3) {
   const g = new THREE.PlaneGeometry(width, depth, far ? 76 : 48, far ? 23 : 12);
   g.rotateX(-Math.PI / 2);
   const p = g.attributes.position, colors = [], c = new THREE.Color();
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i) + xCentre, z = p.getZ(i) + zCentre, y = height(x,z);
     p.setXYZ(i, x, y + surfaceY, z);
-    c.set(far ? 0x637054 : tint).multiplyScalar(.81 + .13 * Math.sin(x * .47 + z * .85) + .08 * Math.cos(x * 1.71 - z * .29));
+    c.setScalar(.83 + .09 * Math.sin(x * .47 + z * .85) + .08 * Math.cos(x * 1.71 - z * .29));
     colors.push(c.r, c.g, c.b);
-    if(texture)g.attributes.uv.setXY(i,x*.47,z*.47);
+    g.attributes.uv.setXY(i,x/tileMetres,z/tileMetres);
   }
   g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3)); g.computeVertexNormals();
-  group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, map:texture })));
+  group.add(new THREE.Mesh(g,material));
 }
 
 function bedMesh(water) {
@@ -189,7 +190,7 @@ function distantTrees(group, random, farZ, cx, width, sy, height, river) {
   }
 }
 
-function nearShore(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX, kind) {
+function nearShore(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX, kind, rockMaterial) {
   const p = [], c = [], t = new THREE.Color(), dryGrass=new THREE.Color(0x9c9354);
   const grassCount=kind==='sea'?0:kind==='river'?1300:2200;
   for (let i = 0; i < grassCount; i++) {
@@ -215,19 +216,19 @@ function nearShore(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX, kind
     points.setXYZ(i,x*scale,y*scale,z*scale);
     rock.attributes.normal.setXYZ(i,x,y,z);
   }
-  const stones = new THREE.InstancedMesh(rock,new THREE.MeshLambertMaterial({color:0xffffff}),kind==='sea'?107:64);
+  const stones = new THREE.InstancedMesh(rock,rockMaterial,kind==='sea'?107:64);
   stones.name=kind==='sea'?'tidal-rocks':'shore-pebbles';
   for (let i = 0; i < stones.count; i++) {
     const x = anchorX + (random() - .5) * 30, z = nearZ + (random() - .2) * 2.3;
     const s = .02 + random() ** 2 * (kind==='sea'?.88:kind==='river'?.12:.19);
     tform.position.set(x,sy+.025+Math.max(0,z-nearZ)*.05,z);tform.rotation.set(random()*.3,random()*6,random()*.15);
     tform.scale.set(s*(1.27+random()*.5),s*(kind==='sea'?.55:.47),s);tform.updateMatrix();stones.setMatrixAt(i,tform.matrix);
-    t.set(kind==='sea'?0x536064:0x77786c).multiplyScalar(.53+random()*.63);stones.setColorAt(i,t);
+    t.set(kind==='sea'?0xa8b2b0:0xbcb5a7).multiplyScalar(.62+random()*.43);stones.setColorAt(i,t);
   }
   group.add(stones);
 }
 
-export function createLake(water) {
+export function createLake(water,assetUrl=null) {
   const kind=water.waterId==='coastal-bay'?'sea':water.waterId==='river-bend'?'river':'lake';
   const ocean=kind==='sea',river=kind==='river';
   const group = new THREE.Group(), random = randomSource(ocean?83564:river?37189:948351);
@@ -244,12 +245,15 @@ export function createLake(water) {
   };
   const groundTexture=earthTexture(random,kind);
   const bankColor=ocean?0x666b6b:river?0xa29475:0x77694e;
-  terrain(group,width+3,16,x,near+8,sy,(px,pz)=>-.025+(pz-near)*.053+.05*Math.sin(px*.89)*Math.min(1,(pz-near)),false,groundTexture,bankColor);
+  const bankMaterial=new THREE.MeshLambertMaterial({color:bankColor,map:groundTexture,vertexColors:true});
+  const rockMaterial=new THREE.MeshLambertMaterial({color:0xa4a79c});
+  const tileMetres=ocean?1.5:river?3:3.2;
+  terrain(group,width+3,16,x,near+8,sy,(px,pz)=>-.025+(pz-near)*.053+.05*Math.sin(px*.89)*Math.min(1,(pz-near)),false,bankMaterial,tileMetres);
   if(!ocean){
-    terrain(group,Math.max(300,width*3.6),100,x,far-50,sy,farHeight,true);
+    terrain(group,Math.max(300,width*3.6),100,x,far-50,sy,farHeight,true,new THREE.MeshLambertMaterial({color:0x637054,vertexColors:true}));
     for (const side of [-1,1]) {
       const edge = side===1?b.maxXmm/1000:b.minXmm/1000;
-      terrain(group,18,depth,x+(width/2+9)*side,(near+far)/2,sy,(px,pz)=>Math.abs(px-edge)*(.18+.055*Math.cos(pz*.28))-.03,false,groundTexture,bankColor);
+      terrain(group,18,depth,x+(width/2+9)*side,(near+far)/2,sy,(px,pz)=>Math.abs(px-edge)*(.18+.055*Math.cos(pz*.28))-.03,false,bankMaterial,tileMetres);
     }
     distantTrees(group,random,far,x,width,sy,farHeight,river);
   }else{
@@ -263,7 +267,7 @@ export function createLake(water) {
       rock.rotation.y=random()*4;group.add(rock);
     }
   }
-  nearShore(group,random,water.anchor.xMm/1000,near,sy,b.minXmm/1000,b.maxXmm/1000,kind);
+  nearShore(group,random,x,near,sy,b.minXmm/1000,b.maxXmm/1000,kind,rockMaterial);
   group.add(bedMesh(water));
   // Extend only the visual ocean past its playable rectangle. The two meshes
   // share a reflection transform computed for the physical water plane.
@@ -279,16 +283,42 @@ export function createLake(water) {
       plane.position.copy(surface.position);plane.quaternion.copy(surface.quaternion);plane.layers.set(1);plane.renderOrder=1;plane.name='open-sea-horizon';group.add(plane);
     }
   }
-  // The camera and shore are fixed at this spot. Reuse the reflection until
-  // the projection changes. Waves still sample moving normals on every frame.
-  let mirrorDirty=true;
+  // A stationary camera reuses its last shore reflection. During a walk the
+  // reflection is projected from its last camera and refreshed at most 10 Hz.
+  let mirrorDirty=true,forceMirror=true,lastMirror=-Infinity,mirrorUpdates=0;
+  let disposed=false,loadedMaterials=0;
   const renderMirror=surface.onBeforeRender;
   surface.onBeforeRender=function(renderer,scene,camera){
-    if(!mirrorDirty)return;
+    const now=surface.material.uniforms.time.value;
+    if(!mirrorDirty||(!forceMirror&&now-lastMirror<.10))return;
     this.getReflectionCamera(camera).layers.disable(1);
-    renderMirror.call(this,renderer,scene,camera); mirrorDirty=false;
+    renderMirror.call(this,renderer,scene,camera);mirrorDirty=false;forceMirror=false;lastMirror=now;mirrorUpdates++;
   };
-  return {group,kind, refreshMirror(){mirrorDirty=true;},
+  // Each location needs just its soil and stone scans. A missing/invalid
+  // resource leaves the procedural material visible. Navigation invalidates
+  // pending image loads before they can mutate a replacement location.
+  if(assetUrl){
+    const soil=ocean?'coastal-rock.jpg':river?'river-pebbles.jpg':'forest-ground.jpg';
+    for(const name of new Set([soil,'coastal-rock.jpg'])){
+      let texture;
+      texture=new THREE.TextureLoader().load(assetUrl(name),scan=>{
+        if(disposed){scan.dispose();return;}
+        scan.colorSpace=THREE.SRGBColorSpace;scan.wrapS=scan.wrapT=THREE.RepeatWrapping;
+        scan.anisotropy=4;
+        if(name===soil){
+          bankMaterial.map=scan;bankMaterial.color.set(0xe5e6dd);bankMaterial.needsUpdate=true;
+          groundTexture.dispose();
+        }
+        if(name==='coastal-rock.jpg'){
+          rockMaterial.map=scan;rockMaterial.color.set(0xd7dcd9);rockMaterial.needsUpdate=true;
+        }
+        loadedMaterials++;mirrorDirty=true;forceMirror=true;
+      },undefined,()=>texture?.dispose());
+    }
+  }
+  return {group,kind, refreshMirror(immediate=false){mirrorDirty=true;forceMirror=forceMirror||immediate;},
+    mirrorUpdates(){return mirrorUpdates;},
+    loadedMaterials(){return loadedMaterials;},
     fish(sample){
       const u=surface.material.uniforms;
       if(sample){
@@ -298,6 +328,6 @@ export function createLake(water) {
     },
     animate(time){surface.material.uniforms.time.value=time;},
     impact(point,time){surface.material.uniforms.impact.value.set(point.x,point.z,time);},
-    dispose(){surface.getRenderTarget().dispose();disposeGroup(group);}
+    dispose(){disposed=true;surface.getRenderTarget().dispose();disposeGroup(group);}
   };
 }

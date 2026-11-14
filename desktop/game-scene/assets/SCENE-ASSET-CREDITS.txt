@@ -1,0 +1,26 @@
+岸边材质来源
+
+以下三个素材来自 Poly Haven，以 CC0 1.0 Universal 发布，可用于商业项目并随本游戏再分发。许可说明见 https://polyhaven.com/license 和 https://creativecommons.org/publicdomain/zero/1.0/ 。游戏离线读取包内的材质，不连接素材服务。
+
+静水湾岸土 · Forest Ground 04
+作者为 Rob Tuytel（拍摄与处理）和 Rico Cilliers（微调）。原始扫描宽度约 3.2 米。
+资产页 https://polyhaven.com/a/forest_ground_04
+原文件 https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/forest_ground_04/forest_ground_04_diff_1k.jpg
+包内名 forest-ground.jpg，1024 × 1024，1113899 字节。
+SHA-256 50a4dda30875020c64385261aa7e00e2155b592302fa6794165f58fae73cbd2c
+
+江湾滩岸 · Floor Pebbles 01
+作者为 Rob Tuytel。原始扫描宽度约 3 米。
+资产页 https://polyhaven.com/a/floor_pebbles_01
+原文件 https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/floor_pebbles_01/floor_pebbles_01_diff_1k.jpg
+包内名 river-pebbles.jpg，1024 × 1024，649770 字节。
+SHA-256 975dbfbd4e855c517f7f945bef7d8ea55edc5a7a208f5c690a724c13269a3b0c
+
+海湾礁石 · Rock 01
+作者为 Rob Tuytel。原始扫描宽度约 1.5 米。
+资产页 https://polyhaven.com/a/rock_01
+原文件 https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_01/rock_01_diff_1k.jpg
+包内名 coastal-rock.jpg，1024 × 1024，688083 字节。
+SHA-256 0b5f0418eb1e686190c5d33bb54c400b1f9ed58813b5e34aa5e573a5197302b5
+
+三个 JPEG 均为官方 1K 漫反射色彩图，仅更改文件名。水面、天空、树木、草、岩体、竿轮、人物握柄和鱼影由本项目生成。

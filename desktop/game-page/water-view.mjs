@@ -55,9 +55,10 @@ export class WaterView {
         !Number.isSafeInteger(message.revision) || message.revision <= this.#revision || !validState(message.state)) return false;
     this.#state = copy(message.state); this.#revision = message.revision; return true;
   }
-  geometryKey() {
+  geometryKey(movingAlongBank = false) {
     const s = this.#state;
-    return s?.enabled ? JSON.stringify([s.geometryVersion, s.waterId, s.spotId, s.bounds, s.waterBounds, s.anchor, s.surfaceYmm, s.floatDepthMm, s.clearanceMm, s.bed]) : null;
+    const anchor = s?.anchor && movingAlongBank ? [s.anchor.yMm, s.anchor.zMm] : s?.anchor;
+    return s?.enabled ? JSON.stringify([s.geometryVersion, s.waterId, s.spotId, s.bounds, s.waterBounds, anchor, s.surfaceYmm, s.floatDepthMm, s.clearanceMm, s.bed]) : null;
   }
   diagram() {
     const s = this.#state; if (!s?.enabled) return null;

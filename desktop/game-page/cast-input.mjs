@@ -1,6 +1,7 @@
 // Page input pairing only. The host owns elapsed time, power, target, costs and
 // the opaque preparation token. No page reply can create or replay a cast.
-const validAim = (aim, version) => aim && Object.keys(aim).sort().join(',') === 'geometryVersion,u,v' &&
+const validAim = (aim, version, pose) => aim && Object.keys(aim).sort().join(',') === (pose === undefined ? 'geometryVersion,u,v' : 'geometryVersion,poseRevision,u,v') &&
+  (pose === undefined || (Number.isSafeInteger(pose) && pose >= 0 && aim.poseRevision === pose)) &&
   ['u', 'v'].every(key => Number.isInteger(aim[key]) && aim[key] >= 0 && aim[key] <= 10000) &&
   Number.isSafeInteger(aim.geometryVersion) && aim.geometryVersion > 0 && aim.geometryVersion === version;
 export class CastInput {
@@ -21,7 +22,7 @@ export class CastInput {
     const context = this.#readContext();
     return Boolean(this.#active && context.allowed && context.lease === this.#active.lease &&
       (context.requiresAim === true) === Boolean(this.#active.aim) &&
-      (!this.#active.aim || this.#active.aim.geometryVersion === context.geometryVersion));
+      (!this.#active.aim || (this.#active.aim.geometryVersion === context.geometryVersion && this.#active.aim.poseRevision === context.poseRevision)));
   }
   #send(action, active) {
     const transportId = this.#id();
@@ -39,10 +40,10 @@ export class CastInput {
     this.reconcile();
     const context = this.#readContext();
     if (this.#active || !context.allowed || !context.lease || this.#next === Number.MAX_SAFE_INTEGER) return false;
-    if (context.requiresAim === true ? !validAim(aim, context.geometryVersion) : aim !== null) return false;
+    if (context.requiresAim === true ? !validAim(aim, context.geometryVersion, context.poseRevision) : aim !== null) return false;
     this.#pending.clear();
     this.#active = { source, lease: context.lease, inputSequence: String(++this.#next), phase: 'charging',
-      ...(aim ? { aim: Object.freeze({ u: aim.u, v: aim.v, geometryVersion: aim.geometryVersion }) } : {}) };
+      ...(aim ? { aim: Object.freeze({ ...aim }) } : {}) };
     this.#send('begin', this.#active);
     return true;
   }

@@ -22,9 +22,9 @@ sealed partial class DualWindowContext
     }
     void ConfigureGameWaterBudget()
     {
-        // This symmetrical development sector has its nearest target in the
-        // centre of its near edge. Menu readiness is for at least one target.
-        var near=FloatCastLaunchPlanner.Plan(gameWater,5000,10000,gameWater.Version,1000);
+        // The point straight ahead on the near edge is the cheapest legal
+        // cast at this station. Final readiness always checks the selected aim.
+        var near=FloatCastLaunchPlanner.Plan(gameWater,gameWalk==null?5000:gameWalk.NearestAimU,10000,gameWater.Version,1000);
         if(!near.Accepted)throw new InvalidOperationException("The bank has no supported near cast.");
         gameWaterMinimumLineMm=near.Plan.RequiredLineMm;
     }
@@ -40,8 +40,9 @@ sealed partial class DualWindowContext
         plan=null;code="invalid-intent";object value,u,v,version;
         if(!message.TryGetValue("aim",out value))return false;
         var aim=value as Dictionary<string,object>;
-        if(aim==null||aim.Count!=3||!aim.TryGetValue("u",out u)||!aim.TryGetValue("v",out v)||!aim.TryGetValue("geometryVersion",out version)||
+        if(aim==null||!aim.TryGetValue("u",out u)||!aim.TryGetValue("v",out v)||!aim.TryGetValue("geometryVersion",out version)||
             !(u is int)||!(v is int)||!(version is int)||(int)version<=0)return false;
+        if(!ValidGameWalkAim(aim,out code))return false;
         var result=FloatCastLaunchPlanner.Plan(gameWater,(int)u,(int)v,(int)version,1000);
         code=result.Code;plan=result.Plan;return result.Accepted;
     }

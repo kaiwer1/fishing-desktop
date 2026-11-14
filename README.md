@@ -2,11 +2,20 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 试玩包 0.4.0-preview.1](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.1)。** 选择 `FishingDesktop-0.4.0-preview.1-win-x64.zip`，整包解压，双击根目录的 `FishingDesktop.exe`。先选「窗口试玩」并点窗口顶部的「开启交互」。也可选「设为桌面」让钓场在桌面图标后播放。运行需要 Windows 64 位、.NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时。
+**[下载 Windows x64 试玩包 0.4.0-preview.2](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.2)**。选择 `FishingDesktop-0.4.0-preview.2-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
-![试玩中在岸边准备抛竿](docs/preview-0.4/player-lake.png)
+![第二版 Windows 试玩：静水湾岸边](docs/preview-0.4/shore-lake.png)
 
-在水面见到落点圆环后，**左键按住蓄力，松开抛竿；漂尾明显下沉时右键提竿，按住左键收线**。第一次准备留鱼，先按 Esc 到营地买抄网（24 银币）并装备；遛到岸边点「抄鱼」，入护后按 C 选中鱼出售。手动点「收回这一竿」会结束本竿。进入营地可以换地图、装配、买鱼饵和食品、购买和穿脱衣服。
+[看江湾滩岸](docs/preview-0.4/shore-river.png) · [看海湾礁岸](docs/preview-0.4/shore-coast.png)
+
+### 在岸边钓第一条鱼
+
+1. **备好抄网。** 按 Esc 进入营地，在「渔具店」购买抄网（24 银币）并装备，再按 Esc 回到钓位。
+2. **沿岸选位。** 三维钓场空闲时，按 A / D 或左右方向键沿岸步行，按住 Shift 快走。每个钓位从起点向左、向右各可走 8 米。松开方向键站稳，再把鼠标移到水面。
+3. **抛竿和遛鱼。** 看到落点圆环后按住左键蓄力，松开抛竿。漂尾明显下沉时按右键提竿，中鱼后按住左键收线，松开停止收线。
+4. **留鱼和出售。** 遛到岸边，出现「抄鱼」时点按钮或按空格。看到「渔获已入护」后按 C，勾选要卖的鱼并点「出售选中的鱼」。「收回这一竿」会直接结束本竿。
+
+按 M 在以下钓场之间切换。渔具、食品、服装和卖鱼都在营地菜单中办理。
 
 | 钓场 | 可钓鱼种 |
 | --- | --- |
@@ -14,13 +23,12 @@
 | 江湾 | 草鱼、鳊鱼、鲤鱼 |
 | 海湾 | 黑鲷、花鲈、黄鳍鲷 |
 
-新版是单竿浮漂、三处岸钓的独立 **Windows 试玩**。场景和鱼护插画为原创；完整三竿底钓、路亚、自由沿岸行走、36 种写实鱼模型和逐机性能验收尚未完成。看[操作与存档](desktop/player/Readme-zh-CN.txt)、[海岸画面](docs/preview-0.4/player-coast.png)、[实际鱼护](docs/preview-0.4/game-catch.png)或[开发日志](DEVLOG.md)。
+### 试玩版本与素材
 
-公开仓库：https://github.com/kaiwer1/fishing-desktop
+- **0.4.0-preview.2** 加入沿岸走位。静水湾岸土、江湾卵石和海湾礁石分别使用 Poly Haven 的 Forest Ground 04、Floor Pebbles 01 和 Rock 01 三款 CC0 材质。三张贴图随包提供，游玩时从本地读取。[素材作者、原图与许可](desktop/game-scene/assets/SCENE-ASSET-CREDITS.txt)
+- **0.4.0-preview.1** 首次提供单竿浮漂、三处钓场、鱼护和营地商店的 Windows 试玩。[第一版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.1) · [第一版海湾](docs/preview-0.4/player-coast.png) · [鱼护画面](docs/preview-0.4/game-catch.png)
 
-平时展示湖泊、河流和自然环境；进入交互状态后，可以钓鱼、切换地图、购买渔具、食品与服装，并保存游戏进度。氛围和玩法参考《俄罗斯钓鱼4》，场景、美术和实现独立制作。
-
-鱼类方向已明确为中国内陆淡水鱼与海洋鱼类。[建模交接清单](docs/ASSET_MODEL_BRIEF.md)列出候选种、分批样本、渔具和暂定资源预算；这是资产准备规格，现有试玩鱼种尚未替换，新模型也未生成或接入。
+玩法参考《俄罗斯钓鱼4》。钓组、水域和鱼护插画由项目独立制作，当前七种中国内陆与海洋鱼类的渔获以二维插画显示。三竿底钓、路亚、36 种三维鱼模型以及不同硬件的性能验收仍列在后续计划中。[操作与存档](desktop/player/Readme-zh-CN.txt) · [建模交接清单](docs/ASSET_MODEL_BRIEF.md) · [开发日志](DEVLOG.md)
 
 ## 开发记录（按条目日期阅读）
 
@@ -105,7 +113,7 @@ npm run dev
 
 终端会显示本机预览地址。`npm test` 检查钓鱼循环、商店、进度恢复及显示策略，`npm run build` 生成 `dist/`。Windows 下运行 `./scripts/package-wallpaper.ps1` 可生成候选 Lively ZIP 包；在 Lively 中导入测试，不能据此视为已验证的壁纸发行版。
 
-依赖版本锁定在 `package-lock.json`，无需 Unity 才能运行当前样机。所用第三方软件的许可文本见 `public/THIRD_PARTY_NOTICES.txt`。当前未引用外部图片、模型或音频，预览资源由代码生成。
+该网页样机的依赖版本锁定在 `package-lock.json`，预览资源由代码生成。所用第三方软件的许可文本见 `public/THIRD_PARTY_NOTICES.txt`。
 
 ## 网页与壁纸路线
 
@@ -129,7 +137,7 @@ npm run dev
 - 继续调整鱼群、远近抛投和控鱼手感，再补充底钓、多竿、打窝与钓点探索，交易和补给保持菜单方式。
 - 在目标硬件上测试帧率、功耗、内存和不同缩放布局，再决定扩展范围。
 
-技术路线为 Three.js + Vite + Lively 网页壁纸；最终写实素材方案尚未确定。参考分析见 [docs/REFERENCE_NOTES.md](docs/REFERENCE_NOTES.md)。
+旧版网页样机采用 Three.js + Vite，可交给 Lively 作为网页壁纸播放。Windows 0.4 试玩包使用随包提供的原生桌面宿主。参考分析见 [docs/REFERENCE_NOTES.md](docs/REFERENCE_NOTES.md)。
 
 鱼群研究与待实现方案见 [docs/FISH_POPULATION_DESIGN.md](docs/FISH_POPULATION_DESIGN.md)。RF4 公开说明可用于理解设计方向，但不代表已经获得或复现其内部算法。
 

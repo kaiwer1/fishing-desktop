@@ -16,6 +16,7 @@ import { ScenePresentation } from './scene-presentation.mjs';
 import { SpotMenu } from './spot-menu.mjs';
 import { Wardrobe, wardrobeMessages } from './wardrobe.mjs';
 import { fishName, fishFigure, installFishIllustrations, newCreelCatch } from './fish-illustration.mjs';
+import { BankWalk } from './bank-walk.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -45,12 +46,16 @@ const send = message => window.chrome.webview.postMessage({ ...message, document
 const landscape = () => innerWidth > innerHeight;
 const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
 const canPrepare = () => canControl() && !inflight && !spotRequest && !wardrobe.busy && currentSpotWater() && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.SessionId && !snapshot.MenuOpen;
-const castInput = new CastInput({ readContext: () => ({ lease: authority.state().lease, allowed: canPrepare(),
-  requiresAim: waterView.state()?.enabled === true, geometryVersion: waterView.state()?.geometryVersion }), post: send, newTransportId: () => crypto.randomUUID() });
+const castInput = new CastInput({ readContext: () => {
+  const water = waterView.state();
+  return { lease:authority.state().lease, allowed:canPrepare() && bankWalk.canCast(water),
+    requiresAim:water?.enabled === true, geometryVersion:water?.geometryVersion, poseRevision:bankWalk.forWater(water)?.poseRevision };
+}, post: send, newTransportId: () => crypto.randomUUID() });
 function buttonAim() {
   const water = waterView.state();
-  return water?.enabled ? selectedAim?.geometryVersion === water.geometryVersion ? { ...selectedAim } :
-    { u: 5000, v: 5000, geometryVersion: water.geometryVersion } : null;
+  if (!water?.enabled) return null;
+  const remembered = selectedAim?.geometryVersion === water.geometryVersion;
+  return bankWalk.aim(water, { u:remembered ? selectedAim.u : 5000, v:remembered ? selectedAim.v : 5000, geometryVersion:water.geometryVersion });
 }
 function strikeContext() {
   const bite = biteView.state();
@@ -154,16 +159,22 @@ const scene = new ScenePresentation({ canvas: $('scene-canvas'), load: () => imp
   projection: sceneProjection, canRender: () => landscape() && !document.hidden && hostPolicy?.canRun === true &&
     !visualPaused && snapshot?.HasConfirmedState && !snapshot.HostPaused && !snapshot.ShutdownConfirmed &&
     !snapshot.Faulted && !saveFaulted && (readOnly || !snapshot.MenuOpen),
-  cancelHeld: () => { castInput.cancel(); fightInput.cancel(); speedKeyHeld = false; }, changed: renderSceneShell });
+  cancelHeld: () => { bankWalk.stop(); castInput.cancel(); fightInput.cancel(); speedKeyHeld = false; }, changed: renderSceneShell });
+const bankWalk = new BankWalk({ documentId, post:send, newTransportId:() => crypto.randomUUID(), readContext:() => {
+  const water = waterView.state();
+  return { lease:authority.state().lease, waterId:water?.waterId, geometryVersion:water?.geometryVersion,
+    allowed:scene.visible && canPrepare() && !snapshot?.PendingResult && !castInput.state() &&
+      !['charging','prepared'].includes(castState?.phase) && !document.hidden && document.hasFocus() && !visualPaused && hostPolicy?.canRun === true };
+} });
 function sceneProjection() {
   const session = snapshot?.SessionId, water = waterView.state();
   const current = s => s?.sessionId && s.sessionId === session ? s : null;
   if (water?.landing && (!session || water.landing.sessionId !== session)) water.landing = null;
   const cast = castState && (session || castState.phase !== 'committed') ? { phase: castState.phase, powerPermille: castState.powerPermille,
     elapsedMilliseconds: castState.elapsedMilliseconds, inputSequence: castState.inputSequence } : null;
-  const canAim = canPrepare() && !castInput.state() && !document.hidden && !visualPaused && hostPolicy?.canRun === true;
+  const canAim = canPrepare() && bankWalk.canCast(water) && !castInput.state() && !document.hidden && !visualPaused && hostPolicy?.canRun === true;
   return { water, cast, flight: current(flightView.state()), bite: current(biteView.state()), fight: current(fightView.state()),
-    canAim, sleeveColor: wardrobe.sleeveColor };
+    canAim, bank:bankWalk.forWater(water), sleeveColor: wardrobe.sleeveColor };
 }
 function renderSceneShell() {
   const state = scene.state();
@@ -181,7 +192,15 @@ function renderSceneHud() {
   document.body.dataset.sceneMenu = !readOnly && snapshot?.MenuOpen ? 'open' : 'closed';
   if (readOnly || !scene.visible) return;
   const session = snapshot?.SessionId, bite = biteView.state(), fight = fightView.state(), flight = flightView.state();
+  const bank = bankWalk.forWater(waterView.state());
+  $('bank-position').hidden = !bank;
+  if (bank) {
+    const side = bank.xMm < 0 ? '左侧' : '右侧';
+    $('bank-position').textContent = bank.xMm === 0 ? '岸线中央' : `岸线${side} ${(Math.abs(bank.xMm) / 1000).toFixed(1)} 米`;
+  }
   let action = '选择水面落点', hint = '按住左键蓄力，松开抛竿。';
+  if (bank) hint = 'A / D 或左右键沿岸走位，Shift 快走。对准水面按住左键，松开抛竿。';
+  if (bank && !bankWalk.canCast(waterView.state())) { action = '沿岸走位'; hint = '松开走位键，站稳后按住水面抛竿。'; }
   const charging = castState?.phase === 'charging' && !session;
   if (!canControl()) { action = $('status').textContent; hint = ''; }
   else if (snapshot.PendingResult) { action = '鱼护已满'; hint = $('session').textContent; }
@@ -388,12 +407,13 @@ function renderShop() {
   $('shop-cancel').hidden = !input.quote && !input.retry;
 }
 function updateButtons() {
+  bankWalk.reconcile();
   if (catchTimer !== null && (!canControl() || hostPolicy?.canRun === false || snapshot.MenuOpen || snapshot.SessionId || castInput.state() || document.hidden)) hideCatch();
   reconcileSpot();
   wardrobe.reconcile();
   const active = canControl() && !inflight && !spotRequest && !wardrobe.busy && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
   const input = castInput.state();
-  $('cast').disabled = !canPrepare() || Boolean(input);
+  $('cast').disabled = !canPrepare() || !bankWalk.canCast(waterView.state()) || Boolean(input);
   $('cast-release').disabled = !canPrepare() || input?.phase !== 'charging' || input.source !== 'button';
   $('cast-cancel').disabled = !canControl() || !input;
   const strike = strikeContext();
@@ -478,6 +498,7 @@ function renderCampNavigation() {
   }
 }
 function revoke(reason) {
+  bankWalk.stop();
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
   const cancellation = authority.cancel();
@@ -535,6 +556,10 @@ Object.assign(codes, { 'camp-work-started': '帮工已开始，请保持当前�
   'camp-creel-not-empty': '可以先出售鱼护里的渔获。', 'camp-schema-required': '此存档尚未支持营地帮工。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
+  if (m.kind === 'game-bank-state') {
+    if (bankWalk.apply(m)) { castInput.reconcile(); updateButtons(); }
+    return;
+  }
   if (m.kind === 'game-wardrobe-state') {
     if (wardrobe.apply(m)) updateButtons();
     return;
@@ -544,9 +569,10 @@ window.chrome.webview.addEventListener('message', event => {
     return;
   }
   if (m.kind === 'game-water-state') {
-    const previousGeometry = waterView.geometryKey();
+    const movable = Boolean(bankWalk.forWater(waterView.state()));
+    const previousGeometry = waterView.geometryKey(movable);
     if (waterView.apply(m)) {
-      if (waterView.geometryKey() !== previousGeometry) { castInput.cancel(); selectedAim = null; }
+      if (waterView.geometryKey(movable) !== previousGeometry) { bankWalk.stop(); castInput.cancel(); selectedAim = null; }
       const water = waterView.state();
       scene.configure(Boolean(m.sceneEnabled === true && water?.enabled && water.waterBounds && water.anchor));
       castInput.reconcile(); renderCast(); updateButtons();
@@ -613,6 +639,8 @@ window.chrome.webview.addEventListener('message', event => {
     const caught = newCreelCatch(snapshot, m.snapshot); snapshot = m.snapshot; revision = m.revision; showCatch(caught);
   }
   if (m.kind === 'game-reply') {
+    const walkReply = bankWalk.reply(m);
+    if (['walk-updated','walk-stopped'].includes(m.code)) { if (walkReply) updateButtons(); return; }
     if (campOpening && campOpening.transportId === m.transportId && m.code !== 'menu-updated') campOpening = null;
     wardrobe.reply(m);
     if (spotRequest && m.transportId === spotRequest.transportId) {
@@ -640,6 +668,7 @@ window.chrome.webview.addEventListener('message', event => {
   render();
 });
 $('cast').addEventListener('click', () => {
+  bankWalk.stop();
   const aim = buttonAim(); if (castInput.begin('button', aim) && aim) selectedAim = Object.freeze({ ...aim }); render();
 });
 $('cast-release').addEventListener('click', () => { castInput.release(); render(); });
@@ -662,6 +691,7 @@ $('release').addEventListener('click', () => intent('release-current'));
 $('sell').addEventListener('click', () => intent('sell'));
 function toggleMenu(area = 'home') {
   if (!canControl() || inflight || spotRequest || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
+  bankWalk.stop();
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
   if (snapshot.MenuOpen) shopInput.cancel();
@@ -697,12 +727,14 @@ const surfaceAvailable = surface => surface === canvas ? scene.visible && !snaps
 function bindCastSurface(surface) {
 surface.addEventListener('pointerdown', event => {
   if (!surfaceAvailable(surface) || event.pointerType !== 'mouse') return;
+  if (surface === canvas && event.button === 0) bankWalk.stop();
   if (event.button === 0 && ['fighting', 'landing-eligible'].includes(fightContext().phase)) {
     beginReelPointer(event, surface); return;
   }
   const water = waterView.state();
   const aiming = water?.enabled && event.button === 0 && !(event.buttons & 2);
-  const aim = !aiming ? null : surface === canvas ? scene.pickAim(event.clientX, event.clientY) : pickAim($('water-aim-svg'), event, water.geometryVersion);
+  const selected = !aiming ? null : surface === canvas ? scene.pickAim(event.clientX, event.clientY) : pickAim($('water-aim-svg'), event, water.geometryVersion);
+  const aim = bankWalk.aim(water, selected);
   if (aiming && !aim) return;
   const changed = castInput.pointer(event.pointerId, event.buttons, true, aim);
   if (changed) {
@@ -776,7 +808,11 @@ window.addEventListener('blur', () => revoke('blur'));
 window.addEventListener('pagehide', () => { revoke('pagehide'); scene.dispose(); });
 window.addEventListener('resize', () => { if (!landscape()) revoke('portrait'); render(); scene.resize(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) revoke('hidden'); else scene.refresh(); });
+const typing = target => target instanceof Element && (target.isContentEditable || target.closest('input,textarea,select'));
+document.addEventListener('focusin', event => { if (typing(event.target)) bankWalk.stop(); });
 document.addEventListener('keydown', event => {
+  if (!typing(event.target) && !event.isComposing && !event.defaultPrevented && !event.altKey && !event.ctrlKey && !event.metaKey &&
+      bankWalk.key(event,true)) { event.preventDefault(); return; }
   const isEscape = event.key === 'Escape' || event.code === 'Escape', area = campKeys[event.code];
   if (playerCamp() && (isEscape || area)) {
     if (event.defaultPrevented || event.isComposing || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
@@ -792,13 +828,16 @@ document.addEventListener('keydown', event => {
   if (event.code === 'KeyR' && !event.repeat && fightContext().allowed) speedKeyHeld = true;
   if (event.code === 'Space' && !event.repeat && fightContext().allowed) { event.preventDefault(); fightInput.land(); updateButtons(); }
 });
-document.addEventListener('keyup', event => { if (event.code === 'KeyR') speedKeyHeld = false; });
+document.addEventListener('keyup', event => {
+  if (!typing(event.target) && bankWalk.key(event,false)) event.preventDefault();
+  if (event.code === 'KeyR') speedKeyHeld = false;
+});
 $('scene-to-map').addEventListener('click', () => scene.showScene(false));
 $('scene-to-water').addEventListener('click', () => scene.showScene(true));
 for (const key of ['menu','recall','release','land','retry-land','retry-escape']) {
   $(`scene-${key}`).addEventListener('click', event => { if (event.detail <= 1 && !$(key).disabled) $(key).click(); });
 }
-function pauseVisual(value) { visualPaused = value; scene.refresh(); }
+function pauseVisual(value) { visualPaused = value; if (value) bankWalk.stop(); scene.refresh(); }
 const visual = { start: () => pauseVisual(false), stop: () => pauseVisual(true), pause: () => pauseVisual(true), resume: () => pauseVisual(false),
   state: () => scene.state().renderer ?? { running: false, frames: 0, kind: 'host-flight-projection' } };
 window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision,
@@ -809,6 +848,7 @@ window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authorit
   sparesState: sparesView.state(), sparesRevision: sparesView.revision, sparesInputState: sparesInput.state(),
   campState: campView.state(), campRevision: campView.revision, campInputState: campInput.state(),
   waterState: waterView.state(), waterRevision: waterView.revision, sceneState: scene.state(),
+  bankState:bankWalk.state(), bankRevision:bankWalk.revision, bankPending:bankWalk.pending,
   spotState: spotMenu.state(), spotRevision: spotMenu.revision, spotPending: spotRequest?.spotId ?? spotMenu.pending,
   wardrobeState: wardrobe.state(), wardrobeRevision: wardrobe.revision, wardrobePending: wardrobe.pending }),
   pickSceneAim: (x, y) => scene.pickAim(x, y), projectSceneAim: (u, v) => scene.projectAim(u, v),

@@ -90,6 +90,7 @@ sealed partial class DualWindowContext
             // never become a fresh cast after the current session ends.
             if(sequence<=binding.CastHighWater){GameReply(pane,transport,"stale-input");return;}
             binding.CastHighWater=sequence;
+            if(GameWalkMoving){GameReply(pane,transport,"walk-busy");return;}
             var state=game.Snapshot.State;
             if(state==null){GameReply(pane,transport,"state-unavailable");return;}
             var previousPlan=gameWaterPlan;var previousTarget=gameWaterTarget;

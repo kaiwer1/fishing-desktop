@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import * as THREE from 'three';
 import { createGameScene } from './game-scene.mjs';
-import { pickAim, projectAim, setBankCamera, validWater } from './water-space.mjs';
+import { pickAim, projectAim, setBankCamera, validWater, waterGeometryKey } from './water-space.mjs';
 import { createTackle, rodPose } from './tackle.mjs';
 import { createLake } from './lake.mjs';
 import { sampleFightFish } from './fight-fish.mjs';
@@ -120,4 +122,73 @@ test('the single shallow fish image follows confirmed encounter measurements and
   }
   assert.equal(sampleFightFish({...views,bite:{sessionId:f.sessionId,encounterId:'other'}},moved),null);
   assert.equal(sampleFightFish({water,bite:{phase:'strikeable'},flight:f},null),null);
+});
+
+const bankView=x=>({...water,anchor:{...water.anchor,xMm:x}});
+test('walking preserves the survey, ground origin and scenery identity; a changed bed or station rebuilds',()=>{
+  const left=bankView(-8000),right=bankView(8000);
+  assert.equal(waterGeometryKey(left),waterGeometryKey(right));
+  assert.notEqual(waterGeometryKey(left),waterGeometryKey({...left,spotId:'other'}));
+  assert.notEqual(waterGeometryKey(left),waterGeometryKey({...left,bed:left.bed.map(k=>({...k,depthMm:k.depthMm+5}))}));
+  const coast=w=>({...w,waterId:'coastal-bay'});
+  const before=createLake(coast(left)),after=createLake(coast(right));
+  try{
+    const rocks=group=>group.getObjectByName('tidal-rocks').instanceMatrix.array;
+    assert.deepEqual(rocks(before.group),rocks(after.group));
+    assert.deepEqual(before.group.getObjectByName('surveyed-surface').position.toArray(),
+      after.group.getObjectByName('surveyed-surface').position.toArray());
+  }finally{before.dispose();after.dispose();}
+});
+
+test('both bank limits fit the same lens and round-trip fixed world targets on three landscape sizes',()=>{
+  for(const [width,height] of [[820,600],[1600,900],[2560,1080]]){
+    const camera=new THREE.PerspectiveCamera(47,1,.022,700),rect={left:48,top:21,width,height};
+    let initialFov,firstPixel;
+    for(const x of [-8000,0,8000]){
+      const station=bankView(x);setBankCamera(camera,station,width/height);
+      assert.equal(camera.position.x,x/1000);
+      if(initialFov===undefined)initialFov=camera.fov;
+      assert.equal(camera.fov,initialFov);
+      for(const u of [0,4500,10000])for(const v of [0,6600,10000]){
+        const pixel=projectAim(camera,station,rect,u,v);
+        assert.ok(pixel,`target ${u},${v} from ${x} at ${width}x${height}`);
+        assert.deepEqual(pickAim(camera,station,rect,pixel.clientX,pixel.clientY),{u,v,geometryVersion:1});
+      }
+      const middle=projectAim(camera,station,rect,5000,5000);
+      if(firstPixel)assert.ok(Math.abs(firstPixel.clientX-middle.clientX)>5);
+      firstPixel=middle;
+    }
+  }
+});
+
+test('grip follows the confirmed moving anchor, the charge pose and fish line stay in world space',()=>{
+  const rig=createTackle(),camera=new THREE.PerspectiveCamera(47,1,.022,700);
+  try{
+    for(const x of [-8000,0,8000]){
+      const station=bankView(x),yaw=setBankCamera(camera,station,1.6);
+      rig.animate({water:station,cast:{phase:'charging',powerPermille:800}},0,.1,yaw);
+      assert.equal(rig.anchorXmm(),x);
+      const hand=rig.root.getWorldPosition(new THREE.Vector3()).project(camera);
+      assert.ok(hand.x>0&&hand.x<.95&&hand.y>-.98&&hand.y<0,`hand at ${x}`);
+      rig.animate({water:station,flight:f},1,.1,yaw);
+      assert.deepEqual(rig.float.position.toArray(),[.55,0,-13]);
+      const tip=new THREE.Vector3().fromBufferAttribute(rig.line.geometry.attributes.position,22);
+      assert.ok(tip.distanceTo(rig.float.position)<1e-5);
+    }
+  }finally{rig.dispose();}
+});
+
+test('offline shoreline scans are the three credited CC0 originals and fit the texture budget',async()=>{
+  const assets=new URL('./assets/',import.meta.url);
+  const credits=await readFile(new URL('SCENE-ASSET-CREDITS.txt',assets),'utf8');
+  let bytes=0;
+  for(const name of ['forest-ground.jpg','river-pebbles.jpg','coastal-rock.jpg']){
+    const file=await readFile(new URL(name,assets));
+    assert.deepEqual([...file.subarray(0,2)],[255,216]);
+    assert.deepEqual([...file.subarray(-2)],[255,217]);
+    assert.ok(credits.includes(name));assert.ok(credits.includes(createHash('sha256').update(file).digest('hex')));
+    bytes+=file.byteLength;
+  }
+  assert.ok(credits.includes('https://polyhaven.com/license'));
+  assert.equal(bytes,2451752);assert.ok(bytes<4*1024*1024);
 });

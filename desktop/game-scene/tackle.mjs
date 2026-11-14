@@ -6,7 +6,7 @@ const endedFights = new Set(['landed','escaped','faulted','ended']);
 const clamp = THREE.MathUtils.clamp;
 function smooth(t) { t = clamp(t,0,1); return t * t * (3 - 2 * t); }
 
-export function rodPose({cast,flight,bite,fight}, time=0) {
+export function rodPose({water,cast,flight,bite,fight}, time=0, viewYaw=0) {
   const f = flight?.sessionId ? flight : null;
   const hooked = f && fight?.sessionId === f.sessionId ? fight : null;
   const b = f && bite?.sessionId === f.sessionId ? bite : null;
@@ -21,7 +21,9 @@ export function rodPose({cast,flight,bite,fight}, time=0) {
   if (!f || (hooked && endedFights.has(hooked.phase))) return pose;
   if (hooked && fightPhases.has(hooked.phase)) {
     pose.phase='fighting'; pose.pitch=.42+Math.min(.32,hooked.tensionMilliN/43000);
-    pose.yaw=.14+clamp(-Math.atan2(hooked.xMm,Math.max(1,hooked.zMm))*.43,-.33,.33);
+    const a=water?.anchor;
+    const bearing=-Math.atan2(hooked.xMm-(a?.xMm??0),hooked.zMm-(a?.zMm??0));
+    pose.yaw=.14+clamp((bearing-viewYaw)*.43,-.33,.33);
     pose.roll=-.18;pose.flex=.1+clamp(hooked.rodDeflectionMm/730,0,1.18);
     pose.shiftY=.055;pose.reeling=hooked.reeling;pose.reelLevel=hooked.reelLevel;
     pose.end = toWorld(hooked);return pose;
@@ -144,20 +146,23 @@ export function createTackle() {
   line.frustumCulled=false;group.add(line);
   group.traverse(o=>o.layers.set(1));
   // Keep both the rod butt and the reel in the lower right of the view.
-  let previousPhase=null,shownColor=null;
+  let previousPhase=null,shownColor=null,lastYaw=0,anchorXmm=null;
   return {group, root, float, line, tip,
-    animate(views, time, dt) {
-      const pose=rodPose(views,time);
+    animate(views, time, dt, viewYaw=0) {
+      const pose=rodPose(views,time,viewYaw);
       const color=typeof views.sleeveColor==='string'&&/^#[0-9a-f]{6}$/i.test(views.sleeveColor)?views.sleeveColor:null;
       if(color!==shownColor){sleeve.color.set(color??0x526451);shownColor=color;}
       const approach=previousPhase===null?1:1-Math.exp(-dt*(pose.phase==='casting'?31:17));
       const a=views.water.anchor;
-      root.position.set(a.xMm/1000+.215+pose.shiftX,a.yMm/1000-.105+pose.shiftY,-a.zMm/1000-.24);
+      const gripX=.215+pose.shiftX,gripZ=-.74,c=Math.cos(viewYaw),s=Math.sin(viewYaw);
+      root.position.set(a.xMm/1000+gripX*c+gripZ*s,a.yMm/1000-.105+pose.shiftY,-a.zMm/1000+.5-gripX*s+gripZ*c);
+      anchorXmm=a.xMm;
       root.rotation.order='YXZ';
       root.rotation.x=THREE.MathUtils.lerp(root.rotation.x,pose.pitch,approach);
-      const target=views.water.target;
-      const aimYaw=target?-Math.atan2(target.xMm-a.xMm,target.zMm-a.zMm)*.56:0;
-      root.rotation.y=THREE.MathUtils.lerp(root.rotation.y,pose.yaw+aimYaw,approach);
+      const target=pose.phase==='fighting'?null:views.water.target;
+      const aimYaw=target?(-Math.atan2(target.xMm-a.xMm,target.zMm-a.zMm)-viewYaw)*.56:0;
+      root.rotation.y=THREE.MathUtils.lerp(root.rotation.y+viewYaw-lastYaw,viewYaw+pose.yaw+aimYaw,approach);
+      lastYaw=viewYaw;
       root.rotation.z=THREE.MathUtils.lerp(root.rotation.z,pose.roll,approach);
       for(let i=0;i<sections.length;i++){
         const ratio=(i+1)/sections.length;
@@ -180,6 +185,7 @@ export function createTackle() {
       return pose.phase;
     },
     sleeveColor(){return shownColor;},
+    anchorXmm(){return anchorXmm;},
     dispose(){disposeGroup(group);}
   };
 }

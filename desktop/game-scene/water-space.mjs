@@ -23,10 +23,17 @@ export function toWorld(point, out = new THREE.Vector3()) {
   return out.set(point.xMm / 1000, point.yMm / 1000, -point.zMm / 1000);
 }
 
+// The walking anchor and cast selection describe the player, not the shore.
+// Equal surveys share their terrain, materials and cached reflection target.
+export function waterGeometryKey(water) {
+  if (!validWater(water)) return null;
+  const b = water.waterBounds;
+  return JSON.stringify([water.waterId, water.spotId, water.geometryVersion, water.surfaceYmm,
+    b.minXmm, b.maxXmm, b.minZmm, b.maxZmm, water.bed.map(k => [k.zMm,k.depthMm])]);
+}
+
 export function setBankCamera(camera, water, aspect) {
   const rect = water.bounds;
-  const aimCentre = new THREE.Vector3((rect.minXmm + rect.maxXmm) / 2000,
-    water.surfaceYmm / 1000, -(rect.minZmm + rect.maxZmm) / 2000);
   toWorld(water.anchor, camera.position);
   // The angler stands behind the rod's launch anchor. Keep the horizon in the
   // upper half while preserving exactly the host's coordinate system.
@@ -34,11 +41,21 @@ export function setBankCamera(camera, water, aspect) {
   camera.position.z += .5;
   camera.aspect = aspect;
   const nearest = Math.max(.1, camera.position.z + rect.minZmm / 1000);
-  const halfWidth = Math.max(Math.abs(camera.position.x - rect.minXmm / 1000), Math.abs(camera.position.x - rect.maxXmm / 1000));
+  const halfWidth = (rect.maxXmm-rect.minXmm) / 2000;
   camera.fov = Math.min(104, Math.max(47, THREE.MathUtils.radToDeg(2 * Math.atan(halfWidth * 1.05 / (nearest * aspect)))));
-  camera.lookAt(aimCentre.x, aimCentre.y - 1.8, aimCentre.z);
+  // Keep a constant focal length while walking; pan to the angular midpoint
+  // of the actual four corners rather than zooming out at both ends.
+  const angles=[];
+  for(const x of [rect.minXmm,rect.maxXmm])for(const z of [rect.minZmm,rect.maxZmm]){
+    angles.push(Math.atan2(x/1000-camera.position.x,camera.position.z+z/1000));
+  }
+  const heading=(Math.min(...angles)+Math.max(...angles))*.5;
+  const distance=camera.position.z+(rect.minZmm+rect.maxZmm)/2000;
+  const down=(camera.position.y-water.surfaceYmm/1000+1.8)/distance;
+  camera.lookAt(camera.position.x+Math.sin(heading),camera.position.y-down,camera.position.z-Math.cos(heading));
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld(true);
+  return -heading;
 }
 
 function inside(value) { return Number.isSafeInteger(value) && value >= 0 && value <= 10000; }

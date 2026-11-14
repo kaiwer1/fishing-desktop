@@ -103,6 +103,8 @@ async function pageFixture(sceneModule) {
   emit({ kind: 'role', role: '交互' }); emit({ kind: 'game-snapshot', revision: 1, snapshot }); emit({ kind: 'lease', revision: 1, cancellationEpoch: 0, lease: 'first' });
   return { nodes, messages, emit, probe, snapshot, scrolls, click: id => nodes.get(id).dispatch('click'),
     key: (code, values = {}) => documentEvents.dispatch('keydown', { code, key: code === 'Escape' ? code : code.slice(3).toLowerCase(), ...values }),
+    up: (code, values = {}) => documentEvents.dispatch('keyup', { code, ...values }),
+    windowEvent: type => windowEvents.dispatch(type),
     pointer: (type, values) => nodes.get('cast-target').dispatch(type, { target: aimSvg, ...values }),
     water: (revision, extra = {}) => emit({ ...packet(revision, extra), documentId: probe.documentId }) };
 }
@@ -167,6 +169,42 @@ test('player camp ignores editable targets, repeats, modifiers, portrait and rev
   f.emit({kind:'lease',revision:2,cancellationEpoch:0,lease:null}); f.key('Escape'); f.key('KeyM'); assert.equal(f.messages.length,0);
   const legacy=await pageFixture(); legacy.water(1); legacy.key('KeyC'); assert.equal(legacy.messages.length,0); legacy.key('Escape');
   assert.equal(legacy.messages.at(-1).kind,'revoke'); assert.equal(legacy.messages.at(-1).reason,'escape');
+});
+
+const bankState = (extra = {}) => ({ enabled:true, waterId:'development-still-water', geometryVersion:1,
+  minXmm:-8000,maxXmm:8000,xMm:0,poseRevision:0,direction:0,fast:false,...extra });
+test('real bank HUD takes a confirmed standing pose before a fresh click and shares its absolute position with the renderer', async () => {
+  const renderer=fakeScene(), f=await pageFixture(renderer); await enableScene(f); enableCampCatalog(f);
+  const bank=(revision,extra={})=>f.emit({kind:'game-bank-state',revision,state:bankState(extra)});
+  const reply=(msg,code)=>f.emit({kind:'game-reply',transportId:msg.transportId,code});
+  const canvas=f.nodes.get('scene-canvas'), click=()=>canvas.dispatch('pointerdown',{clientX:4000,clientY:8000,buttons:1});
+  bank(1); f.key('KeyD'); const move=f.messages[0];
+  assert.deepEqual(Object.keys(move).sort(),['direction','documentId','fast','geometryVersion','inputSequence','kind','lease','transportId']);
+  assert.equal(move.direction,1); reply(move,'walk-updated');
+  bank(2,{direction:1,xMm:750,poseRevision:2}); assert.equal(f.probe.state().bankPending,false);
+  click(); const stop=f.messages.at(-1); assert.equal(stop.direction,0); assert.equal(f.messages.length,2);
+  canvas.dispatch('pointerup',{buttons:0}); reply(stop,'walk-stopped'); click(); assert.equal(f.messages.length,2);
+  bank(3,{xMm:800,poseRevision:3}); assert.equal(f.probe.state().bankPending,false);
+  click(); assert.equal(f.messages.length,2); // bank arrived before its matching water anchor
+  const geo=extended(); geo.anchor.xMm=800;
+  f.emit({kind:'game-water-state',sceneEnabled:true,revision:2,state:state(geo)});
+  assert.equal(renderer.log.updates.at(-1).bank.xMm,800);
+  assert.match(f.nodes.get('bank-position').textContent,/右侧 0.8 米/);
+  click(); assert.deepEqual(f.messages.at(-1).aim,{u:4000,v:8000,geometryVersion:1,poseRevision:3});
+  canvas.dispatch('pointerup',{buttons:0}); assert.equal(f.messages.at(-1).action,'release'); assert.equal('aim' in f.messages.at(-1),false);
+  f.key('KeyA'); assert.equal(f.messages.length,4); assert.equal(f.messages.at(-1).action,'release');
+});
+test('bank walking stops before menu or blur, cannot start in fields or read-only views, and requires a new physical press', async () => {
+  const f=await pageFixture(fakeScene()); await enableScene(f); enableCampCatalog(f);
+  f.emit({kind:'game-bank-state',revision:1,state:bankState()});
+  f.key('KeyA',{target:f.nodes.get('food-packs')}); f.key('ArrowLeft',{target:f.nodes.get('equipment-line')}); assert.equal(f.messages.length,0);
+  f.key('KeyA'); f.key('Escape'); assert.deepEqual(f.messages.map(m=>m.kind),['game-bank-walk','game-bank-walk','game-menu']);
+  assert.deepEqual(f.messages.slice(0,2).map(m=>m.direction),[-1,0]);
+  f.emit({kind:'game-reply',code:'menu-updated',transportId:f.messages.at(-1).transportId});
+  f.emit({kind:'game-snapshot',revision:2,snapshot:{...f.snapshot,MenuOpen:true}}); f.key('KeyD');
+  f.emit({kind:'game-snapshot',revision:3,snapshot:{...f.snapshot,MenuOpen:false}}); f.key('KeyA',{repeat:true}); assert.equal(f.messages.length,3);
+  f.key('KeyD'); f.windowEvent('blur'); assert.deepEqual(f.messages.slice(-3).map(m=>[m.kind,m.direction]),[['game-bank-walk',1],['game-bank-walk',0],['revoke',undefined]]);
+  f.key('KeyA'); f.emit({kind:'role',role:'只读'}); f.key('KeyD'); assert.equal(f.messages.length,6);
 });
 test('real page shares cast input across camera and map, cancelling a held gesture before a switch or graphics fault', async () => {
   const renderer = fakeScene(), f = await pageFixture(renderer); await enableScene(f);

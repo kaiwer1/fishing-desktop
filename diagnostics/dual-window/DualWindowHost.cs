@@ -10,6 +10,8 @@ using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
+[assembly: System.Reflection.AssemblyMetadata("FishingDesktop.PlayerProtocol","1")]
+
 sealed class ProbeWindow : Form
 {
     internal readonly DualWindowOwner.Ticket Ticket;
@@ -31,14 +33,16 @@ sealed class ProbeWindow : Form
         Text=context.GameMode?"钓鱼桌面 · 鼠标抛竿接入预览":ticket.CanControl?"Fishing Dual Window - Interaction":"Fishing Dual Window - Read Only";
         Size=new Size(650,570);StartPosition=FormStartPosition.Manual;
         if(context.GameMode)Size=new Size(1000,650);
+        if(context.PlayerMode){Text=ticket.CanControl?"钓鱼桌面 · 岸边":"钓鱼桌面 · 观景";StartPosition=FormStartPosition.CenterScreen;var area=Screen.PrimaryScreen.WorkingArea;
+            Size=new Size(Math.Min(1240,Math.Max(640,area.Width-40)),Math.Min(775,Math.Max(400,area.Height-40)));}
         Location=new Point(ticket.CanControl?720:60,120);
         if(context.ManualMode && ticket.CanControl){Size=new Size(1000,800);StartPosition=FormStartPosition.CenterScreen;}
         if(automated){if(!DesktopReadOnly)Opacity=0;ShowInTaskbar=false;}
         if(context.ManualUnattended && ticket.CanControl){Opacity=0;ShowInTaskbar=false;}
         if(DesktopReadOnly){FormBorderStyle=FormBorderStyle.None;AutoScaleMode=AutoScaleMode.None;Size=Screen.PrimaryScreen.Bounds.Size;}
         var bar=new FlowLayoutPanel {Dock=DockStyle.Top,AutoSize=true,WrapContents=true};
-        AddButton(bar,context.ManualMode || context.GameMode?"打开桌面页":"Open read only",delegate{context.OpenFromUser(false);});
-        AddButton(bar,context.ManualMode || context.GameMode?"打开交互窗":"Open interaction",delegate{context.OpenFromUser(true);});
+        if(!context.PlayerMode)AddButton(bar,context.ManualMode || context.GameMode?"打开桌面页":"Open read only",delegate{context.OpenFromUser(false);});
+        if(!context.PlayerMode)AddButton(bar,context.ManualMode || context.GameMode?"打开交互窗":"Open interaction",delegate{context.OpenFromUser(true);});
         if(ticket.CanControl){
             AddButton(bar,context.ManualMode || context.GameMode?"开启交互":"Enable interaction",delegate{context.GrantFromUser(this);});
             AddButton(bar,context.ManualMode || context.GameMode?"关闭交互":"Observe / cancel",delegate{context.Revoke(this);});
@@ -47,7 +51,7 @@ sealed class ProbeWindow : Form
         AddButton(bar,context.ManualMode?"退出本轮测试":context.GameMode?"退出钓鱼桌面":"Exit both + owner",delegate{context.Shutdown();});
         Controls.Add(View);if(!DesktopReadOnly)Controls.Add(bar);else bar.Dispose();
         Deactivate+=delegate{context.Revoke(this,"host-deactivate");};
-        FormClosing+=delegate{context.Retire(this);};
+        FormClosing+=delegate{if(context.PlayerWindowOnly)context.Shutdown();else context.Retire(this);};
     }
     static void AddButton(FlowLayoutPanel panel,string text,Action action)
     {
@@ -102,6 +106,7 @@ sealed partial class DualWindowContext : ApplicationContext
     internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false,bool sceneViewport=false,bool sceneContext=false,bool sceneFaultSelfTest=false,string sceneWatchdogCase=null,string gameMode=null)
     {
         this.gameMode=gameMode;
+        if(PlayerMode){root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"FishingDesktop","Preview");Directory.CreateDirectory(root);}
         this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;this.threeScene=threeScene;this.sceneViewport=sceneViewport;this.sceneContext=sceneContext;this.sceneFaultSelfTest=sceneFaultSelfTest;this.sceneWatchdogCase=sceneWatchdogCase;
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
         this.nativePolicySelfTest=nativePolicySelfTest;
@@ -116,7 +121,7 @@ sealed partial class DualWindowContext : ApplicationContext
         InitializeSceneWatchdog();
         if(!automated && !ManualUnattended){
             var menu=new ContextMenuStrip();
-            menu.Items.Add(GameMode?"打开桌面页":"Open read only",null,delegate{OpenFromUser(false);});
+            if(!PlayerWindowOnly)menu.Items.Add(GameMode?"打开桌面页":"Open read only",null,delegate{OpenFromUser(false);});
             menu.Items.Add(GameMode?"打开交互窗":"Open interaction",null,delegate{OpenFromUser(true);});
             menu.Items.Add(GameMode?"退出钓鱼桌面":"Exit both windows and owner",null,delegate{Shutdown();});
             tray=new NotifyIcon {Icon=SystemIcons.Application,Text=GameMode?"钓鱼桌面 · 鼠标抛竿接入预览":"Fishing dual-window diagnostic",ContextMenuStrip=menu,Visible=true};
@@ -135,10 +140,17 @@ sealed partial class DualWindowContext : ApplicationContext
                 if(!stopping && e.BrowserProcessExitKind==CoreWebView2BrowserProcessExitKind.Failed)
                     Fail(new InvalidOperationException("Dedicated browser failed; explicit application restart required."));
             };
-            await Open(false);var interaction=await Open(true);
+            if(gameMode=="player-wallpaper"){
+                var targetScreen=Screen.PrimaryScreen;
+                var current=targetScreen==null?null:new FishingDesktop.Diagnostics.HostPolicy.NativeEnvironment().Capture(targetScreen.Bounds);
+                if(current==null||!current.Known||!current.InteractiveSession||current.Fullscreen||targetScreen.Bounds.Width<=targetScreen.Bounds.Height)
+                    throw new InvalidOperationException("Current display or foreground does not permit the wallpaper to start.");
+            }
+            if(GameWallpaperSelfTest&&!GameWallpaperEnvironmentReady())return;
+            if(!PlayerWindowOnly)await Open(false);var interaction=await Open(true);
             if(ManualMode && !ManualUnattended && Live(interaction)){GuardPresentation(()=>{interaction.Hide();interaction.Show();});}
             if(GameMode && !stopping)await StartGamePresentation();
-            if(automated && !stopping){if(GameFailureCase!=null)RunGameFailureBoundaryProbe();else if(GameSparesSelfTest)RunGameSparesProbe();else if(GameCampSelfTest)RunGameCampProbe();else if(GameLineBreakSelfTest)RunGameLineBreakProbe();else if(GameWaterSelfTest)RunGameWaterProbe();else if(GameSelfTest)RunGameProbe();else RunProbe();}
+            if(automated && !stopping){if(GameFailureCase!=null)RunGameFailureBoundaryProbe();else if(GameSparesSelfTest)RunGameSparesProbe();else if(GameCampSelfTest)RunGameCampProbe();else if(GameLineBreakSelfTest)RunGameLineBreakProbe();else if(GameWaterSelfTest)RunGameWaterProbe();else if(GameSceneSelfTest)RunGameSceneProbe();else if(GameAtlasSelfTest)RunGameAtlasProbe();else if(GamePlayerSelfTest)RunGamePlayerProbe();else if(GameWardrobeSelfTest)RunGameWardrobeProbe();else if(GameCatchSelfTest)RunGameCatchProbe();else if(GameWallpaperSelfTest)RunGameWallpaperProbe();else if(GameSelfTest)RunGameProbe();else RunProbe();}
         }catch(Exception e){Fail(e);}
     }
     bool Live(ProbeWindow pane)
@@ -171,7 +183,7 @@ sealed partial class DualWindowContext : ApplicationContext
             core.Settings.AreBrowserAcceleratorKeysEnabled=false;
             core.Settings.AreDefaultContextMenusEnabled=false;
             core.Settings.AreDevToolsEnabled=false;
-            core.SetVirtualHostNameToFolderMapping("fishing-dual.localhost",Path.Combine(root,"page"),CoreWebView2HostResourceAccessKind.DenyCors);
+            core.SetVirtualHostNameToFolderMapping("fishing-dual.localhost",Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"page"),CoreWebView2HostResourceAccessKind.DenyCors);
             core.NavigationStarting+=delegate(object sender,CoreWebView2NavigationStartingEventArgs e){
                 if(!Live(pane)){e.Cancel=true;return;}
                 if(e.Uri!=PageUrl){e.Cancel=true;Revoke(pane);return;}
@@ -344,6 +356,7 @@ sealed partial class DualWindowContext : ApplicationContext
         if(stopping)return;
         ExitCode=4;
         try{File.WriteAllText(Path.Combine(root,"dual-window-error.txt"),error.ToString(),Encoding.UTF8);}catch(Exception){}
+        if(PlayerMode)MessageBox.Show(PlayerWindowOnly?"游戏窗口未能继续运行。请确认已安装 Microsoft Edge WebView2 运行时，然后重开游戏。":"未能保持桌面壁纸。请退出后在启动器选择“窗口试玩”。","钓鱼桌面",MessageBoxButtons.OK,MessageBoxIcon.Information);
         Shutdown();
     }
     internal void Shutdown()
@@ -377,12 +390,20 @@ sealed partial class DualWindowContext : ApplicationContext
     [STAThread] static int Main(string[] args)
     {
         string gameMode=null;
-        if(args.Length==1){if(args[0]=="--game-new")gameMode="new";else if(args[0]=="--game-open")gameMode="open";else if(args[0]=="--game-self-test")gameMode="self-test";else if(args[0]=="--game-spares-self-test")gameMode="spares-self-test";else if(args[0]=="--game-camp-self-test")gameMode="camp-self-test";else if(args[0]=="--game-line-break-self-test")gameMode="line-break-self-test";else if(args[0]=="--game-water-self-test")gameMode="water-self-test";else if(args[0]=="--game-line-break-new")gameMode="line-break-new";else if(args[0]=="--game-line-break-open")gameMode="line-break-open";}
+        if(args.Length==1){if(args[0]=="--game-new")gameMode="new";else if(args[0]=="--game-open")gameMode="open";else if(args[0]=="--game-self-test")gameMode="self-test";else if(args[0]=="--game-spares-self-test")gameMode="spares-self-test";else if(args[0]=="--game-camp-self-test")gameMode="camp-self-test";else if(args[0]=="--game-line-break-self-test")gameMode="line-break-self-test";else if(args[0]=="--game-scene-self-test")gameMode="scene-self-test";else if(args[0]=="--game-water-self-test")gameMode="water-self-test";else if(args[0]=="--game-line-break-new")gameMode="line-break-new";else if(args[0]=="--game-line-break-open")gameMode="line-break-open";}
+        if(args.Length==1 && args[0]=="--game-wallpaper-prepare-self-test")gameMode="wallpaper-prepare-self-test";
+        if(args.Length==1 && args[0]=="--game-wallpaper-self-test")gameMode="wallpaper-self-test";
+        if(args.Length==1 && args[0]=="--game-catch-self-test")gameMode="catch-self-test";
+        if(args.Length==1 && args[0]=="--game-wardrobe-self-test")gameMode="wardrobe-self-test";
+        if(args.Length==1 && args[0]=="--game-player-self-test")gameMode="player-self-test";
+        if(args.Length==1 && args[0]=="--game-atlas-self-test")gameMode="atlas-self-test";
+        if(args.Length==1 && args[0]=="--player-window")gameMode="player-window";
+        if(args.Length==1 && args[0]=="--player-wallpaper")gameMode="player-wallpaper";
         if(args.Length==2 && (args[0]=="--game-failure-self-test" || args[0]=="--game-line-break-failure-self-test")){
             if(args[1]!="known-close" && args[1]!="after-flush" && args[1]!="after-prefix")return 5;
             gameMode=(args[0]=="--game-line-break-failure-self-test"?"line-break-failure-":"failure-")+args[1];
         }
-        bool gameUser=gameMode=="new" || gameMode=="open" || gameMode=="line-break-new" || gameMode=="line-break-open",gameSelfTest=gameMode=="self-test" || gameMode=="spares-self-test" || gameMode=="camp-self-test" || gameMode=="line-break-self-test" || gameMode=="water-self-test" || (gameMode!=null && (gameMode.StartsWith("failure-",StringComparison.Ordinal)||gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)));
+        bool gameUser=gameMode=="player-window" || gameMode=="player-wallpaper" || gameMode=="new" || gameMode=="open" || gameMode=="line-break-new" || gameMode=="line-break-open",gameSelfTest=gameMode=="self-test" || gameMode=="spares-self-test" || gameMode=="camp-self-test" || gameMode=="line-break-self-test" || gameMode=="water-self-test" || gameMode=="scene-self-test" || gameMode=="atlas-self-test" || gameMode=="player-self-test" || gameMode=="wardrobe-self-test" || gameMode=="catch-self-test" || gameMode=="wallpaper-self-test" || gameMode=="wallpaper-prepare-self-test" || (gameMode!=null && (gameMode.StartsWith("failure-",StringComparison.Ordinal)||gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)));
         int manualSeconds=0;bool manualUnattended=args.Length>0 && args[0]=="--manual-desktop-timeout-probe";
         bool manual=manualUnattended || (args.Length>0 && args[0]=="--manual-desktop-probe");
         if(manual && (args.Length!=2 || !Int32.TryParse(args[1],out manualSeconds) || manualSeconds<60 || manualSeconds>600))return 5;
@@ -403,22 +424,23 @@ sealed partial class DualWindowContext : ApplicationContext
         bool displayOnly=(threeScene && !sceneViewport && !sceneFaultSelfTest) || displaySoak || (args.Length==1 && args[0]=="--display-policy-self-test");
         bool operatorStart=args.Length==1 && args[0]=="--wallpaper-operator-self-test";
         bool wallpaperPolicy=operatorStart || displayOnly || soakRequested || (args.Length==1 && args[0]=="--wallpaper-policy-self-test");
-        bool visibleDesktop=gameUser || manual || wallpaperPolicy || (args.Length==1 && args[0]=="--desktop-visible-self-test");
-        bool nativePolicy=gameUser || manual || wallpaperPolicy || (args.Length==1 && args[0]=="--native-policy-self-test");
+        bool visibleDesktop=gameMode=="wallpaper-prepare-self-test" || gameMode=="wallpaper-self-test" || (gameUser && gameMode!="player-window") || manual || wallpaperPolicy || (args.Length==1 && args[0]=="--desktop-visible-self-test");
+        bool nativePolicy=gameMode=="wallpaper-prepare-self-test" || gameMode=="wallpaper-self-test" || gameUser || manual || wallpaperPolicy || (args.Length==1 && args[0]=="--native-policy-self-test");
         bool renderer=args.Length==1 && args[0]=="--renderer-self-test";
         bool policy=gameSelfTest || sceneFaultSelfTest || renderer || nativePolicy || (args.Length==1 && args[0]=="--policy-self-test");
-        bool startup=args.Length==1 && args[0]=="--desktop-startup-self-test";
+        bool startup=gameMode=="player-wallpaper" || gameMode=="wallpaper-prepare-self-test" || (args.Length==1 && args[0]=="--desktop-startup-self-test");
         bool desktop=startup || visibleDesktop || (args.Length==1 && args[0]=="--desktop-self-test");
         bool automated=!gameUser && !manual && (sceneViewport || desktop || policy || (args.Length==1 && args[0]=="--self-test"));
         if(args.Length>0 && !automated && !manual && !restartCheck && gameMode==null)return 5;
         try{
             using(var guard=new HostInstanceGuard()){
-                if(!guard.IsOwner)return 2;
+                if(!guard.IsOwner){if(gameMode=="player-window"||gameMode=="player-wallpaper")MessageBox.Show("钓鱼桌面已经在运行。请先从托盘打开交互窗口，或退出后切换模式。","钓鱼桌面");return 2;}
                 if(restartCheck)return DualWindowContext.VerifySceneFaultRestart();
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
                 using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene,sceneViewport,sceneContext,sceneFaultSelfTest,sceneWatchdogCase,gameMode)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception error){
+            if(gameMode=="player-window"||gameMode=="player-wallpaper")MessageBox.Show("启动失败。请确认 WebView2 运行时可用、当前用户目录可写，并保留原有存档。","钓鱼桌面",MessageBoxButtons.OK,MessageBoxIcon.Information);
             if(restartCheck)try{File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"scene-fault-restart-error.txt"),error.ToString(),Encoding.UTF8);}catch(Exception){}
             return 3;
         }

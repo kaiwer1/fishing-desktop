@@ -12,7 +12,7 @@ namespace FishingDesktop.GameCore
     {
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
-        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17,EquipmentUpgrade=18,ArchiveEquipment=19,CampReward=20;
+        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17,EquipmentUpgrade=18,ArchiveEquipment=19,CampReward=20,Clothing=21;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -129,7 +129,7 @@ namespace FishingDesktop.GameCore
             if(command is CastFloat)return Cast;if(command is RecallFloat)return Recall;if(command is ReleaseCurrentFloatFish)return Release;
             if(command is SellFloatFish)return Sale;if(command is HostFloatFish)return HostFish;if(command is RecoverFloatSession)return Recovery;
             if(command is UpgradeFloatProfile)return Upgrade;if(command is BuyFloatSupply)return Purchase;if(command is EquipFloatNet)return Equip;if(command is UseFloatFood)return Food;if(command is HostFloatUnhooked)return Unhooked;
-            if(command is ReplaceFloatSlot)return ReplaceSlot;if(command is MoveFloatLine)return MoveLine;if(command is CastFloatWithEquipment)return EquipmentCast;if(command is HostFloatTerminalLoss)return TerminalLoss;if(command is ConfigureFloatEquipmentOffers)return ConfigureOffers;if(command is BuyFloatEquipment)return BuyEquipment;if(command is UpgradeFloatEquipment)return EquipmentUpgrade;if(command is ArchiveLostFloatEquipment)return ArchiveEquipment;if(command is HostFloatCampReward)return CampReward;throw Invalid("Unsupported journal command type.");
+            if(command is ReplaceFloatSlot)return ReplaceSlot;if(command is MoveFloatLine)return MoveLine;if(command is CastFloatWithEquipment)return EquipmentCast;if(command is HostFloatTerminalLoss)return TerminalLoss;if(command is ConfigureFloatEquipmentOffers)return ConfigureOffers;if(command is BuyFloatEquipment)return BuyEquipment;if(command is UpgradeFloatEquipment)return EquipmentUpgrade;if(command is ArchiveLostFloatEquipment)return ArchiveEquipment;if(command is HostFloatCampReward)return CampReward;if(command is ChangeFloatClothing)return Clothing;throw Invalid("Unsupported journal command type.");
         }
         static void Catalog(Writer writer,FloatCommerceCatalog catalog)
         {
@@ -174,7 +174,9 @@ namespace FishingDesktop.GameCore
                 }else if(type==Equip)writer.Guid(((EquipFloatNet)command).NetId);
                 else if(type==Food)writer.Guid(((UseFloatFood)command).FoodStackId);
                 else if(type==Unhooked){var unhooked=(HostFloatUnhooked)command;writer.Guid(unhooked.EncounterId);writer.I32(unhooked.FightModelVersion);}
-                else if(type==CampReward){
+                else if(type==Clothing){
+                    var clothing=(ChangeFloatClothing)command;writer.Byte((byte)clothing.Action);writer.Text(clothing.ItemId);
+                }else if(type==CampReward){
                     if(command.SessionId!=Guid.Empty)throw Invalid("Camp completion contains a session.");var reward=(HostFloatCampReward)command;writer.I32(reward.ActiveMilliseconds);writer.I64(reward.PolicyVersion);
                 }else if(type==ArchiveEquipment){
                     if(command.SessionId!=Guid.Empty)throw Invalid("Equipment archive contains a session.");
@@ -202,9 +204,13 @@ namespace FishingDesktop.GameCore
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,(reader,schema)=>{
-                byte type=reader.Byte();if(type<Cast||type>CampReward||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(type<Cast||type>Clothing||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
+                if(type==Clothing){
+                    if(session!=Guid.Empty)throw Invalid("Clothing change contains a session.");
+                    return new ChangeFloatClothing(profile,branch,request,businessEvent,(FloatClothingAction)reader.Byte(),reader.Text(),sequence,rig,rules);
+                }
                 if(type==CampReward){
                     if(session!=Guid.Empty)throw Invalid("Camp completion contains a session.");return new HostFloatCampReward(profile,branch,request,businessEvent,reader.I32(),reader.I64(),sequence,rig,rules);
                 }

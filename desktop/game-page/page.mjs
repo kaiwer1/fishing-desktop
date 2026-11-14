@@ -12,12 +12,18 @@ import { CampView, CampInput } from './camp-view.mjs';
 import { CampPanel } from './camp-panel.mjs';
 import { WaterView } from './water-view.mjs';
 import { pickAim } from './water-aim.mjs';
+import { ScenePresentation } from './scene-presentation.mjs';
+import { SpotMenu } from './spot-menu.mjs';
+import { Wardrobe, wardrobeMessages } from './wardrobe.mjs';
+import { fishName, fishFigure, installFishIllustrations, newCreelCatch } from './fish-illustration.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
 let snapshot = null, revision = 0, hostPolicy = null, lastReply = null;
 let lastActivation = null, lastActivationReply = null, lastRevoke = null;
 let inflight = null, readOnly = true;
+let spotRequest = null;
+let campOpening = null, campOpenShown = false;
 let castState = null, castRevision = 0;
 const flightNotices = new FlightNotices();
 const flightView = new FlightView(documentId);
@@ -33,10 +39,12 @@ let saveFaulted = false;
 let speedKeyHeld = false;
 const selected = new Set();
 const $ = id => document.getElementById(id);
+installFishIllustrations(document, $('fish-symbol-bank'));
+let catchTimer = null;
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
 const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
-const canPrepare = () => canControl() && !inflight && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.SessionId && !snapshot.MenuOpen;
+const canPrepare = () => canControl() && !inflight && !spotRequest && !wardrobe.busy && currentSpotWater() && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.SessionId && !snapshot.MenuOpen;
 const castInput = new CastInput({ readContext: () => ({ lease: authority.state().lease, allowed: canPrepare(),
   requiresAim: waterView.state()?.enabled === true, geometryVersion: waterView.state()?.geometryVersion }), post: send, newTransportId: () => crypto.randomUUID() });
 function buttonAim() {
@@ -86,21 +94,133 @@ function campBusy() { const s = campInput.state(); return Boolean(s.inflight || 
 function campEngaged() { return ['working', 'ready', 'retry'].includes(campInput.state().phase); }
 // Another menu operation blocks new intent, not delivery of a current host
 // projection. Otherwise the fixed shop/equipment send order loses readiness.
-const canUseShop = () => !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
-const canUseEquipment = () => !shopBusy() && !shopInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
-const canUseSpares = () => !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !campBusy() && !campEngaged();
-const canUseCamp = () => !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
+const canUseShop = () => !spotRequest && !wardrobe.busy && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
+const canUseEquipment = () => !spotRequest && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
+const canUseSpares = () => !spotRequest && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !campBusy() && !campEngaged();
+const canUseCamp = () => !spotRequest && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
 const equipmentPanel = new EquipmentPanel({ view: equipmentView, input: equipmentInput, snapshot: () => snapshot,
   canAct: canUseEquipment, changed: () => updateButtons() });
 const sparesPanel = new SparesPanel({ view: sparesView, input: sparesInput, snapshot: () => snapshot,
   canAct: canUseSpares, changed: () => updateButtons() });
 const campPanel = new CampPanel({ view: campView, input: campInput, snapshot: () => snapshot,
   canAct: canUseCamp, changed: () => updateButtons() });
-const names = { carp: '鲤鱼', crucian: '鲫鱼', worm: '蚯蚓' };
+const spotMenu = new SpotMenu({ documentId, container: $('spot-menu'), canSelect: spotAccess, send: selectSpot, fishArt: fishFigure });
+const wardrobe = new Wardrobe({ documentId, container: $('wardrobe'), readContext: wardrobeContext, post: send,
+  newTransportId: () => crypto.randomUUID(), changed: updateButtons });
+function wardrobeContext() {
+  const shop = shopInput.state(), equipment = equipmentInput.state(), spares = sparesInput.state();
+  return { lease: authority.state().lease, sequence: snapshot?.Sequence, walletMinor: snapshot?.WalletMinor,
+    allowed: canControl() && snapshot.MenuOpen && !snapshot.SessionId && !snapshot.PendingResult && !castInput.state() &&
+      !['charging','prepared'].includes(castState?.phase) && !spotRequest && !inflight && !shopBusy() && !shop.retry && !shop.quote &&
+      !equipmentBusy() && !equipment.retry && !sparesBusy() && !spares.retry && !spares.quote && !campBusy() && !campEngaged() };
+}
+function currentSpotWater() {
+  return !spotMenu.revision || Boolean(spotMenu.activeId && waterView.state()?.waterId === spotMenu.activeId);
+}
+function spotAccess() {
+  if (!canControl()) return '开启交互后可以切换钓点。';
+  if (!snapshot.MenuOpen) return '打开菜单后可以切换钓点。';
+  if (snapshot.PendingResult) return '请先处理当前渔获。';
+  if (snapshot.SessionId || castInput.state() || ['charging','prepared'].includes(castState?.phase)) return '请先收回这一竿或取消蓄力。';
+  if (spotRequest || !currentSpotWater()) return '正在同步钓场…';
+  if (inflight || !canUseShop() || !canUseCamp() || shopInput.state().quote || sparesInput.state().quote) return '请先完成或取消当前菜单操作。';
+  return true;
+}
+function selectSpot(spotId) {
+  if (spotAccess() !== true) return false;
+  const lease = authority.state().lease, transportId = crypto.randomUUID();
+  spotRequest = { spotId, lease, transportId, acknowledged: false };
+  try { send({ kind: 'game-spot-select', lease, transportId, spotId, expectedVersion: waterView.state().geometryVersion }); }
+  catch { spotRequest = null; return false; }
+  updateButtons(); return true;
+}
+function reconcileSpot() {
+  if (!spotRequest) return;
+  if (!canControl() || !snapshot.MenuOpen || spotRequest.lease !== authority.state().lease) {
+    spotRequest = null; spotMenu.cancelPending();
+  } else if (spotRequest.acknowledged && spotMenu.activeId === spotRequest.spotId && currentSpotWater()) {
+    spotRequest = null;
+  }
+}
+function renderSpotLocation() {
+  const atlas = spotMenu.state(), active = atlas?.spots.find(s => s.id === atlas.activeId);
+  $('scene-spot-name').textContent = active?.name ?? '岸边钓位';
+  $('scene-spot-region').textContent = active?.region ?? '';
+  $('camp-location').textContent = active?.name ?? '';
+  $('map-spot-name').textContent = active ? `${active.name} · 俯视钓位` : '钓鱼桌面 · 俯视钓位';
+}
+let visualPaused = false;
+const scene = new ScenePresentation({ canvas: $('scene-canvas'), load: () => import('./game-scene.mjs'),
+  projection: sceneProjection, canRender: () => landscape() && !document.hidden && hostPolicy?.canRun === true &&
+    !visualPaused && snapshot?.HasConfirmedState && !snapshot.HostPaused && !snapshot.ShutdownConfirmed &&
+    !snapshot.Faulted && !saveFaulted && (readOnly || !snapshot.MenuOpen),
+  cancelHeld: () => { castInput.cancel(); fightInput.cancel(); speedKeyHeld = false; }, changed: renderSceneShell });
+function sceneProjection() {
+  const session = snapshot?.SessionId, water = waterView.state();
+  const current = s => s?.sessionId && s.sessionId === session ? s : null;
+  if (water?.landing && (!session || water.landing.sessionId !== session)) water.landing = null;
+  const cast = castState && (session || castState.phase !== 'committed') ? { phase: castState.phase, powerPermille: castState.powerPermille,
+    elapsedMilliseconds: castState.elapsedMilliseconds, inputSequence: castState.inputSequence } : null;
+  const canAim = canPrepare() && !castInput.state() && !document.hidden && !visualPaused && hostPolicy?.canRun === true;
+  return { water, cast, flight: current(flightView.state()), bite: current(biteView.state()), fight: current(fightView.state()),
+    canAim, sleeveColor: wardrobe.sleeveColor };
+}
+function renderSceneShell() {
+  const state = scene.state();
+  document.body.dataset.sceneMode = state.loading ? 'loading' : state.mode;
+  document.body.dataset.sceneMenu = !readOnly && snapshot?.MenuOpen ? 'open' : 'closed';
+  $('scene-stage').hidden = !state.loading && state.mode !== 'scene';
+  $('scene-map-tools').hidden = !state.enabled || state.mode === 'scene';
+  $('scene-to-water').hidden = Boolean(state.fault); $('scene-to-water').disabled = state.loading;
+  $('scene-map-status').hidden = !state.fault;
+  if (state.fault) $('scene-map-status').textContent = '岸边画面暂不可用，可以继续在俯视图钓鱼。重新打开窗口后可再进入岸边视角。';
+  if (state.mode !== 'scene') return;
+  renderSceneHud();
+}
+function renderSceneHud() {
+  document.body.dataset.sceneMenu = !readOnly && snapshot?.MenuOpen ? 'open' : 'closed';
+  if (readOnly || !scene.visible) return;
+  const session = snapshot?.SessionId, bite = biteView.state(), fight = fightView.state(), flight = flightView.state();
+  let action = '选择水面落点', hint = '按住左键蓄力，松开抛竿。';
+  const charging = castState?.phase === 'charging' && !session;
+  if (!canControl()) { action = $('status').textContent; hint = ''; }
+  else if (snapshot.PendingResult) { action = '鱼护已满'; hint = $('session').textContent; }
+  else if (session && fight?.sessionId === session && fight.phase !== 'idle') {
+    action = $('fight-status').textContent;
+    hint = ['fighting','landing-eligible'].includes(fight.phase) ? `张力 ${(fight.tensionMilliN / 1000).toFixed(1)} N · 泄力 ${fight.dragLevel}/10 · 按住左键收线，滚轮调泄力` : $('fight-detail').textContent;
+  } else if (session && bite?.sessionId === session && bite.phase !== 'idle') {
+    action = $('bite-status').textContent; hint = bite.phase === 'strikeable' ? '现在按鼠标右键提竿。' : '留意漂尾，浮漂明显下沉时按右键提竿。';
+  } else if (session) {
+    action = flight?.sessionId === session ? $('flight-status').textContent : '钓组已出手';
+    hint = flight?.phase === 'invalid' ? '收回这一竿后可重新选择水面落点。' : '等待钓组落水。';
+  } else if (charging) { action = `蓄力 ${(castState.powerPermille / 10).toFixed(0)}%`; hint = '松开左键出手，右键取消。'; }
+  $('scene-action').textContent = action; $('scene-hint').textContent = hint;
+  $('scene-power').hidden = !charging; $('scene-power').value = charging ? castState.powerPermille : 0;
+  const message = lastReply && ['escaped','landed'].includes(fight?.phase) ? $('fight-status').textContent :
+    lastReply && !['charging','prepared','cast-candidate','reel-held','reel-released','menu-updated'].includes(lastReply.code) ? codes[lastReply.code] : '';
+  $('scene-message').textContent = message || ''; $('scene-message').hidden = !message;
+  $('scene-menu').disabled = $('menu').disabled;
+  for (const key of ['recall','release','land','retry-land','retry-escape']) {
+    const source = $(key), proxy = $(`scene-${key}`);
+    proxy.disabled = source.disabled; proxy.hidden = source.disabled;
+  }
+}
+const names = { worm: '蚯蚓' };
 function decimal(value, scale = 2) {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) return '—';
   const full = value.padStart(scale + 1, '0');
   return `${full.slice(0, -scale)}.${full.slice(-scale)}`;
+}
+function hideCatch() {
+  if (catchTimer !== null) clearTimeout(catchTimer);
+  catchTimer = null; $('catch-card').hidden = true;
+}
+function showCatch(caught) {
+  if (!caught || !canControl() || snapshot.MenuOpen || document.hidden) return;
+  hideCatch(); const plate = fishFigure(document,caught.speciesKey);
+  $('catch-art').replaceChildren(...(plate ? [plate] : [])); $('catch-name').textContent = fishName(caught.speciesKey);
+  $('catch-mass').textContent = `${decimal(caught.massMg,6).replace(/\.?0+$/, '')} kg`;
+  $('catch-card').hidden = false; catchTimer = setTimeout(hideCatch, 6500);
 }
 function render() {
   castInput.reconcile();
@@ -121,7 +241,7 @@ function render() {
       `银币 ${decimal(snapshot.WalletMinor)}`, `体力 ${snapshot.Stamina}`, `${names[snapshot.BaitDefinitionKey] ?? snapshot.BaitDefinitionKey} ${snapshot.BaitCount} 份`,
     ].map(text => { const span = document.createElement('span'); span.textContent = text; return span; }));
     const pending = snapshot.PendingFish;
-    $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${names[pending.SpeciesKey] ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : snapshot.SessionId ? '这一竿已出手，请观察轨迹与浮漂。' : '可以出手';
+    $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${fishName(pending.SpeciesKey) ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : snapshot.SessionId ? '这一竿已出手，请观察轨迹与浮漂。' : '可以出手';
     $('capacity').textContent = `${snapshot.CreelCount} / ${snapshot.CreelCapacity}`;
     const rows = snapshot.Creel ?? [];
     for (const id of selected) if (!rows.some(f => f.Id === id)) selected.delete(id);
@@ -130,7 +250,8 @@ function render() {
       const label = document.createElement('label'), checkbox = document.createElement('input'), text = document.createElement('span');
       checkbox.type = 'checkbox'; checkbox.checked = selected.has(fish.Id); checkbox.disabled = !canControl() || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || Boolean(inflight);
       checkbox.addEventListener('change', () => { if (checkbox.checked) selected.add(fish.Id); else selected.delete(fish.Id); updateButtons(); });
-      text.textContent = `${names[fish.SpeciesKey] ?? fish.SpeciesKey} · ${decimal(fish.MassMg, 6)} kg · ${decimal(fish.SaleValueMinor)} 银币`;
+      const plate = fishFigure(document,fish.SpeciesKey); if (plate) item.append(plate);
+      text.textContent = `${fishName(fish.SpeciesKey) ?? fish.SpeciesKey} · ${decimal(fish.MassMg, 6)} kg · ${decimal(fish.SaleValueMinor)} 银币`;
       label.append(checkbox, text); item.append(label); return item;
     }));
     if (!rows.length) { const item = document.createElement('li'); item.textContent = '鱼护为空'; $('creel').append(item); }
@@ -267,7 +388,10 @@ function renderShop() {
   $('shop-cancel').hidden = !input.quote && !input.retry;
 }
 function updateButtons() {
-  const active = canControl() && !inflight && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
+  if (catchTimer !== null && (!canControl() || hostPolicy?.canRun === false || snapshot.MenuOpen || snapshot.SessionId || castInput.state() || document.hidden)) hideCatch();
+  reconcileSpot();
+  wardrobe.reconcile();
+  const active = canControl() && !inflight && !spotRequest && !wardrobe.busy && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
   const input = castInput.state();
   $('cast').disabled = !canPrepare() || Boolean(input);
   $('cast-release').disabled = !canPrepare() || input?.phase !== 'charging' || input.source !== 'button';
@@ -287,7 +411,7 @@ function updateButtons() {
   $('recall').disabled = !active || !snapshot.SessionId || snapshot.PendingResult || failurePending();
   $('release').disabled = !active || !snapshot.PendingResult;
   $('menu').disabled = !active;
-  $('menu').textContent = snapshot?.MenuOpen ? '关闭鱼护与商店' : '打开鱼护与商店';
+  $('menu').textContent = snapshot?.MenuOpen ? '返回钓位' : spotMenu.revision ? '打开钓点、鱼护与商店' : '打开鱼护与商店';
   $('sell').disabled = !active || campEngaged() || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || !selected.size;
   $('previous').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset <= 0;
   $('next').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset + (snapshot.Creel?.length ?? 0) >= snapshot.CreelCount;
@@ -305,6 +429,53 @@ function updateButtons() {
   equipmentPanel.render();
   sparesPanel.render();
   campPanel.render();
+  $('spot-menu').hidden = !snapshot?.MenuOpen || !spotMenu.revision;
+  if (!$('spot-menu').hidden) spotMenu.render();
+  $('wardrobe').hidden = !snapshot?.MenuOpen || !wardrobe.revision;
+  if (!$('wardrobe').hidden) wardrobe.render();
+  if (scene.visible) renderSceneHud();
+  renderCampNavigation();
+  scene.refresh();
+}
+const campAreas = { map: 'spot-menu', creel: 'creel-section', gear: 'equipment', tackle: 'shop-net',
+  food: 'shop-food', clothes: 'wardrobe', work: 'camp' };
+const campKeys = { KeyM: 'map', KeyC: 'creel', KeyI: 'gear', KeyT: 'food' };
+const playerCamp = () => !readOnly && spotMenu.revision > 0 && scene.state().enabled;
+function areaAvailable(area) {
+  switch (area) {
+    case 'map': return Boolean(spotMenu.activeId);
+    case 'creel': return Boolean(snapshot?.HasConfirmedState);
+    case 'gear': return equipmentView.state()?.schemaVersion >= 3;
+    case 'tackle':
+    case 'food': return shopView.state()?.schemaVersion >= 2;
+    case 'clothes': return wardrobe.state()?.available === true;
+    case 'work': return Boolean(campView.state() && campView.state().reason !== 'camp-schema-required');
+    default: return area === 'home';
+  }
+}
+function visitCampArea(area) {
+  if (!playerCamp() || !canControl() || !snapshot.MenuOpen || !areaAvailable(area)) return false;
+  const node = $(area === 'home' ? 'camp-home' : campAreas[area]);
+  if (!node || node.hidden) return false;
+  node.scrollIntoView?.({ block: 'start', inline: 'nearest', behavior: 'instant' });
+  return true;
+}
+function renderCampNavigation() {
+  const enabled = playerCamp(), open = Boolean(enabled && snapshot?.MenuOpen && landscape());
+  document.body.dataset.camp = open ? 'open' : 'closed';
+  $('scene-menu').textContent = enabled ? '营地 · Esc' : '钓点与补给';
+  $('camp-home').hidden = $('camp-overview').hidden = !open;
+  if (enabled) $('menu').textContent = snapshot?.MenuOpen ? '返回钓位 · Esc' : '进入营地 · Esc';
+  if (campOpening && (!enabled || !canControl() || campOpening.lease !== authority.state().lease)) campOpening = null;
+  if (!open) { campOpenShown = false; return; }
+  for (const area of Object.keys(campAreas)) $('camp-go-' + area).disabled = !canControl() || !areaAvailable(area);
+  $('camp-overview').disabled = !canControl();
+  if (!campOpenShown) {
+    campOpenShown = true;
+    const destination = campOpening?.area ?? 'home';
+    campOpening = null;
+    if (!visitCampArea(destination) && destination !== 'home') visitCampArea('home');
+  }
 }
 function revoke(reason) {
   castInput.cancel();
@@ -314,7 +485,7 @@ function revoke(reason) {
   render();
 }
 function intent(action) {
-  if (!canControl() || inflight || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
+  if (!canControl() || inflight || spotRequest || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
   fightInput.cancel();
   const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : snapshot.SessionId,
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
@@ -325,6 +496,9 @@ function intent(action) {
 }
 const codes = { 'cast-candidate': '这一竿已保存，已使用一份鱼饵。', 'recall-candidate': '已收回，扣饵保持。', 'released-candidate': '当前鱼已放流。', 'sale-candidate': '出售已确认。', 'menu-updated': '菜单状态已更新。', 'control-required': '请重新开启交互。', 'invalid-intent': '请求未识别。', 'version-conflict': '进度已更新，请重新操作。', 'bait-empty': '鱼饵已用完。', 'stamina-insufficient': '体力不足。', 'session-busy': '请先结束当前一竿。' };
 Object.assign(codes, { 'save-settlement-reserve': '存档空间不足以安全保存下一竿，已取消操作，未扣除鱼饵或体力。请保留当前存档。' });
+for (const [code, text] of Object.entries(wardrobeMessages)) if (code.startsWith('wardrobe-')) codes[code] = text;
+Object.assign(codes, { 'spot-selected': '钓点已切换。', 'spot-unchanged': '已在所选钓点。', 'spot-unavailable': '该钓点暂未开放。',
+  'spot-switch-busy': '请先结束当前一竿或处理菜单中的操作。', 'spot-stale': '水域已更新，请重新选择钓点。' });
 Object.assign(codes, { charging: '已开始蓄力，松开出手。', prepared: '已松开，等待宿主确认。', cancelled: '蓄力已取消。', 'stale-input': '旧操作已忽略，请重新按下。', 'gesture-not-current': '本次操作已结束，请重新按下。', 'domain-paused': '当前暂停，请恢复后重新按下。', 'cast-preparation-required': '请先按住蓄力，再松开出手。', 'save-outcome-unknown': '保存结果待核验，请退出后重新打开原存档。' });
 Object.assign(codes, { hooked: '已中鱼，请手动收线。', 'strike-too-early': '提竿过早，请收回后重新挂饵。', 'strike-too-late': '已错过鱼口，请收回后重试。',
   'empty-strike': '本次空提，请收回后重新挂饵。', 'encounter-not-current': '这次鱼口已变化，请观察当前浮漂。', 'bite-not-ready': '钓组尚未进入有效等鱼状态。', 'bite-not-active': '当前不能提竿。', 'session-not-current': '这一竿已变化，旧操作已忽略。' });
@@ -361,10 +535,20 @@ Object.assign(codes, { 'camp-work-started': '帮工已开始，请保持当前�
   'camp-creel-not-empty': '可以先出售鱼护里的渔获。', 'camp-schema-required': '此存档尚未支持营地帮工。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
+  if (m.kind === 'game-wardrobe-state') {
+    if (wardrobe.apply(m)) updateButtons();
+    return;
+  }
+  if (m.kind === 'game-spot-state') {
+    if (spotMenu.apply(m)) { renderSpotLocation(); updateButtons(); }
+    return;
+  }
   if (m.kind === 'game-water-state') {
     const previousGeometry = waterView.geometryKey();
     if (waterView.apply(m)) {
       if (waterView.geometryKey() !== previousGeometry) { castInput.cancel(); selectedAim = null; }
+      const water = waterView.state();
+      scene.configure(Boolean(m.sceneEnabled === true && water?.enabled && water.waterBounds && water.anchor));
       castInput.reconcile(); renderCast(); updateButtons();
     }
     return;
@@ -372,7 +556,7 @@ window.chrome.webview.addEventListener('message', event => {
   if (m.kind === 'game-flight-state') {
     // Host positions can arrive frequently. Update the diagram alone; neither
     // rebuild the creel nor start an independent page animation clock.
-    if (flightView.apply(m)) renderFlight();
+    if (flightView.apply(m)) { renderFlight(); if (scene.visible) renderSceneHud(); scene.refresh(); }
     return;
   }
   if (m.kind === 'game-bite-state') {
@@ -425,11 +609,20 @@ window.chrome.webview.addEventListener('message', event => {
     if (!accepted && m.lease && authority.state().revision === m.revision && m.revision > before)
       send({ kind: 'revoke', lease: m.lease, cancellationEpoch: authority.state().epoch, transportId: crypto.randomUUID(), reason: 'late-grant' });
   }
-  if (m.kind === 'game-snapshot' && Number.isSafeInteger(m.revision) && m.revision > revision) { snapshot = m.snapshot; revision = m.revision; }
+  if (m.kind === 'game-snapshot' && Number.isSafeInteger(m.revision) && m.revision > revision) {
+    const caught = newCreelCatch(snapshot, m.snapshot); snapshot = m.snapshot; revision = m.revision; showCatch(caught);
+  }
   if (m.kind === 'game-reply') {
+    if (campOpening && campOpening.transportId === m.transportId && m.code !== 'menu-updated') campOpening = null;
+    wardrobe.reply(m);
+    if (spotRequest && m.transportId === spotRequest.transportId) {
+      if (m.code === 'spot-selected' || m.code === 'spot-unchanged') spotRequest.acknowledged = true;
+      else { spotRequest = null; spotMenu.reject(codes[m.code]); }
+    }
     lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m); equipmentInput.reply(m); sparesInput.reply(m); campInput.reply(m);
     if (['save-outcome-unknown', 'failure-save-unknown', 'landing-save-unknown', 'camp-work-save-unknown'].includes(m.code)) saveFaulted = true;
-    if (inflight === m.transportId) inflight = null; $('notice').textContent = codes[m.code] ?? `操作未完成：${m.code}`;
+    if (inflight === m.transportId) inflight = null;
+    $('notice').textContent = m.code === 'wardrobe-updated' || (m.code === 'menu-updated' && playerCamp()) ? '' : codes[m.code] ?? `操作未完成：${m.code}`;
   }
   if (m.kind === 'game-cast-state' && Number.isSafeInteger(m.revision) && m.revision > castRevision &&
       ['idle', 'charging', 'prepared', 'committed', 'cancelled', 'rejected', 'unknown'].includes(m.phase) &&
@@ -443,7 +636,7 @@ window.chrome.webview.addEventListener('message', event => {
   if (m.kind === 'activation-reply') lastActivationReply = m;
   if (m.kind === 'revoke-reply') lastRevoke = m;
   if (m.kind === 'role') { readOnly = m.role.includes('只读'); document.body.dataset.role = readOnly ? 'observer' : 'interaction'; }
-  if (m.kind === 'host-policy' && (!hostPolicy || m.revision >= hostPolicy.revision)) hostPolicy = m;
+  if (m.kind === 'host-policy' && (!hostPolicy || m.revision >= hostPolicy.revision)) { hostPolicy = m; visualPaused = !m.canRun; }
   render();
 });
 $('cast').addEventListener('click', () => {
@@ -467,13 +660,19 @@ for (const [id, action, direction] of [['drag-minus', 'drag', -1], ['drag-plus',
 $('recall').addEventListener('click', () => intent('recall'));
 $('release').addEventListener('click', () => intent('release-current'));
 $('sell').addEventListener('click', () => intent('sell'));
-$('menu').addEventListener('click', () => {
-  if (!canControl() || inflight || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
+function toggleMenu(area = 'home') {
+  if (!canControl() || inflight || spotRequest || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
   if (snapshot.MenuOpen) shopInput.cancel();
-  inflight = crypto.randomUUID(); send({ kind: 'game-menu', lease: authority.state().lease, transportId: inflight, open: !snapshot.MenuOpen }); render();
-});
+  inflight = crypto.randomUUID();
+  const open = !snapshot.MenuOpen, lease = authority.state().lease;
+  campOpening = open && playerCamp() ? { area, lease, transportId: inflight } : null;
+  send({ kind: 'game-menu', lease, transportId: inflight, open }); render();
+}
+$('menu').addEventListener('click', () => toggleMenu());
+$('camp-overview').addEventListener('click', () => visitCampArea('home'));
+for (const area of Object.keys(campAreas)) $('camp-go-' + area).addEventListener('click', () => visitCampArea(area));
 function requestShopQuote(product) {
   if (!canUseShop()) return;
   const packs = product === 'net' ? 1 : $(product === 'bait' ? 'bait-packs' : 'food-packs').valueAsNumber;
@@ -492,37 +691,42 @@ function page(offset) { send({ kind: 'game-page', lease: '', transportId: crypto
 $('previous').addEventListener('click', () => page(Math.max(0, snapshot.CreelOffset - 50)));
 $('next').addEventListener('click', () => page(snapshot.CreelOffset + 50));
 const target = $('cast-target');
+const canvas = $('scene-canvas');
 const reelPointers = new Map(), reelKeys = new Map();
-target.addEventListener('pointerdown', event => {
-  if (event.pointerType !== 'mouse') return;
+const surfaceAvailable = surface => surface === canvas ? scene.visible && !snapshot?.MenuOpen : !scene.visible;
+function bindCastSurface(surface) {
+surface.addEventListener('pointerdown', event => {
+  if (!surfaceAvailable(surface) || event.pointerType !== 'mouse') return;
   if (event.button === 0 && ['fighting', 'landing-eligible'].includes(fightContext().phase)) {
-    beginReelPointer(event, target); return;
+    beginReelPointer(event, surface); return;
   }
   const water = waterView.state();
   const aiming = water?.enabled && event.button === 0 && !(event.buttons & 2);
-  const aim = aiming ? pickAim($('water-aim-svg'), event, water.geometryVersion) : null;
+  const aim = !aiming ? null : surface === canvas ? scene.pickAim(event.clientX, event.clientY) : pickAim($('water-aim-svg'), event, water.geometryVersion);
   if (aiming && !aim) return;
   const changed = castInput.pointer(event.pointerId, event.buttons, true, aim);
   if (changed) {
     if (aim && castInput.state()?.source === `pointer:${event.pointerId}`) selectedAim = Object.freeze({ ...aim });
     event.preventDefault();
     if (castInput.state()?.source === `pointer:${event.pointerId}`) {
-      try { target.setPointerCapture(event.pointerId); } catch { castInput.pointerCancelled(event.pointerId); }
+      try { surface.setPointerCapture(event.pointerId); } catch { castInput.pointerCancelled(event.pointerId); }
     }
     render();
   }
 });
-target.addEventListener('pointermove', event => { if (!(event.buttons & 1)) endReelPointer(event); if (event.pointerType === 'mouse' && castInput.pointer(event.pointerId, event.buttons)) render(); });
-target.addEventListener('pointerup', event => { endReelPointer(event); if (event.pointerType === 'mouse' && castInput.pointer(event.pointerId, event.buttons)) render(); });
-target.addEventListener('pointercancel', event => { endReelPointer(event); if (castInput.pointerCancelled(event.pointerId)) render(); });
-target.addEventListener('lostpointercapture', event => { endReelPointer(event); if (castInput.pointerLost(event.pointerId)) render(); });
-target.addEventListener('contextmenu', event => { event.preventDefault(); if (castInput.cancel()) render(); });
-for (const element of [target, $('bite-diagram')]) {
+surface.addEventListener('pointermove', event => { if (!(event.buttons & 1)) endReelPointer(event); if (surfaceAvailable(surface) && event.pointerType === 'mouse' && castInput.pointer(event.pointerId, event.buttons)) render(); });
+surface.addEventListener('pointerup', event => { endReelPointer(event); if (surfaceAvailable(surface) && event.pointerType === 'mouse' && castInput.pointer(event.pointerId, event.buttons)) render(); });
+surface.addEventListener('pointercancel', event => { endReelPointer(event); if (surfaceAvailable(surface) && castInput.pointerCancelled(event.pointerId)) render(); });
+surface.addEventListener('lostpointercapture', event => { endReelPointer(event); if (surfaceAvailable(surface) && castInput.pointerLost(event.pointerId)) render(); });
+surface.addEventListener('contextmenu', event => { event.preventDefault(); if (surfaceAvailable(surface) && castInput.cancel()) render(); });
+}
+bindCastSurface(target); bindCastSurface(canvas);
+for (const element of [target, canvas, $('bite-diagram')]) {
   // mousedown fires for each newly pressed button, including a right-button
   // chord that Pointer Events reports as pointermove. Preparation cancellation
   // has priority and this physical press is then marked held, never buffered.
   element.addEventListener('mousedown', event => {
-    if (event.button !== 2) return;
+    if (event.button !== 2 || !surfaceAvailable(element)) return;
     event.preventDefault();
     if (castInput.state()) { castInput.cancel(); strikeInput.mouseButtons(event.buttons); render(); return; }
     if (strikeInput.mouseDown(event.button, event.buttons)) updateButtons();
@@ -561,26 +765,42 @@ $('reel-hold').addEventListener('keyup', event => {
   fightInput.end(`key:${event.code}`, held.startTransportId); reelKeys.delete(event.code);
 });
 $('reel-hold').addEventListener('blur', () => fightInput.cancel());
-for (const element of [target, $('fight-diagram')]) element.addEventListener('wheel', event => {
-  if (!fightContext().allowed || !['fighting', 'landing-eligible'].includes(fightContext().phase) || event.deltaY === 0) return;
+for (const element of [target, canvas, $('fight-diagram')]) element.addEventListener('wheel', event => {
+  if (!surfaceAvailable(element) || !fightContext().allowed || !['fighting', 'landing-eligible'].includes(fightContext().phase) || event.deltaY === 0) return;
   event.preventDefault(); changeFightLevel(speedKeyHeld ? 'speed' : 'drag', event.deltaY < 0 ? 1 : -1);
 }, { passive: false });
 window.addEventListener('pointerup', endReelPointer);
 window.addEventListener('mouseup', event => strikeInput.mouseButtons(event.buttons));
 window.addEventListener('mousemove', event => strikeInput.mouseButtons(event.buttons));
 window.addEventListener('blur', () => revoke('blur'));
-window.addEventListener('pagehide', () => revoke('pagehide'));
-window.addEventListener('resize', () => { if (!landscape()) revoke('portrait'); render(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) revoke('hidden'); });
+window.addEventListener('pagehide', () => { revoke('pagehide'); scene.dispose(); });
+window.addEventListener('resize', () => { if (!landscape()) revoke('portrait'); render(); scene.resize(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) revoke('hidden'); else scene.refresh(); });
 document.addEventListener('keydown', event => {
+  const isEscape = event.key === 'Escape' || event.code === 'Escape', area = campKeys[event.code];
+  if (playerCamp() && (isEscape || area)) {
+    if (event.defaultPrevented || event.isComposing || event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+        document.hidden || !document.hasFocus() || !canControl() ||
+        (event.target instanceof Element && (event.target.isContentEditable || event.target.closest('input,textarea,select')))) return;
+    if (area && !areaAvailable(area)) return;
+    event.preventDefault();
+    if (isEscape || !snapshot.MenuOpen) toggleMenu(area ?? 'home'); else visitCampArea(area);
+    return;
+  }
   if (event.key === 'Escape') { revoke('escape'); return; }
   if (event.target instanceof Element && (event.target.isContentEditable || event.target.closest('input,textarea,select,button'))) return;
   if (event.code === 'KeyR' && !event.repeat && fightContext().allowed) speedKeyHeld = true;
   if (event.code === 'Space' && !event.repeat && fightContext().allowed) { event.preventDefault(); fightInput.land(); updateButtons(); }
 });
 document.addEventListener('keyup', event => { if (event.code === 'KeyR') speedKeyHeld = false; });
-// No page render/simulation loop: the SVG only projects host snapshots.
-const visual = { start() {}, stop() {}, pause() {}, resume() {}, state: () => ({ running: false, frames: 0, kind: 'host-flight-projection' }) };
+$('scene-to-map').addEventListener('click', () => scene.showScene(false));
+$('scene-to-water').addEventListener('click', () => scene.showScene(true));
+for (const key of ['menu','recall','release','land','retry-land','retry-escape']) {
+  $(`scene-${key}`).addEventListener('click', event => { if (event.detail <= 1 && !$(key).disabled) $(key).click(); });
+}
+function pauseVisual(value) { visualPaused = value; scene.refresh(); }
+const visual = { start: () => pauseVisual(false), stop: () => pauseVisual(true), pause: () => pauseVisual(true), resume: () => pauseVisual(false),
+  state: () => scene.state().renderer ?? { running: false, frames: 0, kind: 'host-flight-projection' } };
 window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision,
   biteState: biteView.state(), biteRevision: biteView.revision, strikeInputState: strikeInput.state(),
   fightState: fightView.state(), fightRevision: fightView.revision, fightInputState: fightInput.state(),
@@ -588,6 +808,9 @@ window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authorit
   equipmentState: equipmentView.state(), equipmentRevision: equipmentView.revision, equipmentInputState: equipmentInput.state(),
   sparesState: sparesView.state(), sparesRevision: sparesView.revision, sparesInputState: sparesInput.state(),
   campState: campView.state(), campRevision: campView.revision, campInputState: campInput.state(),
-  waterState: waterView.state(), waterRevision: waterView.revision }),
+  waterState: waterView.state(), waterRevision: waterView.revision, sceneState: scene.state(),
+  spotState: spotMenu.state(), spotRevision: spotMenu.revision, spotPending: spotRequest?.spotId ?? spotMenu.pending,
+  wardrobeState: wardrobe.state(), wardrobeRevision: wardrobe.revision, wardrobePending: wardrobe.pending }),
+  pickSceneAim: (x, y) => scene.pickAim(x, y), projectSceneAim: (u, v) => scene.projectAim(u, v),
   sendRaw: message => window.chrome.webview.postMessage(message), cancel: () => revoke('test-cancel') };
 render(); renderFlight();

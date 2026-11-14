@@ -18,10 +18,10 @@ namespace FishingDesktop.Diagnostics.DesktopStartup
         {
             if(attempted || intent==null || api.CurrentThreadId!=thread)return NativeResult.Error(87);
             var target=intent.Target;
-            var sample=environment.Capture(new Rectangle(target.Left,target.Top,target.Right-target.Left,target.Bottom-target.Top));
-            if(!sample.Known || !sample.InteractiveSession)return NativeResult.Error(5);
             var current=DesktopStartupCoordinator.MissingIntent(api,api.CaptureDesktop(),intent.Target);
             if(!intent.Matches(current))return NativeResult.Error(1168);
+            var sample=environment.Capture(new Rectangle(target.Left,target.Top,target.Right-target.Left,target.Bottom-target.Top));
+            if(!sample.Known || !sample.InteractiveSession || sample.Fullscreen)return NativeResult.Error(5);
             attempted=true;
             UIntPtr result;SetLastError(0);
             // Fixed scalar-only shell protocol, observed in Lively v2.2.1.0.

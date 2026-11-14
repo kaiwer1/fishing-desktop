@@ -23,7 +23,7 @@ sealed partial class DualWindowContext
     }
     void PolicyPageReady()
     {
-        if(!policySelfTest || windows.Count!=2)return;
+        if(!policySelfTest || windows.Count!=(PlayerWindowOnly?1:2))return;
         foreach(var pane in windows.Values)if(!pane.Ready)return;
         SetHostPause(PauseReason.Startup,false);
     }

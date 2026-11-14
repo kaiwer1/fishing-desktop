@@ -1,8 +1,15 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare)
 $ErrorActionPreference='Stop'
 if($GameLineBreak -and ($GameSpares -or $GameCamp)){throw 'Run line-break integration separately.'}
 if($GameWater -and ($GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run water integration separately.'}
-if($GameWater){$Game=$true}
+if($GameScene -and ($GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run scene integration separately.'}
+if($GameAtlas -and ($GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run atlas integration separately.'}
+if($GamePlayer -and ($GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run player integration separately.'}
+if($GameWardrobe -and ($GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run wardrobe integration separately.'}
+if($GameCatch -and ($GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run catch integration separately.'}
+if($GameWallpaperPrepare){$GameWallpaper=$true}
+if($GameWallpaper -and ($GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run wallpaper game integration separately.'}
+if($GameWater -or $GameScene -or $GameAtlas -or $GamePlayer -or $GameWardrobe -or $GameCatch -or $GameWallpaper){$Game=$true}
 if(($GameSpares -and $GameFailureCase) -or ($GameCamp -and ($GameSpares -or $GameFailureCase))){throw 'Run game integration modes separately.'}
 if($GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak){$Game=$true}
 if($Game -and ($ThreeScene -or $DesktopLayer -or $VisibleDesktop -or $HostPolicy -or $NativePolicy -or $RendererPolicy -or $WallpaperPolicy -or $DisplayPolicy -or $StartupPreparation -or $OperatorFullscreen -or $DisplaySoak -or $SoakSeconds -gt 0)){throw 'Run game data integration separately from diagnostic modes.'}
@@ -95,6 +102,12 @@ try{
   if($GameFailureCase){$taskMode='--game-failure-self-test '+$GameFailureCase}
   if($GameSpares){$taskMode='--game-spares-self-test'}
   if($GameCamp){$taskMode='--game-camp-self-test'}
+  if($GameWallpaper){$taskMode=if($GameWallpaperPrepare){'--game-wallpaper-prepare-self-test'}else{'--game-wallpaper-self-test'}}
+  if($GameCatch){$taskMode='--game-catch-self-test'}
+  if($GameWardrobe){$taskMode='--game-wardrobe-self-test'}
+  if($GamePlayer){$taskMode='--game-player-self-test'}
+  if($GameAtlas){$taskMode='--game-atlas-self-test'}
+  if($GameScene){$taskMode='--game-scene-self-test'}
   if($GameWater){$taskMode='--game-water-self-test'}
   if($GameLineBreak){$taskMode=if($GameFailureCase){'--game-line-break-failure-self-test '+$GameFailureCase}else{'--game-line-break-self-test'}}
   $taskProcess=Start-Process -FilePath $taskBuild.executable -ArgumentList $taskMode -WorkingDirectory $taskRun -WindowStyle Hidden -PassThru
@@ -119,6 +132,42 @@ try{
     if(Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt')){throw 'Failure boundary test reported an unexpected host error.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if($taskGameExit.normalExit -or $taskGameExit.code -ne 'unconfirmed-failure-no-settlement'){throw 'Unconfirmed failure exit was not preserved.'}
+  }elseif($GameWallpaper){
+    if($taskReport.blocked){throw ('Desktop environment did not permit wallpaper verification: '+$taskReport.reason)}
+    $taskDesktopReport=Get-Content -LiteralPath (Join-Path $taskRun 'desktop-summary.json') -Raw | ConvertFrom-Json
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 9 -or -not $taskReport.wallpaperAccepted -or -not $taskReport.ownedWindowBehindIcons -or -not $taskReport.observerReadOnly -or -not $taskReport.actualWebGL -or -not $taskReport.noActivateVerified -or ((-not $GameWallpaperPrepare) -and -not $taskReport.passiveExistingLayer) -or -not $taskReport.fullscreenPolicyApplied -or $taskReport.desktopIconInteractionTested -or $taskReport.desktopCompositionCaptured -or $taskReport.systemWallpaperPreferenceChanged){throw 'Wallpaper scene evidence mismatch.'}
+    if($GameWallpaperPrepare -and (-not $taskReport.prepareEnabled -or $taskReport.messageAttempts -gt 1 -or $taskReport.requestCalls -gt 1)){throw 'Unexpected desktop layer preparation evidence.'}
+    if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne 1 -or $taskDesktopReport.detachments -ne 1 -or $taskDesktopReport.remainingLeases -ne 0 -or $taskReport.sequence -ne 1 -or $taskReport.value -ne 12000 -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'game-wallpaper.png') -PathType Leaf)){throw 'Desktop layer or clean wallpaper exit mismatch.'}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Wallpaper shutdown was not confirmed.'}
+  }elseif($GameCatch){
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 8 -or -not $taskReport.catchSaleConnected -or -not $taskReport.actual3dCast -or -not $taskReport.realMouseStrike -or -not $taskReport.manualReel -or -not $taskReport.ownedNetEquipped -or -not $taskReport.catchCardVerified -or -not $taskReport.creelPreviewVerified -or -not $taskReport.saleVerified -or $taskReport.rawGameCommandInjected -or $taskReport.controlledFightTime){throw 'Catch and sale input scope mismatch.'}
+    if($taskReport.sequence -ne 6 -or $taskReport.saleValueMinor -le 0 -or $taskReport.value -ne (9600+$taskReport.saleValueMinor) -or $taskReport.gameNaturalLandings -ne 1 -or $taskReport.creelCount -ne 0 -or $taskReport.gameFlightEmissions -ne 1 -or $taskReport.gameHookedEmissions -ne 1 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.remainingLineMm -ne 50000 -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'game-catch.png') -PathType Leaf)){throw 'Catch sale accounting mismatch.'}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Catch shutdown was not confirmed.'}
+  }elseif($GameWardrobe){
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 9 -or -not $taskReport.wardrobeConnected -or -not $taskReport.visibleSleeveChanged -or $taskReport.blueSleevePixels -lt 35 -or $taskReport.confirmedPurchases -ne 2 -or $taskReport.ownedClothing -ne 2 -or $taskReport.wornClothing -ne 'coast-jacket' -or -not $taskReport.reloadVerified -or -not $taskReport.closedJournalVerified){throw 'Wardrobe/visible sleeve validation mismatch.'}
+    if($taskReport.sequence -ne 8 -or $taskReport.value -ne 7600 -or $taskReport.baitCount -ne 12 -or $taskReport.stamina -ne 100 -or $taskReport.remainingLineMm -ne 50000){throw 'Wardrobe resource mismatch.'}
+    foreach($image in 'wardrobe-default.png','wardrobe-coast.png'){if(-not (Test-Path -LiteralPath (Join-Path $taskRun $image) -PathType Leaf)){throw 'Wardrobe preview missing.'}}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Wardrobe shutdown was not confirmed.'}
+  }elseif($GamePlayer){
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 8 -or -not $taskReport.playerWindowConnected -or -not $taskReport.singleInteractionWindow -or -not $taskReport.distinctScenery -or -not $taskReport.coastalCast -or -not $taskReport.reloadRetainedStation -or $taskReport.observerOpened -or $taskReport.personalSaveRead -or $taskReport.desktopLayer -or $taskReport.controlledCharge){throw 'Player window scope mismatch.'}
+    if($taskReport.sequence -ne 3 -or $taskReport.value -ne 12000 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.mapCount -ne 3 -or $taskReport.speciesCount -ne 7 -or $taskReport.playerPreviewCount -ne 3 -or $taskReport.gameFlightEmissions -ne 1){throw 'Player window resources mismatch.'}
+    foreach($image in 'player-lake.png','player-river.png','player-coast.png'){if(-not (Test-Path -LiteralPath (Join-Path $taskRun $image) -PathType Leaf)){throw 'Player lake capture missing.'}}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Player window shutdown was not confirmed.'}
+  }elseif($GameAtlas){
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 10 -or -not $taskReport.atlasConnected -or $taskReport.mapCount -ne 3 -or $taskReport.speciesCount -ne 7 -or $taskReport.actualPoolDraws -ne 2 -or $taskReport.riverPool -ne 'shallow' -or $taskReport.coastalPool -ne 'deep' -or -not $taskReport.returnedToStartingWater -or $taskReport.spotPersisted -or $taskReport.controlledCharge){throw 'Atlas travel and habitat evidence mismatch.'}
+    if($taskReport.sequence -ne 5 -or $taskReport.value -ne 12000 -or $taskReport.baitCount -ne 10 -or $taskReport.stamina -ne 96 -or $taskReport.gameFlightEmissions -ne 2 -or $taskReport.remainingLineMm -ne 50000 -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'game-atlas-panel.png') -PathType Leaf)){throw 'Atlas accounting or map screen missing.'}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Atlas shutdown was not confirmed.'}
+  }elseif($GameScene){
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 10 -or -not $taskReport.gameSceneConnected -or -not $taskReport.actualWebGL -or -not $taskReport.observerReadOnly -or -not $taskReport.fallbackAimVerified -or -not $taskReport.controlledContextLoss -or -not $taskReport.realHostFlight -or -not $taskReport.devToolsMouseInput -or $taskReport.controlledCharge -or $taskReport.nativePhysicalMouse){throw 'First-person scene evidence mismatch.'}
+    if($taskReport.triangles -le 0 -or $taskReport.sampleColors -lt 4 -or -not $taskReport.glVersion -or -not $taskReport.rendererName -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'game-scene-panel.png') -PathType Leaf)){throw 'Missing actual lake render.'}
+    if($taskReport.sequence -ne 3 -or $taskReport.value -ne 12000 -or $taskReport.gameFlightEmissions -ne 1 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.equipmentInstances -ne 6 -or $taskReport.remainingLineMm -ne 50000 -or $taskReport.lostLineMm -ne 0){throw 'First-person cast conservation mismatch.'}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Scene shutdown was not confirmed.'}
   }elseif($GameWater){
     if(-not $taskReport.passed -or $taskReport.checks.Count -ne 12 -or -not $taskReport.waterAimConnected -or -not $taskReport.sharedWaterGeometry -or -not $taskReport.realHostFlight -or -not $taskReport.naturalHookedTarget -or -not $taskReport.devToolsMouseInput -or $taskReport.nativePhysicalMouse -or $taskReport.pointerCaptureStubbed -or -not $taskReport.controlledCharge){throw 'Water targeting evidence mismatch.'}
     if($taskReport.schemaVersion -ne 3 -or $taskReport.sequence -ne 11 -or $taskReport.value -ne 12000 -or $taskReport.baitCount -ne 7 -or $taskReport.stamina -ne 90 -or $taskReport.gameFlightEmissions -ne 5 -or $taskReport.equipmentInstances -ne 6 -or $taskReport.remainingLineMm -ne 50000 -or $taskReport.lostLineMm -ne 0){throw 'Water targeting resource mismatch.'}
@@ -165,7 +214,7 @@ try{
   if($ThreeScene -and (-not $taskReport.scene.passed -or -not $taskReport.scene.finalRecreatedViewVerified -or $taskReport.scene.sceneLoads -lt 5 -or
     -not $taskReport.scene.runtimeWatchdogEnabled -or $taskReport.scene.watchdogSamples -lt 3 -or
     $taskReport.scene.gameLoaded -or $taskReport.scene.nativeFullscreenTested -or $taskReport.scene.presentedFpsMeasured)){throw 'Three-dimensional scene report mismatch.'}
-  $taskDesktopReport=$null
+  if(-not $GameWallpaper){$taskDesktopReport=$null}
   $taskRebuilds=0
   if($SoakSeconds -gt 0){
     if(-not $taskReport.soak.passed -or $taskReport.soak.requestedSeconds -ne $SoakSeconds -or $taskReport.soak.elapsedSeconds -lt $SoakSeconds -or $taskReport.soak.drawProgressChecks -lt 3){throw 'Soak report mismatch.'}
@@ -227,6 +276,8 @@ if($taskFailure){
 }
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;failureBoundary=$taskReport.failureBoundary;expectedExitCode=$taskExpectedExit;reopened=$taskReport.reopened;sourcePreserved=$taskReport.sourcePreserved;privateCopyReopen=$taskReport.privateCopyReopen;documentReloadTested=$taskReport.documentReloadTested;secondHostProcessTested=$false;realDiskFailureTested=$false;
   lineBreakConnected=$taskReport.lineBreakConnected;physicalOverload=$taskReport.physicalOverload;gameLineBreakConfirmations=$taskReport.gameLineBreakConfirmations;
+  atlasConnected=$taskReport.atlasConnected;mapCount=$taskReport.mapCount;speciesCount=$taskReport.speciesCount;
+  gameSceneConnected=$taskReport.gameSceneConnected;actualWebGL=$taskReport.actualWebGL;rendererName=$taskReport.rendererName;softwareRendererObserved=$taskReport.softwareRendererObserved;
   waterAimConnected=$taskReport.waterAimConnected;sharedWaterGeometry=$taskReport.sharedWaterGeometry;devToolsMouseInput=$taskReport.devToolsMouseInput;realHostFlight=$taskReport.realHostFlight;
   campWorkConnected=$taskReport.campWorkConnected;campRewardConfirmations=$taskReport.campRewardConfirmations;controlledCampTime=$taskReport.controlledCampTime;realFullMinute=$taskReport.realFullMinute;sparesMenuConnected=$taskReport.sparesMenuConnected;controlledTerminalLoss=$taskReport.controlledTerminalLoss;terminalLossConfirmations=$taskReport.terminalLossConfirmations;initialLineMm=$taskReport.initialLineMm;lostLineMm=$taskReport.lostLineMm;
   realWebViewMessages=$true;gameLoaded=[bool]$Game;gameSimulationImplemented=$false;controlledFishFacts=$taskReport.controlledFishFacts;castPreparationConnected=$taskReport.castPreparationConnected;gameFlightEmissions=$taskReport.gameFlightEmissions;flatWaterFlightConnected=$taskReport.flatWaterFlightConnected;realWaterAndFlight=$false;biteSimulationConnected=$taskReport.biteSimulationConnected;gameHookedEmissions=$taskReport.gameHookedEmissions;naturalFishLanded=$taskReport.naturalFishLanded;fightSimulationConnected=$taskReport.fightSimulationConnected;gameNaturalLandings=$taskReport.gameNaturalLandings;fixtureNetCapability=$taskReport.fixtureNetCapability;commerceConnected=$taskReport.commerceConnected;equipmentMenuConnected=$taskReport.equipmentMenuConnected;schemaVersion=$taskReport.schemaVersion;equipmentInstances=$taskReport.equipmentInstances;remainingLineMm=$taskReport.remainingLineMm;ownedNetEquipped=$taskReport.ownedNetEquipped;foodCount=$taskReport.foodCount;baitCount=$taskReport.baitCount;stamina=$taskReport.stamina;slackUnhookConnected=$taskReport.slackUnhookConnected;controlledSlackSetup=$taskReport.controlledSlackSetup;gameUnhookedConfirmations=$taskReport.gameUnhookedConfirmations;equipmentDamageImplemented=$false;desktopLayer=$taskDesktopReport;hostPolicy=$taskReport.hostPolicy;availability=$taskReport.availability;nativePolicy=$taskReport.nativePolicy;nativeForegroundTestSkipped=$taskReport.nativeForegroundTestSkipped;nativeSignals=$taskReport.nativeSignals;display=$taskReport.display;renderer=$taskReport.renderer;soak=$taskReport.soak;scene=$taskReport.scene;nativeInputTested=$false;forcedCleanup=$false;remainingDedicatedProcesses=0;outputDirectory=$taskRun} |

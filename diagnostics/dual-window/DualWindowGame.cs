@@ -10,10 +10,17 @@ using FishingDesktop.GameCore;
 sealed partial class DualWindowContext
 {
     readonly string gameMode;
+    internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest; } }
+    internal bool PlayerMode { get { return gameMode=="player-window"||gameMode=="player-wallpaper"; } }
+    bool GamePlayerSelfTest { get { return gameMode=="player-self-test"; } }
+    bool GameCatchSelfTest { get { return gameMode=="catch-self-test"; } }
+    bool GameAtlasSelfTest { get { return gameMode=="atlas-self-test"; } }
+    bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||PlayerMode; } }
     internal bool GameMode { get { return gameMode != null; } }
-    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameFailureCase!=null; } }
+    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameSceneSelfTest || GameAtlasSelfTest || GamePlayerSelfTest || GameWardrobeSelfTest || GameCatchSelfTest || GameWallpaperSelfTest || GameFailureCase!=null; } }
+    bool GameSceneSelfTest { get { return gameMode=="scene-self-test"; } }
     bool GameWaterSelfTest { get { return gameMode=="water-self-test"; } }
-    bool GameWaterMode { get { return GameWaterSelfTest||gameMode=="new"||gameMode=="open"||gameMode=="line-break-new"||gameMode=="line-break-open"; } }
+    bool GameWaterMode { get { return GameWaterSelfTest||GameAtlasMode||GameSceneSelfTest||gameMode=="new"||gameMode=="open"||gameMode=="line-break-new"||gameMode=="line-break-open"; } }
     bool GameLineBreakSelfTest { get { return gameMode == "line-break-self-test"; } }
     bool GameLineBreakMode { get { return GameLineBreakSelfTest || gameMode=="line-break-new" || gameMode=="line-break-open" || (gameMode!=null&&gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)); } }
     bool GameSparesSelfTest { get { return gameMode == "spares-self-test"; } }
@@ -28,7 +35,7 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, WardrobeRevision;
         internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater;
         internal GameShopPending Shop;
         internal GameEquipmentPending Equipment;
@@ -41,14 +48,14 @@ sealed partial class DualWindowContext
     {
         if (!GameMode) return;
         string path = Path.Combine(root, "game.fltj");
-        if (gameMode == "open" || gameMode=="line-break-open") {
+        if (gameMode == "open" || gameMode=="line-break-open" || (PlayerMode&&File.Exists(path))) {
             var inspection=FloatJournalArchive.Inspect(path);
             if(inspection.State.SchemaVersion!=2&&inspection.State.SchemaVersion!=3)throw new InvalidOperationException("This legacy profile requires an explicit backed-up candidate upgrade; opening did not change it.");
             if(GameLineBreakMode)ValidateGameLineBreakCatalog(inspection.State);
             game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion,GameLineBreakMode?(Action<FloatGameState>)ValidateGameLineBreakCatalog:null);
         }
-        else if(gameMode=="new" || GameLineBreakMode || GameWaterSelfTest || GameSparesSelfTest || GameCampSelfTest){
-            var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture();
+        else if(GameAtlasMode || gameMode=="new" || GameLineBreakMode || GameWaterSelfTest || GameSceneSelfTest || GameSparesSelfTest || GameCampSelfTest){
+            var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture(atlas:GameAtlasMode);
             game=FloatGameOwner.CreateNewWithEquipmentOffers(path,initial,CreateGameSparesCatalog(initial),GameSelfTest?(Action<FloatSaveFaultPoint>)GameShopSaveFault:null);
         }
         else if(GameSelfTest) game=FloatGameOwner.CreateNew(path,CreateGameFixture(),GameShopSaveFault);
@@ -60,12 +67,12 @@ sealed partial class DualWindowContext
         // This opt-in build uses only its private fixture save. Opening never
         // falls back to creating new funds, bait or equipment.
         desktopAllowForegroundChanges = true;
-        if (!GameSelfTest) owner.SetPause(FishingDesktop.Diagnostics.HostPolicy.PauseReason.EnvironmentUnknown,true);
+        if (!GameSelfTest||GameWallpaperSelfTest) owner.SetPause(FishingDesktop.Diagnostics.HostPolicy.PauseReason.EnvironmentUnknown,true);
     }
-    static FloatGameState CreateGameFixture(long wallet=12000,int stamina=100,int bait=12)
+    static FloatGameState CreateGameFixture(long wallet=12000,int stamina=100,int bait=12,bool atlas=false)
     {
-        var rules = new FloatGameRules(1,"float-starter","worm",2,100,2,1000000,
-            new[]{new FloatSpeciesRule("carp",100000,10000000,120),new FloatSpeciesRule("crucian",50000,3000000,80)});
+        var rules = new FloatGameRules(atlas?FloatFishingAtlas.NewRulesVersion:1,"float-starter","worm",2,100,2,1000000,
+            atlas?(IEnumerable<FloatSpeciesRule>)FloatFishingAtlas.SpeciesRules:new[]{new FloatSpeciesRule("carp",100000,10000000,120),new FloatSpeciesRule("crucian",50000,3000000,80)});
         var rig = new FixedFloatRig(Guid.NewGuid(),1,"float-starter",Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),50000,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid());
         var catalog=new FloatCommerceCatalog(1,"worm","landing-net","bread",2400,5,20,20,20,1000,1000,100);
         // Explicit original development definitions for a NEW private profile.
@@ -161,11 +168,11 @@ sealed partial class DualWindowContext
     }
     async Task StartGamePresentation()
     {
-        if (!GameSelfTest) StartNativePolicy();
+        if (!GameSelfTest||GameWallpaperSelfTest) StartNativePolicy();
         SyncGamePolicy();
-        var read=windows[false];
+        ProbeWindow read; if(windows.TryGetValue(false,out read)){
         if (read.DesktopReadOnly && !desktopShown.Contains(read)) { desktopShown.Add(read); GuardPresentation(()=>read.Show()); CheckDesktop(read); }
-        rendererEnabled=true; RendererPageReady(read);
+        rendererEnabled=true; RendererPageReady(read);}
         // Original fixed-water development gameplay runs on the host. A net
         // must be purchased and equipped; its visual remains a placeholder.
         await Task.FromResult(0);
@@ -183,6 +190,7 @@ sealed partial class DualWindowContext
         if (b.Offset>count) b.Offset=0;
         var projected=FloatPageProjection.Create(snapshot,b.Offset,50);
         Send(pane,new {kind="game-snapshot",documentId=pane.Ticket.DocumentId,revision=checked(++b.Revision),snapshot=projected});
+        SendGameSpots(pane);SendGameWardrobe(pane);
         SendGameCast(pane);
         SendGameFlight(pane);
         SendGameBite(pane);
@@ -219,6 +227,8 @@ sealed partial class DualWindowContext
             if(kind=="game-camp")Broadcast();
             return;
         }
+        if(kind=="game-wardrobe"){ReceiveGameWardrobe(pane,b,m,transport);return;}
+        if(kind=="game-spot-select"){ReceiveGameSpot(pane,b,m,transport);return;}
         if(kind=="game-camp"){ReceiveGameCamp(pane,b,m,document,lease,transport);return;}
         if(GameCampActive&&(kind=="game-shop"||kind=="game-equipment"||kind=="game-spares"||kind=="game-intent")){
             GameReply(pane,transport,"camp-work-busy");Broadcast();return;

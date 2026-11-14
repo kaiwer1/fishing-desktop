@@ -134,7 +134,7 @@ namespace FishingDesktop.GameCore
             return new FloatCommitResult(code, null, null, false, false, false);
         }
         static bool UserType(FloatCommand command)
-        { return command is CastFloat || command is CastFloatWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is ArchiveLostFloatEquipment || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
+        { return command is CastFloat || command is CastFloatWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is ArchiveLostFloatEquipment || command is ChangeFloatClothing || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
         bool HasRecordedRequest(FloatCommand command)
         {
             if (command == null) return false;
@@ -200,6 +200,7 @@ namespace FishingDesktop.GameCore
             // Authority is checked before inspecting any old request receipt.
             if (!Authorized(view, document, lease)) return Refused("control-required");
             if (!UserType(command)) return Refused("user-command-not-allowed");
+            if (command is ChangeFloatClothing && !_menu) return Refused("menu-required");
             if ((command is CastFloat || command is CastFloatWithEquipment) && (_menu || Current().PendingResult) && !HasRecordedRequest(command)) return Refused("domain-paused");
             return Run(() => _store.Execute(command));
         }

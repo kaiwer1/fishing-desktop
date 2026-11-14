@@ -13,7 +13,15 @@ sealed partial class DualWindowContext
     void InitializeGameWater()
     {
         if(!GameWaterMode)return;
-        gameWater=FloatStillWaterGeometry.CreateDevelopment();
+        if(GameAtlasMode){
+            var available=FloatFishingAtlas.Available(game.Snapshot.State.Rules);
+            if(available.Count==0)throw new InvalidOperationException("The saved fish rules have no supported fishing station.");
+            gameFishingWater=available[0];gameWater=gameFishingWater.Geometry;
+        }else gameWater=FloatStillWaterGeometry.CreateDevelopment();
+        ConfigureGameWaterBudget();
+    }
+    void ConfigureGameWaterBudget()
+    {
         // This symmetrical development sector has its nearest target in the
         // centre of its near edge. Menu readiness is for at least one target.
         var near=FloatCastLaunchPlanner.Plan(gameWater,5000,10000,gameWater.Version,1000);
@@ -81,7 +89,7 @@ sealed partial class DualWindowContext
                 surfaceYmm=gameWater.SurfaceYmm,floatDepthMm=FloatStillWaterGeometry.FloatDepthMm,clearanceMm=FloatStillWaterGeometry.MinimumBottomClearanceMm,
                 bed=beds.ToArray(),target,prediction,landing};
         }
-        Send(pane,new {kind="game-water-state",documentId=pane.Ticket.DocumentId,revision=checked(++binding.WaterRevision),state});
+        Send(pane,new {kind="game-water-state",sceneEnabled=GameWaterMode&&!GameWaterSelfTest&&!GameAtlasSelfTest,documentId=pane.Ticket.DocumentId,revision=checked(++binding.WaterRevision),state});
     }
     void BroadcastGameWater(){foreach(var pane in windows.Values)SendGameWater(pane);}
 }

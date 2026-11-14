@@ -15,7 +15,7 @@ sealed partial class DualWindowContext
         return new Dictionary<string,object> { {"action",action},{"requestId",Guid.NewGuid().ToString("D")},{"eventId",Guid.NewGuid().ToString("D")},
             {"sessionId",action=="cast"?Guid.NewGuid().ToString("D"):action=="sell"?"":state.Session.Id.ToString("D")},
             {"expectedSequence",state.Sequence.ToString(System.Globalization.CultureInfo.InvariantCulture)},
-            {"rigRevision","1"},{"rulesVersion","1"} };
+            {"rigRevision",state.Rig.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture)},{"rulesVersion",state.RulesVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)} };
     }
     async Task<Dictionary<string,object>> GameWire(ProbeWindow pane,string lease,Dictionary<string,object> intent,string document=null)
     {

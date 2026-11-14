@@ -155,7 +155,22 @@ namespace FishingDesktop.GameCore
         }
     }
     public enum FloatRecoveryReason { StartupInterrupted=1,OwnerShutdown=2 }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded }
+    internal sealed class FloatClothingItem
+    {
+        internal readonly string Id,Name;
+        internal readonly long PriceMinor;
+        internal FloatClothingItem(string id,string name,long price){Id=id;Name=name;PriceMinor=price;}
+    }
+    internal static class FloatClothingCatalog
+    {
+        // Type 21 journal commands bind these two original fixed prices.
+        internal static readonly ReadOnlyCollection<FloatClothingItem> Items=Array.AsReadOnly(new[]{
+            new FloatClothingItem("moss-jacket","苔绿钓鱼服",1800),new FloatClothingItem("coast-jacket","海蓝防风衣",2600)});
+        internal static FloatClothingItem Find(string id){foreach(var item in Items)if(item.Id==id)return item;return null;}
+        internal static bool Enabled(FloatGameState state)
+        {return state!=null && state.SchemaVersion==3 && state.RulesVersion==2 && state.EquipmentUpgradeOrigin==null;}
+    }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved }
     public sealed class FloatEquipmentLossSummary
     {
         public readonly Guid LineId;
@@ -182,6 +197,7 @@ namespace FishingDesktop.GameCore
         public readonly ReadOnlyCollection<Guid> FishIds;
         public readonly FloatEquipmentLossSummary EquipmentLoss;
         public readonly FloatEquipmentArchiveSummary EquipmentArchive;
+        public readonly string ClothingItemId;
         internal readonly string Fingerprint;
         internal bool Terminal{get{return Outcome==FloatOutcome.Recalled||Outcome==FloatOutcome.Landed||Outcome==FloatOutcome.Released||Outcome==FloatOutcome.Recovered||Outcome==FloatOutcome.Unhooked||Outcome==FloatOutcome.TerminalLost;}}
         internal FloatReceipt(FloatCommand command,long sequence,long rulesVersion,FloatOutcome outcome,Guid encounterId,long walletBefore,long walletAfter,int staminaBefore,int staminaAfter,int baitBefore,int baitAfter,IEnumerable<Guid> fishIds,int foodBefore=0,int foodAfter=0,Guid ownedNetBefore=default(Guid),Guid ownedNetAfter=default(Guid),Guid equippedNetBefore=default(Guid),Guid equippedNetAfter=default(Guid),FloatEquipmentLossSummary equipmentLoss=null,FloatEquipmentArchiveSummary equipmentArchive=null)
@@ -190,6 +206,8 @@ namespace FishingDesktop.GameCore
             var recovery=command as RecoverFloatSession;RecoveryReason=recovery==null?(FloatRecoveryReason?)null:recovery.Reason;
             WalletBefore=walletBefore;WalletAfter=walletAfter;StaminaBefore=staminaBefore;StaminaAfter=staminaAfter;BaitBefore=baitBefore;BaitAfter=baitAfter;
             FoodBefore=foodBefore;FoodAfter=foodAfter;OwnedNetBefore=ownedNetBefore;OwnedNetAfter=ownedNetAfter;EquippedNetBefore=equippedNetBefore;EquippedNetAfter=equippedNetAfter;
+            var clothing=command as ChangeFloatClothing;
+            ClothingItemId=clothing==null?null:clothing.ItemId;
             var copy=new List<Guid>(fishIds);var unique=new HashSet<Guid>();foreach(var id in copy)FloatGuard.Unique(unique,id);FishIds=copy.AsReadOnly();
             if((outcome==FloatOutcome.TerminalLost)!=(equipmentLoss!=null)||(equipmentLoss!=null&&copy.Count!=0))throw new ArgumentException("Invalid equipment loss receipt.");EquipmentLoss=equipmentLoss;
             if((outcome==FloatOutcome.EquipmentArchived)!=(equipmentArchive!=null)||(equipmentArchive!=null&&(copy.Count!=0||command.SessionId!=Guid.Empty||encounterId!=Guid.Empty)))throw new ArgumentException("Invalid equipment archive receipt.");EquipmentArchive=equipmentArchive;
@@ -200,6 +218,8 @@ namespace FishingDesktop.GameCore
         public readonly Guid ProfileId,BranchId,BaitStackId;
         public readonly long Sequence,RulesVersion,WalletMinor;
         public readonly int Stamina,BaitCount;
+        public readonly ReadOnlyCollection<string> OwnedClothingIds;
+        public readonly string WornClothingId;
         public readonly string BaitDefinitionKey;
         public readonly FloatRigDescriptor Rig;
         internal readonly FixedFloatRig LegacyRig;
@@ -246,8 +266,25 @@ namespace FishingDesktop.GameCore
             foreach(var row in fish){if(row==null||row.RulesVersion!=rules.Version)throw new ArgumentException("Invalid fish.");FloatGuard.Unique(assets,row.Id);}
             var requests=new HashSet<Guid>();var events=new HashSet<Guid>();var casts=new HashSet<Guid>();var terminals=new HashSet<Guid>();
             var archivedItems=new HashSet<Guid>();var archivedOwners=new HashSet<Guid>();var reservedArchiveIds=new HashSet<Guid>();long archivedLine=0;
+            var clothingIds=new List<string>();string wearing=null;
             for(int i=0;i<history.Count;i++){
                 var row=history[i];if(row==null||row.Sequence!=(long)i+1||row.RulesVersion!=rules.Version||!requests.Add(row.RequestId)||!events.Add(row.EventId))throw new ArgumentException("Invalid receipt history.");
+                if(row.ClothingItemId!=null){
+                    var item=FloatClothingCatalog.Find(row.ClothingItemId);
+                    if(schemaVersion!=3||rules.Version!=2||equipmentOrigin!=null||item==null)throw new ArgumentException("Unsupported wardrobe receipt.");
+                    switch(row.Outcome){
+                    case FloatOutcome.ClothingPurchased:
+                        if(clothingIds.Contains(item.Id)||row.WalletBefore-row.WalletAfter!=item.PriceMinor)throw new ArgumentException("Invalid jacket purchase.");
+                        clothingIds.Add(item.Id);break;
+                    case FloatOutcome.ClothingWorn:
+                        if(!clothingIds.Contains(item.Id)||wearing==item.Id||row.WalletBefore!=row.WalletAfter)throw new ArgumentException("Invalid worn jacket.");
+                        wearing=item.Id;break;
+                    case FloatOutcome.ClothingRemoved:
+                        if(wearing!=item.Id||row.WalletBefore!=row.WalletAfter)throw new ArgumentException("Invalid removed jacket.");
+                        wearing=null;break;
+                    default:throw new ArgumentException("Unrecognized wardrobe receipt.");
+                    }
+                }
                 // Reserve only identities whose archive was already confirmed.
                 // Earlier receipt namespaces remain replay-compatible.
                 if(reservedArchiveIds.Contains(row.RequestId)||reservedArchiveIds.Contains(row.EventId)||reservedArchiveIds.Contains(row.SessionId)||reservedArchiveIds.Contains(row.EncounterId))throw new ArgumentException("A later receipt reused an archived identity.");
@@ -279,6 +316,7 @@ namespace FishingDesktop.GameCore
             var archiveIds=new List<Guid>(archivedItems);archiveIds.Sort();ArchivedEquipmentIds=archiveIds.AsReadOnly();
             var lossOwners=new List<Guid>(archivedOwners);lossOwners.Sort();ArchivedLossOwnerIds=lossOwners.AsReadOnly();
             ArchivedEquipmentLineMm=archivedLine;archivedIdentities=reservedArchiveIds;
+            clothingIds.Sort(StringComparer.Ordinal);OwnedClothingIds=clothingIds.AsReadOnly();WornClothingId=wearing;
             ProfileId=profile;BranchId=branch;Sequence=sequence;RulesVersion=rules.Version;WalletMinor=wallet;Stamina=stamina;BaitStackId=baitStack;BaitDefinitionKey=baitDefinition;BaitCount=baitCount;Rig=description;LegacyRig=rig;Equipment=equipment;Session=session;Creel=fish.AsReadOnly();Receipts=history.AsReadOnly();Rules=rules;
             SchemaVersion=schemaVersion;CommerceCatalog=catalog;FoodStackId=foodStack;FoodCount=foodCount;OwnedNet=ownedNet;EquippedNetId=equippedNet;UpgradeOrigin=origin;
             EquipmentOffers=equipmentOffers;

@@ -79,6 +79,53 @@ test('page initializes after empty placeholders with current equipment selected 
   assert.equal(f.nodes.get('equipment-move-line').disabled, true); assert.equal(f.messages.length, 0);
 });
 
+const spots = [
+  { id: 'development-still-water', name: '静水湾', region: '江南', description: '湖湾芦苇', species: ['鲫鱼','鲤鱼'] },
+  { id: 'river-bend', name: '江湾', region: '长江', description: '江岸回水', species: ['草鱼','鳊鱼'] },
+  { id: 'coastal-bay', name: '海湾', region: '东海', description: '海岸礁湾', species: ['黑鲷','花鲈','黄鳍鲷'] },
+];
+function spotState(f, revision, activeId) { f.emit({ kind: 'game-spot-state', revision, state: { activeId, spots } }); }
+function spotWater(f, revision, geometryVersion, waterId) {
+  f.emit({ kind: 'game-water-state', revision, state: { enabled: true, geometryVersion, waterId, spotId: 'bank-01',
+    bounds: { minXmm: -12000, maxXmm: 12000, minZmm: 12000, maxZmm: 40000 }, surfaceYmm: 0, floatDepthMm: 200, clearanceMm: 100,
+    bed: [{ zMm: 3000, depthMm: 1000 }, { zMm: 80000, depthMm: 3500 }], target: null, prediction: null, landing: null } });
+}
+
+test('shared spot menu uses only the current geometry version and waits for confirmed location, water and matching reply', async () => {
+  const f = await pageFixture(); assert.equal(f.nodes.get('spot-menu').hidden, true);
+  spotState(f, 1, spots[0].id); assert.equal(f.nodes.get('spot-menu').hidden, false);
+  assert.equal(f.nodes.get('spot-select-river-bend').disabled, true);
+  spotWater(f, 1, 1, spots[0].id); f.click('spot-select-river-bend');
+  const request = f.messages.at(-1);
+  assert.deepEqual(Object.keys(request).sort(), ['documentId','expectedVersion','kind','lease','spotId','transportId']);
+  assert.deepEqual([request.kind,request.spotId,request.lease,request.expectedVersion], ['game-spot-select','river-bend','first',1]);
+  assert.equal(f.nodes.get('scene-spot-name').textContent, '静水湾');
+  f.click('quote-bait', {}, true); f.click('menu', {}, true); assert.equal(f.messages.length, 1);
+  f.reply('spot-selected', request.transportId); assert.equal(f.probe.state().spotPending, 'river-bend');
+  spotState(f, 2, 'river-bend'); assert.equal(f.nodes.get('scene-spot-name').textContent, '江湾');
+  assert.equal(f.nodes.get('map-spot-name').textContent, '江湾 · 俯视钓位'); assert.equal(f.probe.state().spotPending, 'river-bend');
+  spotWater(f, 2, 2, 'river-bend'); assert.equal(f.probe.state().spotPending, null);
+  f.click('spot-select-coastal-bay'); const second = f.messages.at(-1); assert.equal(second.expectedVersion, 2);
+  f.reply('spot-stale', request.transportId); assert.equal(f.probe.state().spotPending, 'coastal-bay');
+  spotWater(f, 3, 3, 'coastal-bay'); spotState(f, 3, 'coastal-bay');
+  assert.equal(f.probe.state().spotPending, 'coastal-bay'); f.reply('spot-selected', second.transportId);
+  assert.equal(f.probe.state().spotPending, null);
+  f.snapshot.MenuOpen = false; f.broadcast(); f.click('cast'); assert.equal(f.messages.at(-1).aim.geometryVersion, 3);
+});
+
+test('spot menu cannot send during casts, another transaction or after losing its lease; failures leave the confirmed HUD intact', async () => {
+  const f = await pageFixture(); spotWater(f, 1, 1, spots[0].id); spotState(f, 1, spots[0].id);
+  f.snapshot.SessionId = id(42); f.broadcast(); f.click('spot-select-river-bend', {}, true); assert.equal(f.messages.length, 0);
+  f.snapshot.SessionId = null; f.broadcast(); f.click('food-eat'); f.click('spot-select-river-bend', {}, true); assert.equal(f.messages.length, 1);
+  f.reply('food-candidate'); f.broadcast(); f.click('spot-select-river-bend'); f.reply('spot-switch-busy');
+  assert.equal(f.probe.state().spotPending, null); assert.equal(f.nodes.get('scene-spot-name').textContent, '静水湾');
+  assert.match(f.nodes.get('spot-menu').children[1].textContent, /先结束当前一竿/);
+  f.click('spot-select-river-bend'); const old = f.messages.at(-1).transportId;
+  f.grant(null); assert.equal(f.probe.state().spotPending, null); f.click('spot-select-river-bend', {}, true);
+  f.reply('spot-selected', old); assert.equal(f.messages.length, 3);
+  f.emit({ kind: 'role', role: '只读' }); f.grant('new'); f.click('spot-select-river-bend', {}, true); assert.equal(f.messages.length, 3);
+});
+
 test('camp holds all trading menus through work and retry, then unlocks immediately after confirmed explicit payment', async () => {
   const f = await pageFixture(); f.snapshot.WalletMinor = f.shop.walletMinor = f.spares.walletMinor = '0';
   Object.assign(f.camp, { available: true, reason: null }); f.broadcast(); f.select('equipment-slot-rod', id(7));

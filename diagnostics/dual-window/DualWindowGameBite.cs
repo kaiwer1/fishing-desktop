@@ -14,7 +14,7 @@ sealed partial class DualWindowContext
         if(gameBite==null || gameBite.Snapshot.Phase==FloatBitePhase.Ended)return false;
         var state=game.Snapshot;var bite=gameBite.Snapshot;
         if(state.State!=null && state.State.Session!=null && state.State.Session.Id==bite.SessionId && !state.PendingResult &&
-            gameFlight!=null && gameFlight.Snapshot.SessionId==bite.SessionId && gameFlight.Snapshot.Phase==FloatFlightPhase.Waiting)return false;
+            gameFlight!=null && gameFlight.Snapshot.SessionId==bite.SessionId && gameFlight.Snapshot.Phase==FloatFlightPhase.Waiting && GameWaterCanFish())return false;
         gameBite.End(bite.SessionId);gameBiteMillisecondRemainder=0;return true;
     }
     void AdvanceGameBite(double activeSeconds)
@@ -30,7 +30,7 @@ sealed partial class DualWindowContext
             if(state.Rig.DefinitionKey!="float-starter" || state.Rules.BaitDefinitionKey!="worm")
                 throw new InvalidOperationException("No bite configuration for this rig/bait.");
             var pool=new[]{new FloatBiteCandidate("carp",3,300000,1800000),new FloatBiteCandidate("crucian",7,100000,650000)};
-            foreach(var row in pool){
+            if(gameFishingWater==null)foreach(var row in pool){
                 var rule=state.Rules.Find(row.SpeciesId);
                 if(rule==null || row.MinimumMassMg<rule.MinimumMassMg || row.MaximumMassMg>rule.MaximumMassMg)
                     throw new InvalidOperationException("Bite catalog does not match the saved rules.");
@@ -38,7 +38,13 @@ sealed partial class DualWindowContext
             // Private scripted checks use one explicit seed, but identical
             // durations/rate/target ranges and the actual activity clock.
             uint seed=GameSelfTest?1u:BitConverter.ToUInt32(session.ToByteArray(),0);
-            gameBite=new FloatBiteSimulation(session,seed,new FloatBiteRules(20,20,30,80),new FloatBiteEnvironment(.18,pool));
+            var environmentForBite=new FloatBiteEnvironment(.18,pool);
+            if(gameFishingWater!=null){
+                gameFishingPool=gameFishingWater.CreatePool(gameWaterLanding.Sample,state.Rules);
+                if(gameFishingPool==null)return;
+                environmentForBite=gameFishingPool.Environment;
+            }
+            gameBite=new FloatBiteSimulation(session,seed,new FloatBiteRules(20,20,30,80),environmentForBite);
             gameBiteMillisecondRemainder=0;
             // Landing consumed this activity sample. Start at step zero and do
             // not give the same elapsed interval to two successive phases.

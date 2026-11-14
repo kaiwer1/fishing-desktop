@@ -19,6 +19,21 @@ namespace FishingDesktop.GameCore
         internal virtual string Detail{get{return "";}}
         internal string Fingerprint{get{return Kind+"|"+ProfileId.ToString("N")+"|"+BranchId.ToString("N")+"|"+EventId.ToString("N")+"|"+SessionId.ToString("N")+"|"+FloatGuard.Number(ExpectedSequence)+"|"+FloatGuard.Number(ExpectedRigRevision)+"|"+FloatGuard.Number(ExpectedRulesVersion)+"|"+Detail;}}
     }
+    internal enum FloatClothingAction : byte { Buy=1,Wear=2,Remove=3 }
+    internal sealed class ChangeFloatClothing : FloatCommand
+    {
+        internal readonly string ItemId;
+        internal readonly FloatClothingAction Action;
+        internal ChangeFloatClothing(Guid profile,Guid branch,Guid request,Guid businessEvent,FloatClothingAction action,string itemId,
+            long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
+            :base("clothing",profile,branch,request,businessEvent,Guid.Empty,expectedSequence,expectedRigRevision,expectedRulesVersion)
+        {
+            if(action!=FloatClothingAction.Buy && action!=FloatClothingAction.Wear && action!=FloatClothingAction.Remove)
+                throw new ArgumentOutOfRangeException("action");
+            ItemId=FloatGuard.Key(itemId);Action=action;
+        }
+        internal override string Detail{get{return FloatGuard.Number((byte)Action)+"|"+ItemId;}}
+    }
     public sealed class CastFloat : FloatCommand
     {
         public CastFloat(Guid profile,Guid branch,Guid request,Guid releaseEvent,Guid session,long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
@@ -242,7 +257,11 @@ namespace FishingDesktop.GameCore
             return false;
         }
         static string Code(FloatOutcome outcome)
-        {switch(outcome){case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";case FloatOutcome.ProfileUpgraded:return "upgrade-candidate";case FloatOutcome.SuppliesPurchased:return "purchase-candidate";case FloatOutcome.NetEquipped:return "equip-candidate";case FloatOutcome.FoodUsed:return "food-candidate";case FloatOutcome.Unhooked:return "unhooked-candidate";case FloatOutcome.SlotReplaced:return "assembly-candidate";case FloatOutcome.LineMoved:return "line-move-candidate";case FloatOutcome.TerminalLost:return "terminal-loss-candidate";case FloatOutcome.EquipmentOffersConfigured:return "equipment-offers-candidate";case FloatOutcome.EquipmentPurchased:return "equipment-purchase-candidate";case FloatOutcome.EquipmentProfileUpgraded:return "equipment-upgrade-candidate";case FloatOutcome.EquipmentArchived:return "equipment-archive-candidate";case FloatOutcome.CampWorkRewarded:return "camp-work-candidate";default:return "sale-candidate";}}
+        {switch(outcome){
+            case FloatOutcome.ClothingPurchased:return "clothing-purchase-candidate";
+            case FloatOutcome.ClothingWorn:return "clothing-wear-candidate";
+            case FloatOutcome.ClothingRemoved:return "clothing-remove-candidate";
+            case FloatOutcome.CastCommitted:return "cast-candidate";case FloatOutcome.Recalled:return "recall-candidate";case FloatOutcome.Landed:return "landed-candidate";case FloatOutcome.CapacityRejected:return "creel-capacity-exceeded";case FloatOutcome.Released:return "released-candidate";case FloatOutcome.Recovered:return "recovered-candidate";case FloatOutcome.ProfileUpgraded:return "upgrade-candidate";case FloatOutcome.SuppliesPurchased:return "purchase-candidate";case FloatOutcome.NetEquipped:return "equip-candidate";case FloatOutcome.FoodUsed:return "food-candidate";case FloatOutcome.Unhooked:return "unhooked-candidate";case FloatOutcome.SlotReplaced:return "assembly-candidate";case FloatOutcome.LineMoved:return "line-move-candidate";case FloatOutcome.TerminalLost:return "terminal-loss-candidate";case FloatOutcome.EquipmentOffersConfigured:return "equipment-offers-candidate";case FloatOutcome.EquipmentPurchased:return "equipment-purchase-candidate";case FloatOutcome.EquipmentProfileUpgraded:return "equipment-upgrade-candidate";case FloatOutcome.EquipmentArchived:return "equipment-archive-candidate";case FloatOutcome.CampWorkRewarded:return "camp-work-candidate";default:return "sale-candidate";}}
         public static FloatReduction Reduce(FloatGameState state,FloatCommand command,FloatGameRules rules)
         {
             if(state==null)throw new ArgumentNullException("state");if(command==null)throw new ArgumentNullException("command");
@@ -281,6 +300,26 @@ namespace FishingDesktop.GameCore
                     string refused=FloatCampWorkRules.Check(state);if(refused!=null)return Reject(refused);
                     if(CampWorkIdentityUsed(state,command))return Reject("camp-identity-invalid");
                     wallet=checked(wallet+FloatCampWorkRules.RewardMinor);outcome=FloatOutcome.CampWorkRewarded;
+                }else if(command is ChangeFloatClothing){
+                    var change=(ChangeFloatClothing)command;
+                    if(!FloatClothingCatalog.Enabled(state))return Reject("clothing-unavailable");
+                    if(session!=null)return Reject("session-busy");
+                    var item=FloatClothingCatalog.Find(change.ItemId);
+                    if(item==null)return Reject("clothing-item-unknown");
+                    bool owned=state.OwnedClothingIds.Contains(item.Id);
+                    switch(change.Action){
+                    case FloatClothingAction.Buy:
+                        if(owned)return Reject("clothing-already-owned");
+                        if(wallet<item.PriceMinor)return Reject("wallet-insufficient");
+                        wallet-=item.PriceMinor;outcome=FloatOutcome.ClothingPurchased;break;
+                    case FloatClothingAction.Wear:
+                        if(!owned)return Reject("clothing-not-owned");
+                        if(state.WornClothingId==item.Id)return Reject("clothing-unchanged");
+                        outcome=FloatOutcome.ClothingWorn;break;
+                    default:
+                        if(state.WornClothingId!=item.Id)return Reject("clothing-not-worn");
+                        outcome=FloatOutcome.ClothingRemoved;break;
+                    }
                 }else if(archiveCommand!=null){
                     if(session!=null)return Reject("session-busy");
                     var selected=new HashSet<Guid>(archiveCommand.ItemIds);var owners=new HashSet<Guid>();long lineMm=0;

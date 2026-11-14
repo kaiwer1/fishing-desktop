@@ -40,7 +40,7 @@ sealed partial class DualWindowContext
         ClearGameWalk();CancelGameCast();ClearGameFightInput();
         gameCastInput=null;gameWaterPlan=null;gameWaterTarget=null;gameWaterLanding=null;gameWaterLandingSession=Guid.Empty;
         gameBite=null;gameFight=null;gameFishingPool=null;gameFlight=null;gameFlightTrail.Clear();
-        gameWater=next.Geometry;gameFishingWater=next;InitializeGameWalk();ConfigureGameWaterBudget();InitializeGameCast();InitializeGameFlight();
+        gameBottomSelected=false;gameBottom=null;gameBottomAttempt=Guid.Empty;gameWater=next.Geometry;gameFishingWater=next;InitializeGameWalk();ConfigureGameWaterBudget();InitializeGameCast();InitializeGameFlight();
         GameReply(pane,transport,"spot-selected");Broadcast();
     }
 }

@@ -33,6 +33,7 @@ async function pageFixture() {
   const windowEvents = new TestElement(), documentEvents = new TestElement(), messages = []; let receive;
   globalThis.Element = TestElement; globalThis.innerWidth = 1200; globalThis.innerHeight = 800;
   globalThis.document = { body: new TestElement('body'), hidden: false, hasFocus: () => true, createElement: tag => new TestElement(tag),
+    createElementNS: (_, tag) => new TestElement(tag), createTextNode: text => Object.assign(new TestElement('text'),{ textContent:text }),
     getElementById: id => { assert.ok(nodes.has(id), `Missing DOM id ${id}`); return nodes.get(id); }, addEventListener: (...args) => documentEvents.addEventListener(...args) };
   globalThis.window = { chrome: { webview: { postMessage: message => messages.push(message), addEventListener: (type, callback) => { assert.equal(type, 'message'); receive = callback; } } },
     addEventListener: (...args) => windowEvents.addEventListener(...args) };
@@ -60,7 +61,7 @@ async function pageFixture() {
   };
   const grant = lease => emit({ kind: 'lease', revision: ++leaseRevision, cancellationEpoch: 0, lease });
   emit({ kind: 'role', role: '交互' }); emit({ kind: 'game-snapshot', revision: ++snapshotRevision, snapshot: { ...snapshot } }); grant('first'); broadcast();
-  return { nodes, messages, snapshot, shop, equipment, spares, camp, probe, broadcast, grant, emit,
+  return { nodes, messages, snapshot, shop, equipment, spares, camp, probe, broadcast, grant, emit, windowEvents,
     click: (id, event, force) => nodes.get(id).dispatch('click', event, force),
     select(id, value) { nodes.get(id).value = value; nodes.get(id).dispatch('change'); },
     reply(code, transportId = messages.at(-1).transportId) { emit({ kind: 'game-reply', transportId, code }); },
@@ -84,6 +85,67 @@ const spots = [
   { id: 'river-bend', name: '江湾', region: '长江', description: '江岸回水', species: ['草鱼','鳊鱼'] },
   { id: 'coastal-bay', name: '海湾', region: '东海', description: '海岸礁湾', species: ['黑鲷','花鲈','黄鳍鲷'] },
 ];
+
+const bottomShopState = (f, revision, extra = {}) => f.emit({ kind:'game-bottom-shop-state', revision,
+  state:{ available:true, owned:false, method:'float', allowed:true, priceMinor:6400, ...extra } });
+test('camp buys the bottom kit once, confirms ownership and separately selects the method on legal water',async()=>{
+  const f=await pageFixture();
+  assert.equal(f.nodes.get('bottom-shop').hidden,true);
+  bottomShopState(f,1);
+  f.click('bottom-buy');
+  assert.equal(f.messages.length,0);
+  assert.equal(f.nodes.get('bottom-confirm').hidden,false);
+  f.click('quote-bait',{},true);f.click('menu',{},true);assert.equal(f.messages.length,0);
+  f.click('bottom-confirm');f.click('bottom-confirm',{},true);
+  assert.equal(f.messages.length,1);
+  const purchase=f.messages[0];
+  assert.deepEqual(Object.keys(purchase).sort(),['action','documentId','expectedSequence','kind','lease','transportId']);
+  assert.deepEqual([purchase.kind,purchase.action,purchase.expectedSequence],['game-bottom-shop','buy','1']);
+  f.reply('bottom-kit-purchased');assert.equal(f.probe.state().bottomShopPending,'buy');
+  f.advance();f.snapshot.WalletMinor='5600';f.broadcast();bottomShopState(f,2,{owned:true});
+  assert.equal(f.probe.state().bottomShopPending,null);f.click('select-bottom');
+  assert.equal(f.messages[1].action,'select-bottom');assert.equal(f.messages[1].expectedSequence,'2');
+  bottomShopState(f,3,{owned:true,method:'bottom'});
+  assert.equal(f.probe.state().bottomShopPending,'select-bottom');
+  f.reply('bottom-method-selected');assert.equal(f.probe.state().bottomShopPending,null);
+  f.click('select-float');assert.equal(f.messages.at(-1).action,'select-float');
+  f.reply('bottom-method-selected');bottomShopState(f,4,{owned:true,allowed:false});
+  f.click('select-bottom',{},true);assert.equal(f.messages.length,3);
+});
+test('bottom purchase freezes a price confirmation to the current balance, idle menu and lease',async()=>{
+  const f=await pageFixture();
+  bottomShopState(f,1);
+  f.snapshot.WalletMinor='6399';f.broadcast();f.click('bottom-buy',{},true);
+  assert.equal(f.nodes.get('bottom-confirm').hidden,true);
+  f.snapshot.WalletMinor='6400';f.broadcast();f.click('bottom-buy');
+  f.grant(null);f.grant('next');f.click('bottom-confirm',{},true);
+  assert.equal(f.messages.length,0);
+  f.snapshot.SessionId=id(90);f.broadcast();f.click('bottom-buy',{},true);
+  assert.equal(f.messages.length,0);
+});
+test('the real top-view right button only strikes a fresh bottom bite for this cast and sends no encounter details',async()=>{
+  const f=await pageFixture(), session=id(90);
+  bottomShopState(f,1,{owned:true,method:'bottom'});
+  f.snapshot.SessionId=session;f.snapshot.MenuOpen=false;f.broadcast();
+  const point={xMm:400,yMm:-520,zMm:17000};
+  const phase=(revision,name,current=session,lineEnd)=>f.emit({kind:'game-bottom-state',revision,lineEnd,
+    state:{sessionId:current,phase:name,tipPermille:600}});
+  const right=()=>f.nodes.get('cast-target').dispatch('mousedown',{button:2,buttons:2});
+  const release=()=>f.windowEvents.dispatch('mouseup',{buttons:0});
+  phase(1,'touch',session,point);right();
+  assert.equal(f.messages.length,0);assert.equal(f.nodes.get('bite').hidden,true);
+  assert.deepEqual(f.probe.state().bottomLineEnd,point);
+  phase(2,'bite');right();assert.equal(f.messages.length,0);
+  assert.equal(f.probe.state().bottomLineEnd,null);
+  release();right();const strike=f.messages.at(-1);
+  assert.deepEqual(Object.keys(strike).sort(),['documentId','inputSequence','kind','lease','sessionId','transportId']);
+  assert.deepEqual([strike.kind,strike.sessionId,strike.inputSequence],['game-bottom-strike',session,'1']);
+  f.reply('bottom-hooked');release();right();f.click('bottom-strike',{},true);
+  assert.equal(f.messages.length,1);
+  phase(3,'hooked');release();right();assert.equal(f.messages.length,1);
+  phase(4,'bite',id(91));assert.equal(f.nodes.get('bottom-observation').hidden,true);
+  f.grant(null);phase(5,'bite');release();right();assert.equal(f.messages.length,1);
+});
 function spotState(f, revision, activeId) { f.emit({ kind: 'game-spot-state', revision, state: { activeId, spots } }); }
 function spotWater(f, revision, geometryVersion, waterId) {
   f.emit({ kind: 'game-water-state', revision, state: { enabled: true, geometryVersion, waterId, spotId: 'bank-01',

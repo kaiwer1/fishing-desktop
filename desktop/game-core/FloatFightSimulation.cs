@@ -16,16 +16,58 @@ namespace FishingDesktop.GameCore
         internal FloatFightPoint(double xM,double yM,double zM)
         {foreach(double value in new[]{xM,yM,zM})FloatFightGuard.Range(value,-10000,10000,"coordinate");X=xM;Y=yM;Z=zM;}
     }
+    // A surveyed, piecewise-linear bed in metres, independent of X. The
+    // optional constraint lifts a fish over shallows at its preferred depth.
+    internal sealed class FloatFightBed
+    {
+        readonly double[] z,y;
+        internal readonly double MinimumZ,MaximumZ,MinimumY,MaximumY;
+        internal FloatFightBed(double[] stationsM,double[] elevationsM)
+        {
+            if(stationsM==null||elevationsM==null||stationsM.Length<2||stationsM.Length>128||stationsM.Length!=elevationsM.Length)
+                throw new ArgumentException("A bed needs 2 to 128 matching survey points.");
+            z=(double[])stationsM.Clone();y=(double[])elevationsM.Clone();
+            double minimum=Double.MaxValue,maximum=Double.MinValue;
+            for(int i=0;i<z.Length;i++){
+                FloatFightGuard.Range(z[i],-10000,10000,"bed station");FloatFightGuard.Range(y[i],-10000,10000,"bed elevation");
+                if(i>0&&z[i]<=z[i-1])throw new ArgumentException("Survey points must be strictly ordered.");
+                minimum=Math.Min(minimum,y[i]);maximum=Math.Max(maximum,y[i]);
+            }
+            MinimumZ=z[0];MaximumZ=z[z.Length-1];MinimumY=minimum;MaximumY=maximum;
+        }
+        int Segment(double position)
+        {
+            int index=Array.BinarySearch(z,position);
+            return index>=0?Math.Min(index,z.Length-2):Math.Max(0,Math.Min(~index-1,z.Length-2));
+        }
+        internal double Elevation(double position)
+        {
+            if(position<=MinimumZ)return y[0];
+            if(position>=MaximumZ)return y[y.Length-1];
+            int index=Segment(position);
+            return y[index]+(y[index+1]-y[index])*(position-z[index])/(z[index+1]-z[index]);
+        }
+        internal double Slope(double position,double preferredY)
+        {
+            if(position<MinimumZ||position>MaximumZ||Elevation(position)<preferredY)return 0;
+            int index=Segment(position);return (y[index+1]-y[index])/(z[index+1]-z[index]);
+        }
+    }
     internal sealed class FloatFightWater
     {
         internal readonly double SurfaceY,BottomY,MinimumX,MaximumX,MinimumZ,MaximumZ;
-        internal FloatFightWater(double surfaceY,double bottomY,double minimumX,double maximumX,double minimumZ,double maximumZ)
+        internal readonly FloatFightBed Bed;
+        internal FloatFightWater(double surfaceY,double bottomY,double minimumX,double maximumX,double minimumZ,double maximumZ,FloatFightBed bed=null)
         {
             foreach(double value in new[]{surfaceY,bottomY,minimumX,maximumX,minimumZ,maximumZ})FloatFightGuard.Range(value,-10000,10000,"water coordinate");
             if(bottomY>=surfaceY||minimumX>=maximumX||minimumZ>=maximumZ)throw new ArgumentException("Water bounds must have positive extent.");
+            if(bed!=null&&(bed.MinimumZ>minimumZ||bed.MaximumZ<maximumZ||bed.MinimumY<bottomY||bed.MaximumY>=surfaceY))
+                throw new ArgumentException("The bed must cover the work rectangle and stay below the surface.");
             SurfaceY=surfaceY;BottomY=bottomY;MinimumX=minimumX;MaximumX=maximumX;MinimumZ=minimumZ;MaximumZ=maximumZ;
+            Bed=bed;
         }
-        internal bool Contains(FloatFightPoint p){return p.X>=MinimumX&&p.X<=MaximumX&&p.Z>=MinimumZ&&p.Z<=MaximumZ&&p.Y>=BottomY&&p.Y<=SurfaceY;}
+        internal bool Contains(FloatFightPoint p){return p.X>=MinimumX&&p.X<=MaximumX&&p.Z>=MinimumZ&&p.Z<=MaximumZ&&
+            p.Y>=(Bed==null?BottomY:Bed.Elevation(p.Z)-1e-12)&&p.Y<=SurfaceY;}
     }
     internal sealed class FloatFightRigRules
     {
@@ -131,7 +173,8 @@ namespace FishingDesktop.GameCore
             if(target==null||anchor==null||fishStart==null||water==null||rig==null||fish==null||landing==null)throw new ArgumentNullException("fight dependency");
             if(String.IsNullOrEmpty(target.SpeciesId)||target.MassMg<10000||target.MassMg>500000000)throw new ArgumentException("Target is outside the development mass envelope.");
             if(rigRevision<1||totalLineMm<1||totalLineMm>100000000)throw new ArgumentOutOfRangeException("rigRevision or totalLineMm");
-            if(anchor.Y<=water.SurfaceY||anchor.Z>=water.MinimumZ||anchor.X<water.MinimumX||anchor.X>water.MaximumX||!water.Contains(fishStart))
+            if(anchor.Y<=water.SurfaceY||anchor.Z>=water.MinimumZ||
+                (water.Bed==null&&(anchor.X<water.MinimumX||anchor.X>water.MaximumX))||!water.Contains(fishStart))
                 throw new ArgumentException("This slice requires a bank anchor behind the rectangular water and a valid fixed fish depth.");
             FloatFightGuard.Range(initialOutLineM,rig.MinimumOutLineM,totalLineMm/1000.0,"initialOutLineM");
             double dx=fishStart.X-anchor.X,dy=fishStart.Y-anchor.Y,dz=fishStart.Z-anchor.Z;
@@ -213,7 +256,7 @@ namespace FishingDesktop.GameCore
         readonly FloatFightSetup setup;
         readonly FloatBiteRandom random;
         readonly double mass,spring,total;
-        double x,z,vx,vz,line,tension,energy=1,reeled,paidOut;
+        double x,z,vx,vy,vz,line,tension,energy=1,reeled,paidOut;
         long step;
         int remainder,dragLevel,reelLevel,behavior;
         bool reeling,terminalEmitted,landingSubmitted,landingUnknown,failureSubmitted,failureUnknown;
@@ -235,14 +278,15 @@ namespace FishingDesktop.GameCore
         bool Current(Guid sessionId,Guid encounterId){return sessionId==setup.SessionId&&encounterId==setup.EncounterId;}
         double Drag{get{return setup.Rig.MinimumDragN+(setup.Rig.MaximumDragN-setup.Rig.MinimumDragN)*dragLevel/10;}}
         double Speed{get{return setup.Rig.MinimumReelMps+(setup.Rig.MaximumReelMps-setup.Rig.MinimumReelMps)*reelLevel/10;}}
+        double FishY(double pz){return setup.Water.Bed==null?setup.FishStart.Y:Math.Max(setup.FishStart.Y,setup.Water.Bed.Elevation(pz));}
         double Distance(double px,double pz)
-        {double dx=px-setup.Anchor.X,dy=setup.FishStart.Y-setup.Anchor.Y,dz=pz-setup.Anchor.Z;return Math.Sqrt(dx*dx+dy*dy+dz*dz);}
+        {double dx=px-setup.Anchor.X,dy=FishY(pz)-setup.Anchor.Y,dz=pz-setup.Anchor.Z;return Math.Sqrt(dx*dx+dy*dy+dz*dz);}
         string LandingReason()
         {
             if(!setup.Landing.NetAvailable)return "net-unavailable";
             if(Distance(x,z)>setup.Landing.MaximumDistanceM)return "fish-too-far";
-            if(setup.Water.SurfaceY-setup.FishStart.Y>setup.Landing.MaximumDepthM)return "fish-too-deep";
-            if(Math.Sqrt(vx*vx+vz*vz)>setup.Landing.MaximumSpeedMps)return "fish-moving";
+            if(setup.Water.SurfaceY-FishY(z)>setup.Landing.MaximumDepthM)return "fish-too-deep";
+            if(Math.Sqrt(vx*vx+vy*vy+vz*vz)>setup.Landing.MaximumSpeedMps)return "fish-moving";
             if(energy>setup.Landing.MaximumEnergy)return "fish-active";
             return "eligible";
         }
@@ -296,7 +340,7 @@ namespace FishingDesktop.GameCore
         static void Boundary(ref double position,ref double velocity,double minimum,double maximum)
         {if(position<minimum){position=minimum;if(velocity<0)velocity=0;}else if(position>maximum){position=maximum;if(velocity>0)velocity=0;}}
         sealed class Solution
-        {internal double X,Z,Vx,Vz,Tension;}
+        {internal double X,Z,Vx,Vy,Vz,Tension;}
         Solution AtForce(double force,double predictedVx,double predictedVz,double nx,double nz)
         {
             double nextVx=predictedVx-nx*force*Dt/mass,nextVz=predictedVz-nz*force*Dt/mass;
@@ -307,14 +351,17 @@ namespace FishingDesktop.GameCore
             // destroys scalar bracket monotonicity. Independent predicted fish
             // motion may still cross this axis normally on a later step.
             if((nx>0&&nextX<setup.Anchor.X)||(nx<0&&nextX>setup.Anchor.X)){nextX=setup.Anchor.X;nextVx=0;}
-            if((nz>0&&nextZ<setup.Anchor.Z)||(nz<0&&nextZ>setup.Anchor.Z)){nextZ=setup.Anchor.Z;nextVz=0;}
+            if((nz>0&&nextZ<setup.Anchor.Z)||(setup.Water.Bed==null&&nz<0&&nextZ>setup.Anchor.Z)){nextZ=setup.Anchor.Z;nextVz=0;}
             Boundary(ref nextX,ref nextVx,setup.Water.MinimumX,setup.Water.MaximumX);Boundary(ref nextZ,ref nextVz,setup.Water.MinimumZ,setup.Water.MaximumZ);
-            return new Solution {X=nextX,Z=nextZ,Vx=nextVx,Vz=nextVz,Tension=force};
+            double nextVy=setup.Water.Bed==null?0:(FishY(nextZ)-FishY(z))/Dt;
+            return new Solution {X=nextX,Z=nextZ,Vx=nextVx,Vy=nextVy,Vz=nextVz,Tension=force};
         }
         double SpringForce(Solution state,double outLine)
         {
             double distance=Distance(state.X,state.Z),extension=distance-outLine;if(extension<=0)return 0;
-            double separation=((state.X-setup.Anchor.X)*state.Vx+(state.Z-setup.Anchor.Z)*state.Vz)/distance-(outLine-line)/Dt;
+            double radial=(state.X-setup.Anchor.X)*state.Vx+(state.Z-setup.Anchor.Z)*state.Vz;
+            if(setup.Water.Bed!=null)radial+=(FishY(state.Z)-setup.Anchor.Y)*state.Vy;
+            double separation=radial/distance-(outLine-line)/Dt;
             // Fade damping in over 5 cm of extension so a slack line produces
             // neither force nor a discontinuous contact jump in the solver.
             return Math.Max(0,spring*extension+setup.Rig.LineDampingNsPerM*separation*Math.Min(1,extension/.05));
@@ -324,6 +371,11 @@ namespace FishingDesktop.GameCore
             solveFailure="solver-unresolved";
             double px=x+predictedVx*Dt,pz=z+predictedVz*Dt;
             double distance=Distance(px,pz),nx=(px-setup.Anchor.X)/distance,nz=(pz-setup.Anchor.Z)/distance;
+            if(setup.Water.Bed!=null){
+                double slope=setup.Water.Bed.Slope(pz,setup.FishStart.Y);
+                // Project the line impulse onto the local bed tangent.
+                nz=(nz+(FishY(pz)-setup.Anchor.Y)*slope/distance)/(1+slope*slope);
+            }
             var zero=AtForce(0,predictedVx,predictedVz,nx,nz);if(SpringForce(zero,outLine)==0)return zero;
             double low=0,high=setup.Rig.MaximumSupportedTensionN*8;
             var upper=AtForce(high,predictedVx,predictedVz,nx,nz);if(high<SpringForce(upper,outLine)){solveFailure="load-outside-supported-range";return null;}
@@ -387,10 +439,11 @@ namespace FishingDesktop.GameCore
             if(solved==null){Fault(solveFailure);return;}
             if(Double.IsNaN(solved.Tension)||Double.IsInfinity(solved.Tension)||solved.Tension<0){Fault("solver-unresolved");return;}
             if(solved.Tension>setup.Rig.MaximumSupportedTensionN){Fault("load-outside-supported-range");return;}
-            double speed=Math.Sqrt(solved.Vx*solved.Vx+solved.Vz*solved.Vz);
+            double speed=Math.Sqrt(solved.Vx*solved.Vx+solved.Vy*solved.Vy+solved.Vz*solved.Vz);
             if(Double.IsNaN(speed)||Double.IsInfinity(speed)||speed>setup.Fish.MaximumSupportedSpeedMps){Fault("speed-outside-supported-range");return;}
             if(Double.IsNaN(candidateLine)||Double.IsInfinity(candidateLine)||candidateLine<setup.Rig.MinimumOutLineM-1e-9||candidateLine>total+1e-9){Fault("line-conservation-failed");return;}
-            double actualTravel=Math.Sqrt((solved.X-x)*(solved.X-x)+(solved.Z-z)*(solved.Z-z));
+            double rise=solved.Vy*Dt;
+            double actualTravel=Math.Sqrt((solved.X-x)*(solved.X-x)+(solved.Z-z)*(solved.Z-z)+rise*rise);
             // Equivalent effort includes positive propulsive work, resisting
             // line work and a 0.03 m/s contraction proxy only under load. It
             // is a declared gameplay approximation, not measured physiology.
@@ -398,7 +451,7 @@ namespace FishingDesktop.GameCore
             if(solved.Tension>0&&behavior!=3)effort+=drive*.03*Dt;
             double recovery=solved.Tension<Drag*.25&&behavior==3?setup.Fish.RecoveryPerSecond*Dt:0;
             energy=Math.Max(0,Math.Min(1,energy-effort*setup.Fish.FatiguePerJoule+recovery));
-            x=solved.X;z=solved.Z;vx=solved.Vx;vz=solved.Vz;tension=solved.Tension;line=Math.Max(setup.Rig.MinimumOutLineM,Math.Min(total,candidateLine));
+            x=solved.X;z=solved.Z;vx=solved.Vx;vy=solved.Vy;vz=solved.Vz;tension=solved.Tension;line=Math.Max(setup.Rig.MinimumOutLineM,Math.Min(total,candidateLine));
             reeled=requested;paidOut=payout;
             // Only a successfully validated physical step exposes equipment.
             // Unsupported solver/load/speed faults above must win this step.
@@ -407,7 +460,7 @@ namespace FishingDesktop.GameCore
             UpdateEligibility();
         }
         FloatFightSnapshot Describe()
-        {return new FloatFightSnapshot(setup,step,remainder,phase,reason,LandingReason(),new FloatFightPoint(x,setup.FishStart.Y,z),new FloatFightPoint(vx,0,vz),
+        {return new FloatFightSnapshot(setup,step,remainder,phase,reason,LandingReason(),new FloatFightPoint(x,FishY(z),z),new FloatFightPoint(vx,vy,vz),
             line,Math.Max(0,line-Distance(x,z)),tension,Drag,energy,reeling,dragLevel,reelLevel,reeled,paidOut,landingAttempt,unhookExposureSteps,failureAttempt,lineBreakExposureSteps);}
         internal FloatFightSnapshot Snapshot{get{Check();return Describe();}}
         internal FloatFightPoint InitialFishPosition{get{Check();return setup.FishStart;}}

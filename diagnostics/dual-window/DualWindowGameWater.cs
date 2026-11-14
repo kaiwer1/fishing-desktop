@@ -33,7 +33,7 @@ sealed partial class DualWindowContext
         return gameWater!=null&&gameWaterPlan!=null&&Object.ReferenceEquals(target,gameWaterTarget)&&
             Object.ReferenceEquals(gameWaterPlan.Geometry,gameWater)&&target.GeometryVersion==gameWater.Version&&
             target.Xmm==gameWaterPlan.Target.Xmm&&target.Ymm==gameWater.SurfaceYmm&&target.Zmm==gameWaterPlan.Target.Zmm&&
-            target.RequiredLineMm==gameWaterPlan.RequiredLineMm;
+            target.RequiredLineMm==GameCastReservation(gameWaterPlan);
     }
     bool ParseGameWaterAim(Dictionary<string,object> message,out FloatCastLaunchPlan plan,out string code)
     {
@@ -50,7 +50,7 @@ sealed partial class DualWindowContext
     {
         if(!GameWaterTargetCurrent(cast.Target))return null;
         var result=FloatCastLaunchPlanner.Plan(gameWater,gameWaterPlan.U,gameWaterPlan.V,gameWater.Version,cast.PowerPermille);
-        return result.Accepted&&result.Plan.RequiredLineMm==cast.Target.RequiredLineMm?result.Plan:null;
+        return result.Accepted&&GameCastReservation(result.Plan)==cast.Target.RequiredLineMm&&GameBottomLandingAllowed(result.Plan,cast.Target.RequiredLineMm)?result.Plan:null;
     }
     void UpdateGameWaterLanding()
     {

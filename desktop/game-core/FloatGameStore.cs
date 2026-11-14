@@ -31,12 +31,13 @@ namespace FishingDesktop.GameCore
     // a maximum-key fish result followed by explicit full-creel release.
     public sealed class FloatSaveBudget
     {
-        internal const int LegacyCastFrameBytes=188,EquipmentCastFrameBytes=212;
+        internal const int LegacyCastFrameBytes=188,EquipmentCastFrameBytes=212,BottomCastFrameBytes=260;
         internal const int MaximumEndingBytes=482,ReleaseFrameBytes=188;
         public readonly bool CanStartCast;
         public readonly string Code;
         public readonly long RemainingTransactions,RemainingBytes;
         public readonly int RequiredCastTransactions=3,RequiredCastBytes;
+        internal bool CanStartBottomCast {get{return RemainingTransactions>=RequiredCastTransactions && RemainingBytes>=BottomCastFrameBytes+MaximumEndingBytes;}}
         internal FloatSaveBudget(int schema,long sequence,long length)
         {
             if((schema!=1&&schema!=2&&schema!=3)||sequence<0||sequence>FloatGameStore.MaximumTransactions||length<0||length>FloatGameStore.MaximumFileBytes)

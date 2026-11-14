@@ -10,14 +10,14 @@ using FishingDesktop.GameCore;
 sealed partial class DualWindowContext
 {
     readonly string gameMode;
-    internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest; } }
+    internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest||GameBottomSelfTest; } }
     internal bool PlayerMode { get { return gameMode=="player-window"||gameMode=="player-wallpaper"; } }
     bool GamePlayerSelfTest { get { return gameMode=="player-self-test"; } }
     bool GameCatchSelfTest { get { return gameMode=="catch-self-test"; } }
     bool GameAtlasSelfTest { get { return gameMode=="atlas-self-test"; } }
-    bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||PlayerMode; } }
+    bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||GameBottomSelfTest||PlayerMode; } }
     internal bool GameMode { get { return gameMode != null; } }
-    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameSceneSelfTest || GameAtlasSelfTest || GamePlayerSelfTest || GameWardrobeSelfTest || GameCatchSelfTest || GameWallpaperSelfTest || GameWalkSelfTest || GameFailureCase!=null; } }
+    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameSceneSelfTest || GameAtlasSelfTest || GamePlayerSelfTest || GameWardrobeSelfTest || GameCatchSelfTest || GameWallpaperSelfTest || GameWalkSelfTest || GameBottomSelfTest || GameFailureCase!=null; } }
     bool GameSceneSelfTest { get { return gameMode=="scene-self-test"; } }
     bool GameWaterSelfTest { get { return gameMode=="water-self-test"; } }
     bool GameWaterMode { get { return GameWaterSelfTest||GameAtlasMode||GameSceneSelfTest||gameMode=="new"||gameMode=="open"||gameMode=="line-break-new"||gameMode=="line-break-open"; } }
@@ -35,8 +35,8 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, WardrobeRevision, WalkRevision;
-        internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater, WalkHighWater;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, WardrobeRevision, WalkRevision, BottomRevision, BottomShopRevision;
+        internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater, WalkHighWater, BottomStrikeHighWater;
         internal GameShopPending Shop;
         internal GameEquipmentPending Equipment;
         internal GameSparesPending Spares;
@@ -109,6 +109,7 @@ sealed partial class DualWindowContext
     }
     static long GameInstalledLineMm(FloatGameState state)
     {
+        if(state!=null&&state.Session!=null&&state.Session.IsBottom){BottomEquipmentBridge selected;if(BottomOwnedEquipment.Bind(state,out selected)!=null)throw new InvalidOperationException("A bottom session lost its installed line.");return selected.InstalledLine.RemainingLineMm;}
         if(state==null||state.Rig==null||!state.Rig.LineLengthMm.HasValue||state.Rig.LineLengthMm.Value<=0)
             throw new InvalidOperationException("An active simulation requires an actual installed line segment.");
         return state.Rig.LineLengthMm.Value;
@@ -153,7 +154,7 @@ sealed partial class DualWindowContext
         ClearGameWalk(pane);CancelGameCast(pane);
         ClearGameFightInput(pane);
         ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
-        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0; b.EquipmentHighWater=0; b.CampHighWater=0; b.WalkHighWater=0;
+        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0; b.EquipmentHighWater=0; b.CampHighWater=0; b.WalkHighWater=0; b.BottomStrikeHighWater=0;
         var state=game.Snapshot;
         if (wireLease == null || b.Document == null || state.Faulted || state.HostPaused || state.ShutdownConfirmed) return;
         b.Lease=game.GrantControl(b.View,b.Document); b.WireLease=wireLease;
@@ -190,10 +191,10 @@ sealed partial class DualWindowContext
         if (b.Offset>count) b.Offset=0;
         var projected=FloatPageProjection.Create(snapshot,b.Offset,50);
         Send(pane,new {kind="game-snapshot",documentId=pane.Ticket.DocumentId,revision=checked(++b.Revision),snapshot=projected});
-        SendGameSpots(pane);SendGameWardrobe(pane);
+        SendGameSpots(pane);SendGameWardrobe(pane);SendBottomShop(pane);
         SendGameCast(pane);
         SendGameWalk(pane);SendGameFlight(pane);
-        SendGameBite(pane);
+        SendGameBite(pane);SendGameBottom(pane);
         SendGameFight(pane);
         SendGameShop(pane); SendGameEquipment(pane); SendGameSpares(pane); SendGameCamp(pane);
     }
@@ -227,6 +228,8 @@ sealed partial class DualWindowContext
             if(kind=="game-camp")Broadcast();
             return;
         }
+        if(kind=="game-bottom-shop"){ReceiveBottomShop(pane,b,m,transport);return;}
+        if(kind=="game-bottom-strike"){ReceiveBottomStrike(pane,b,m,transport);return;}
         if(kind=="game-bank-walk"){ReceiveGameWalk(pane,b,m,transport);return;}
         if(kind=="game-wardrobe"){ReceiveGameWardrobe(pane,b,m,transport);return;}
         if(kind=="game-spot-select"){ReceiveGameSpot(pane,b,m,transport);return;}

@@ -35,6 +35,8 @@ sealed partial class DualWindowContext
     {
         AdvanceGameCamp(activityWatch.Elapsed.TotalSeconds);
         double step=activityClock.Advance(activityWatch.Elapsed.TotalSeconds,owner.ActivityState().CanRun && GameCanSimulate);
+        // A pane can retire after the journal is closed for replay inspection.
+        if(game==null)return;
         AdvanceGameWalk(step);AdvanceGameCast(step);
         AdvanceGameFlight(step);
         AdvanceGameBite(step);

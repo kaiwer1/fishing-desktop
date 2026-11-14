@@ -24,7 +24,7 @@ sealed partial class DualWindowContext
     {
         // This is a fixed host target for input integration, not a water raycast.
         gameCast=new FloatCastPreparation(game,new FloatCastPreparationRules(1600,150),
-            target=>gameWater==null?target.Xmm==0 && target.Ymm==0 && target.Zmm==15000 && target.RequiredLineMm==15000:GameWaterTargetCurrent(target));
+            target=>gameWater==null?target.Xmm==0 && target.Ymm==0 && target.Zmm==15000 && target.RequiredLineMm==15000:GameWaterTargetCurrent(target),gameBottomSelected);
     }
     static bool GameInputSequence(Dictionary<string,object> message,out long sequence)
     {
@@ -96,7 +96,8 @@ sealed partial class DualWindowContext
             var previousPlan=gameWaterPlan;var previousTarget=gameWaterTarget;
             if(gameWater!=null){
                 if(gameCast.Snapshot.Phase==FloatCastPhase.Charging||gameCast.Snapshot.Phase==FloatCastPhase.Prepared){GameReply(pane,transport,"gesture-active");return;}
-                gameWaterPlan=plan;gameWaterTarget=new FloatCastTarget(plan.Target.Xmm,plan.Target.SurfaceYmm,plan.Target.Zmm,state.RulesVersion,plan.RequiredLineMm,plan.GeometryVersion);
+                long required=GameCastReservation(plan);if(required<=0){GameReply(pane,transport,"bottom-spot-unavailable");return;}
+                gameWaterPlan=plan;gameWaterTarget=new FloatCastTarget(plan.Target.Xmm,plan.Target.SurfaceYmm,plan.Target.Zmm,state.RulesVersion,required,plan.GeometryVersion);
             }
             result=gameCast.Begin(binding.View,binding.Document,binding.Lease,gameWater==null?new FloatCastTarget(0,0,15000,state.RulesVersion,15000):gameWaterTarget);
             if(result.Accepted){

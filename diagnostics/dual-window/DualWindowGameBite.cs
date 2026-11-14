@@ -20,6 +20,8 @@ sealed partial class DualWindowContext
     void AdvanceGameBite(double activeSeconds)
     {
         if(game==null)return;
+        AdvanceGameBottom(activeSeconds);
+        if(game.Snapshot.State!=null&&game.Snapshot.State.Session!=null&&game.Snapshot.State.Session.IsBottom)return;
         bool reconciled=ReconcileGameBite();
         if(!GameReadyForFish()){if(reconciled)BroadcastGameBite();return;}
         var session=game.Snapshot.State.Session.Id;

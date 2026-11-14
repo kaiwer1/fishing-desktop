@@ -146,6 +146,25 @@ function enableCampCatalog(f) {
   const lake = {id:'development-still-water',name:'静水湾',region:'中国内陆',description:'岸边芦苇',species:['鲤鱼']};
   f.emit({kind:'game-spot-state',revision:1,state:{activeId:lake.id,spots:[lake]}});
 }
+test('3D HUD presents the observed tip and forwards only the current host endpoint; the canvas right-click strikes once',async()=>{
+  const renderer=fakeScene(), f=await pageFixture(renderer);await enableScene(f);
+  document.createElementNS=(_,tag)=>document.createElement(tag);
+  document.createTextNode=text=>Object.assign(document.createElement('span'),{textContent:text});
+  f.emit({kind:'game-snapshot',revision:2,snapshot:{...f.snapshot,SessionId:sessionId}});
+  const phase=(revision,name,id,lineEnd)=>f.emit({kind:'game-bottom-state',revision,lineEnd,state:{phase:name,sessionId:id,tipPermille:840}});
+  const endpoint={xMm:200,yMm:-1000,zMm:15000};
+  phase(1,'bite',sessionId,endpoint);
+  assert.deepEqual(renderer.log.updates.at(-1).bottom,{phase:'bite',sessionId,tipPermille:840,lineEnd:endpoint});
+  assert.equal(f.nodes.get('scene-action').textContent,'竿尖下压');
+  assert.equal(f.nodes.get('scene-hint').textContent,'现在按鼠标右键提竿。');
+  assert.equal(f.messages.length,0);
+  f.nodes.get('scene-canvas').dispatch('mousedown',{button:2,buttons:2});
+  assert.equal(f.messages.length,1);assert.equal(f.messages[0].kind,'game-bottom-strike');
+  phase(2,'hooked',sessionId);
+  assert.equal(renderer.log.updates.at(-1).bottom.lineEnd,null);
+  phase(3,'bite','20000000-0000-0000-0000-000000000019',endpoint);
+  assert.equal(renderer.log.updates.at(-1).bottom,null);
+});
 test('player camp keyboard waits for the host open transition then scrolls once, keeps every destination and returns to the lake', async () => {
   const f=await pageFixture(fakeScene()); await enableScene(f); enableCampCatalog(f);
   f.key('KeyM'); assert.equal(f.messages.length,1); assert.equal(f.messages[0].kind,'game-menu'); assert.equal(f.messages[0].open,true);

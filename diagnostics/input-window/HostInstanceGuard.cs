@@ -10,9 +10,9 @@ sealed class HostInstanceGuard : IDisposable
     public bool IsOwner { get; private set; }
     public bool WasAbandoned { get; private set; }
 
-    public HostInstanceGuard()
+    public HostInstanceGuard(bool isolatedPlayerTest=false)
     {
-        mutex = new Mutex(false, @"Local\FishingDesktop.InputProbe.v1");
+        mutex = new Mutex(false, isolatedPlayerTest ? @"Local\FishingDesktop.PrivatePlayerTest.v1" : @"Local\FishingDesktop.InputProbe.v1");
         try { IsOwner = mutex.WaitOne(0); }
         catch (AbandonedMutexException) { IsOwner = true; WasAbandoned = true; }
     }

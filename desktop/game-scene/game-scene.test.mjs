@@ -77,6 +77,64 @@ test('a new cast overrides the prior terminal snapshot and stale fight never ani
   assert.equal(rodPose({cast:{phase:'charging',powerPermille:45},flight:f,fight:{...fight,phase:'landed'}}).phase,'charging');
 });
 
+const bottomSignal=(phase,tipPermille=0,lineEnd=null)=>({sessionId:f.sessionId,phase,tipPermille,lineEnd});
+
+test('bottom waiting hides the bobber and never invents a terminal position from the water or float',()=>{
+  for(const phase of ['sinking','settling','settled','touch','bite','missed','retrieve-required']){
+    const bottom=bottomSignal(phase,130);
+    const pose=rodPose({water,flight:f,bottom,bite:{sessionId:f.sessionId,phase:'strikeable',bobberOffsetMm:-90}});
+    assert.equal(pose.phase,'bottom-'+phase);
+    assert.equal(pose.float,false);assert.equal(pose.end,null);assert.equal(pose.bottomTipPermille,130);
+  }
+  const observed={xMm:430,yMm:-510,zMm:12940};
+  const view={water,flight:f,bottom:bottomSignal('sinking',44,observed)};
+  assert.deepEqual(rodPose(view).end.toArray(),[.43,-.51,-12.94]);
+  for(const bad of [{...observed,yMm:NaN},{...observed,zMm:null},{...observed,xMm:1.5},
+    {...observed,zMm:90000},{...observed,yMm:10}]){
+    const pose=rodPose({...view,bottom:{...view.bottom,lineEnd:bad}});
+    assert.equal(pose.float,false);assert.equal(pose.end,null);
+  }
+});
+
+test('bottom gear and the wait signal belong to this one cast, ending or changing casts clears the line',()=>{
+  const bottom=bottomSignal('bite',755,{xMm:450,yMm:-1150,zMm:13150});
+  assert.deepEqual(rodPose({water,flight:f,bottom:null}),rodPose({water,flight:f}));
+  assert.deepEqual(rodPose({water,flight:f,bottom:{...bottom,sessionId:'previous'}}),rodPose({water,flight:f}));
+  const terminal=rodPose({water,flight:f,bottom:{...bottom,phase:'retrieved'},fight});
+  assert.equal(terminal.float,false);assert.equal(terminal.end,null);
+  const waiting=rodPose({water,flight:f,bottom,fight});
+  assert.equal(waiting.phase,'bottom-bite');assert.equal(waiting.end.x,.45);
+  const hooked=rodPose({water,flight:f,bottom:{...bottom,phase:'hooked'},fight});
+  assert.equal(hooked.phase,'fighting');assert.equal(hooked.float,false);
+  assert.deepEqual(hooked.end.toArray(),[1.25,-.27,-13.05]);
+  assert.equal(rodPose({water,flight:{...f,phase:'ended'},bottom}).end,null);
+});
+
+test('observed bottom signal bends only the bright quiver tip by up to 46 mm and restores float gear',()=>{
+  const rig=createTackle();
+  const rodTipLocal=()=>rig.root.worldToLocal(rig.tip.getWorldPosition(new THREE.Vector3()));
+  const painted=()=>{const found=[];rig.root.traverse(o=>{if(o.material?.color?.getHex()===0xe6e59a)found.push(o);});return found;};
+  try{
+    rig.animate({water,flight:f},0,.1);assert.equal(painted().length,0);
+    const lineEnd={xMm:470,yMm:-1020,zMm:12710};
+    const render=(value,time)=>rig.animate({water,flight:f,bottom:bottomSignal('settled',value,lineEnd)},time,1/30);
+    render(0,0);assert.equal(painted().length,3);
+    const start=rodTipLocal();
+    for(const value of [1000,500,0,173]){
+      render(value,20);const tip=rodTipLocal();
+      assert.ok(Math.abs(start.y-tip.y-.046*value/1000)<.00005);
+      assert.equal(rig.float.visible,false);assert.equal(rig.bottomTipPermille(),value);
+      const line=rig.line.geometry.attributes.position;
+      assert.ok(new THREE.Vector3().fromBufferAttribute(line,line.count-1).distanceTo(new THREE.Vector3(.47,-1.02,-12.71))<1e-6);
+      render(value,200);assert.ok(rodTipLocal().distanceTo(tip)<1e-9);
+    }
+    rig.animate({water,flight:f,bottom:bottomSignal('sinking')},201,.1);
+    assert.equal(rig.line.visible,false);
+    rig.animate({water,flight:f,bottom:null},202,.1);
+    assert.equal(rig.float.visible,true);assert.equal(rig.bottomTipPermille(),null);assert.equal(painted().length,0);
+  }finally{rig.dispose();}
+});
+
 test('the coastal bay opens to a scenic horizon beyond the surveyed bed',()=>{
   const coast=createLake({...water,waterId:'coastal-bay'});
   try {

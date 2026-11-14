@@ -32,6 +32,7 @@ body[data-scene-mode=scene][data-scene-menu=open] main{position:fixed;inset:6vh 
 body[data-scene-mode=scene] main header,body[data-scene-mode=scene] #cast-workbench,body[data-scene-mode=scene] #bite,body[data-scene-mode=scene] #fight,body[data-scene-mode=scene] #session,body[data-scene-mode=scene] #recall,body[data-scene-mode=scene] #release{display:none}
 #scene-menu-bar{position:sticky;top:0;background:#202822;padding-top:5px;z-index:1}
 #scene-map-tools p{color:#ced7bb}
+#bottom-diagram figure{margin:0 0 8px}#bottom-diagram svg{max-width:100%;height:auto}#bottom-diagram figcaption{margin-top:5px}body[data-scene-mode=scene] #bottom-observation{display:none}
 #camp-home[hidden],#camp-overview[hidden]{display:none}#camp-home{border:0;padding:10px 0 20px}#camp-home h2{font-size:clamp(20px,3vw,32px);margin:0}#camp-home-head{display:flex;gap:20px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #606d59;margin-bottom:10px}#camp-location{color:#d4dcbf;font-size:14px}
 #camp-destinations{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}#camp-destinations button{margin:0;display:grid;grid-template-columns:1fr auto;align-items:start;gap:4px 8px;text-align:left;background:#354438;border:1px solid #65735d;border-left:3px solid #adc08b;padding:10px 12px;min-height:65px}#camp-destinations button:hover:enabled{background:#465640}#camp-destinations strong{font-size:17px;line-height:1.2}#camp-destinations small{grid-column:1/-1;color:#d0dac7;line-height:1.35}#camp-destinations kbd,.scene-actions kbd{align-self:center;font:11px/1.2 system-ui,sans-serif;color:#d7dfca;border:1px solid #87917f;padding:1px 4px;border-radius:2px}
 #camp-overview{background:#354c3e}body[data-camp=open] #scene-menu-bar{position:sticky;top:0;z-index:2}body[data-camp=open] #camp-home,body[data-camp=open] #spot-menu,body[data-camp=open] #creel-section,body[data-camp=open] #equipment,body[data-camp=open] #shop-food,body[data-camp=open] #shop-net,body[data-camp=open] #wardrobe,body[data-camp=open] #camp{scroll-margin-top:62px}
@@ -87,7 +88,7 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <polyline id="flight-trail" fill="none" stroke="#c4d985" stroke-width="2" stroke-linejoin="round"/>
 <circle id="flight-origin" r="3" fill="#d7dec3"/><circle id="flight-bobber" r="5" fill="#e8a85b" stroke="#f4eedb" stroke-width="1.5"/>
 </g></svg>
-<p id="flight-metrics" class="muted">距离 — · 所需线长 —</p><p class="muted">亮线为最近轨迹，所需线长按竿尖到钓组的直线距离显示。这是简化平面示意，浮漂变化见下方近景。</p><p id="flight-clipped" hidden>当前位置超出示意图范围，边缘标记仅表示方向。</p></section>
+<p id="flight-metrics" class="muted">距离 — · 所需线长 —</p><p class="muted">亮线为最近轨迹，所需线长按竿尖到钓组的直线距离显示。</p><p id="flight-clipped" hidden>当前位置超出示意图范围，边缘标记仅表示方向。</p></section>
 </div>
 <section id="bite"><h2>观察浮漂 · 近景示意</h2><div id="bite-layout">
 <svg id="bite-diagram" viewBox="0 0 360 250" role="img" aria-labelledby="bite-title bite-description">
@@ -104,6 +105,8 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <div class="interactive"><button id="strike" disabled>提竿</button></div>
 <p class="muted">右键每次按下只提竿一次。菜单、暂停和失去交互时冻结鱼口，恢复后需要重新按下。</p></div>
 </div></section>
+<section id="bottom-observation" hidden><h2>观察竿尖</h2><div id="bottom-diagram"></div>
+<button id="bottom-strike" class="interactive" disabled>提竿</button></section>
 <section id="fight"><h2>手动遛鱼 · 受力训练</h2><div id="fight-layout">
 <svg id="fight-diagram" viewBox="0 0 480 250" role="img" aria-labelledby="fight-title fight-description">
 <title id="fight-title">鱼的位置与鱼线</title><desc id="fight-description">俯视示意：岸边在下方，圆点表示宿主确认的鱼的位置，线连接固定竿根。按住左键收线，滚轮调整泄力，按住 R 使用滚轮调整速度。</desc>
@@ -143,6 +146,10 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <div id="shop-products">
 <article id="shop-net"><h3>抄网</h3><p id="shop-net-price">— 银币 / 件</p><p id="shop-net-owned">尚未拥有</p><p class="muted">抄鱼前需要装备。当前只提供一种基础抄网。</p>
 <div class="interactive"><button id="quote-net" disabled>获取抄网报价</button><button id="net-equip" disabled>装备</button><button id="net-unequip" disabled>卸下</button></div></article>
+<article id="bottom-shop" hidden><h3>单钩底钓套装</h3><p id="bottom-shop-status"></p><p class="muted">在静水湾的底钓区使用铅坠和蚯蚓。钓组稳底后观察竿尖。</p>
+<div class="interactive"><button id="bottom-buy" disabled>购买套装 · 64.00 银币</button>
+<button id="bottom-confirm" hidden disabled>确认支付 64.00 银币</button><button id="bottom-cancel" hidden>取消</button>
+<button id="select-bottom" hidden disabled>使用底钓</button><button id="select-float" hidden disabled>使用浮漂</button></div></article>
 <article id="shop-bait"><h3>蚯蚓鱼饵</h3><p id="shop-bait-price">— 银币 / 包</p><p id="shop-bait-count">现有 — 份</p>
 <div class="interactive"><label>包数<input id="bait-packs" type="number" min="1" max="100" step="1" value="1" disabled></label><button id="quote-bait" disabled>获取鱼饵报价</button></div></article>
 <article id="shop-food"><h3>面包</h3><p id="shop-food-price">— 银币 / 份</p><p id="shop-food-count">现有 — 份</p>

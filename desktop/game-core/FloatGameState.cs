@@ -110,15 +110,17 @@ namespace FishingDesktop.GameCore
         public readonly long RigRevision,RulesVersion;
         public readonly long EquipmentInventoryRevision,EquipmentRulesVersion,RequiredLineMm;
         public readonly FloatFish PendingFish;
+        internal readonly BottomOwnedKit BottomKit;
+        public bool IsBottom {get{return BottomKit!=null;}}
         public bool CapacityBlocked{get{return PendingFish!=null;}}
-        internal FloatSession(Guid id,Guid releaseEvent,long rigRevision,long rulesVersion,FloatFish pendingFish=null,long equipmentInventoryRevision=0,long equipmentRulesVersion=0,long requiredLineMm=0)
+        internal FloatSession(Guid id,Guid releaseEvent,long rigRevision,long rulesVersion,FloatFish pendingFish=null,long equipmentInventoryRevision=0,long equipmentRulesVersion=0,long requiredLineMm=0,BottomOwnedKit bottomKit=null)
         {
             FloatGuard.Id(id,"id");FloatGuard.Id(releaseEvent,"releaseEvent");if(rigRevision<=0||rulesVersion<=0)throw new ArgumentOutOfRangeException("rigRevision");
             if(pendingFish!=null&&pendingFish.SessionId!=id)throw new ArgumentException("Pending fish belongs to another session.");
             if(equipmentInventoryRevision<0||equipmentRulesVersion<0||requiredLineMm<0||
                 ((equipmentInventoryRevision==0||equipmentRulesVersion==0||requiredLineMm==0)&&!(equipmentInventoryRevision==0&&equipmentRulesVersion==0&&requiredLineMm==0)))throw new ArgumentException("Incomplete equipment session binding.");
             Id=id;ReleaseEventId=releaseEvent;RigRevision=rigRevision;RulesVersion=rulesVersion;PendingFish=pendingFish;
-            EquipmentInventoryRevision=equipmentInventoryRevision;EquipmentRulesVersion=equipmentRulesVersion;RequiredLineMm=requiredLineMm;
+            EquipmentInventoryRevision=equipmentInventoryRevision;EquipmentRulesVersion=equipmentRulesVersion;RequiredLineMm=requiredLineMm;BottomKit=bottomKit;
         }
     }
     // Independent commerce policy: changing it cannot reprice existing fish or
@@ -170,7 +172,39 @@ namespace FishingDesktop.GameCore
         internal static bool Enabled(FloatGameState state)
         {return state!=null && state.SchemaVersion==3 && state.RulesVersion==2 && state.EquipmentUpgradeOrigin==null;}
     }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved }
+    // Fixed type-22 v1 kit. The purchase frame records every new identity;
+    // its canonical catalogue and installation are independent of the float rod.
+    internal sealed class BottomOwnedKit
+    {
+        internal const long PriceMinor=6400;
+        internal readonly FloatEquipmentLedger Equipment;
+        internal readonly Guid LeaderId;
+        internal readonly ReadOnlyCollection<Guid> Ids;
+        static readonly FloatEquipmentCatalog Definitions=new FloatEquipmentCatalog(1,"worm",new[]{
+            new FloatEquipmentDefinition("bottom-bank-rod",FloatEquipmentKind.Rod,260000,0,10000,35000),
+            new FloatEquipmentDefinition("bottom-bank-reel",FloatEquipmentKind.Reel,230000),
+            new FloatEquipmentDefinition("bottom-022-line",FloatEquipmentKind.Line,0,220),
+            new FloatEquipmentDefinition("bottom-single-hook",FloatEquipmentKind.Hook,200),
+            new FloatEquipmentDefinition("bottom-18g-sinker",FloatEquipmentKind.Sinker,18000)},
+            new[]{new FloatEquipmentPairRule("bottom-bank-rod","bottom-bank-reel",true)},
+            new[]{new FloatEquipmentSpoolRule("bottom-bank-reel","bottom-022-line",220,50000)},
+            new[]{new FloatEquipmentPairRule("bottom-single-hook","worm",true)},new FloatEquipmentLossRule[0]);
+        internal BottomOwnedKit(Guid rigId,Guid rodId,Guid reelId,Guid lineId,Guid hookId,Guid sinkerId,Guid leaderId)
+        {
+            var ids=new[]{rigId,rodId,reelId,lineId,hookId,sinkerId,leaderId};
+            var unique=new HashSet<Guid>();foreach(var id in ids)FloatGuard.Unique(unique,id);
+            Ids=Array.AsReadOnly(ids);LeaderId=leaderId;
+            Equipment=new FloatEquipmentLedger(rigId,1,1,Definitions,new[]{
+                new FloatEquipmentInstance(rodId,"bottom-bank-rod",FloatEquipmentKind.Rod,1,FloatEquipmentLocation.RigSlot(rigId,FloatEquipmentSlot.Rod)),
+                new FloatEquipmentInstance(reelId,"bottom-bank-reel",FloatEquipmentKind.Reel,1,FloatEquipmentLocation.RigSlot(rigId,FloatEquipmentSlot.Reel)),
+                new FloatEquipmentInstance(lineId,"bottom-022-line",FloatEquipmentKind.Line,1,FloatEquipmentLocation.ReelSpool(reelId),50000,50000),
+                new FloatEquipmentInstance(hookId,"bottom-single-hook",FloatEquipmentKind.Hook,1,FloatEquipmentLocation.RigSlot(rigId,FloatEquipmentSlot.Hook)),
+                new FloatEquipmentInstance(sinkerId,"bottom-18g-sinker",FloatEquipmentKind.Sinker,1,FloatEquipmentLocation.RigSlot(rigId,FloatEquipmentSlot.Sinker))});
+        }
+        internal static bool Enabled(FloatGameState state)
+        {return state.SchemaVersion==3 && state.RulesVersion==2 && state.EquipmentUpgradeOrigin==null && state.BaitDefinitionKey=="worm";}
+    }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved,BottomKitPurchased }
     public sealed class FloatEquipmentLossSummary
     {
         public readonly Guid LineId;
@@ -198,6 +232,7 @@ namespace FishingDesktop.GameCore
         public readonly FloatEquipmentLossSummary EquipmentLoss;
         public readonly FloatEquipmentArchiveSummary EquipmentArchive;
         public readonly string ClothingItemId;
+        internal readonly BottomOwnedKit BottomKitPurchase;
         internal readonly string Fingerprint;
         internal bool Terminal{get{return Outcome==FloatOutcome.Recalled||Outcome==FloatOutcome.Landed||Outcome==FloatOutcome.Released||Outcome==FloatOutcome.Recovered||Outcome==FloatOutcome.Unhooked||Outcome==FloatOutcome.TerminalLost;}}
         internal FloatReceipt(FloatCommand command,long sequence,long rulesVersion,FloatOutcome outcome,Guid encounterId,long walletBefore,long walletAfter,int staminaBefore,int staminaAfter,int baitBefore,int baitAfter,IEnumerable<Guid> fishIds,int foodBefore=0,int foodAfter=0,Guid ownedNetBefore=default(Guid),Guid ownedNetAfter=default(Guid),Guid equippedNetBefore=default(Guid),Guid equippedNetAfter=default(Guid),FloatEquipmentLossSummary equipmentLoss=null,FloatEquipmentArchiveSummary equipmentArchive=null)
@@ -208,6 +243,8 @@ namespace FishingDesktop.GameCore
             FoodBefore=foodBefore;FoodAfter=foodAfter;OwnedNetBefore=ownedNetBefore;OwnedNetAfter=ownedNetAfter;EquippedNetBefore=equippedNetBefore;EquippedNetAfter=equippedNetAfter;
             var clothing=command as ChangeFloatClothing;
             ClothingItemId=clothing==null?null:clothing.ItemId;
+            var kitPurchase=command as BuyBottomKit;BottomKitPurchase=kitPurchase==null?null:kitPurchase.Kit;
+            if((outcome==FloatOutcome.BottomKitPurchased)!=(BottomKitPurchase!=null))throw new ArgumentException("Invalid bottom kit receipt.");
             var copy=new List<Guid>(fishIds);var unique=new HashSet<Guid>();foreach(var id in copy)FloatGuard.Unique(unique,id);FishIds=copy.AsReadOnly();
             if((outcome==FloatOutcome.TerminalLost)!=(equipmentLoss!=null)||(equipmentLoss!=null&&copy.Count!=0))throw new ArgumentException("Invalid equipment loss receipt.");EquipmentLoss=equipmentLoss;
             if((outcome==FloatOutcome.EquipmentArchived)!=(equipmentArchive!=null)||(equipmentArchive!=null&&(copy.Count!=0||command.SessionId!=Guid.Empty||encounterId!=Guid.Empty)))throw new ArgumentException("Invalid equipment archive receipt.");EquipmentArchive=equipmentArchive;
@@ -224,6 +261,7 @@ namespace FishingDesktop.GameCore
         public readonly FloatRigDescriptor Rig;
         internal readonly FixedFloatRig LegacyRig;
         internal readonly FloatEquipmentLedger Equipment;
+        internal readonly BottomOwnedKit OwnedBottomKit;
         internal readonly FloatEquipmentOffers EquipmentOffers;
         internal readonly ReadOnlyCollection<Guid> ArchivedEquipmentIds,ArchivedLossOwnerIds;
         internal readonly long ArchivedEquipmentLineMm;
@@ -269,6 +307,12 @@ namespace FishingDesktop.GameCore
             var clothingIds=new List<string>();string wearing=null;
             for(int i=0;i<history.Count;i++){
                 var row=history[i];if(row==null||row.Sequence!=(long)i+1||row.RulesVersion!=rules.Version||!requests.Add(row.RequestId)||!events.Add(row.EventId))throw new ArgumentException("Invalid receipt history.");
+                if(row.BottomKitPurchase!=null){
+                    if(OwnedBottomKit!=null || schemaVersion!=3 || rules.Version!=2 || equipmentOrigin!=null || baitDefinition!="worm" ||
+                        row.WalletBefore-row.WalletAfter!=BottomOwnedKit.PriceMinor)throw new ArgumentException("Invalid bottom kit purchase.");
+                    OwnedBottomKit=row.BottomKitPurchase;
+                    foreach(var id in OwnedBottomKit.Ids)FloatGuard.Unique(assets,id);
+                }
                 if(row.ClothingItemId!=null){
                     var item=FloatClothingCatalog.Find(row.ClothingItemId);
                     if(schemaVersion!=3||rules.Version!=2||equipmentOrigin!=null||item==null)throw new ArgumentException("Unsupported wardrobe receipt.");
@@ -303,8 +347,13 @@ namespace FishingDesktop.GameCore
             foreach(var id in casts)if(!terminals.Contains(id)&&(session==null||session.Id!=id))throw new ArgumentException("Unaccounted active cast.");
             foreach(var id in terminals)if(!casts.Contains(id))throw new ArgumentException("Terminal without cast.");
             if(session!=null){
-                if(!casts.Contains(session.Id)||terminals.Contains(session.Id)||session.RigRevision!=description.Revision||session.RulesVersion!=rules.Version)throw new ArgumentException("Invalid current session.");
-                if(schemaVersion==3){
+                if(!casts.Contains(session.Id)||terminals.Contains(session.Id)||session.RigRevision!=(session.IsBottom?session.BottomKit.Equipment.RigRevision:description.Revision)||session.RulesVersion!=rules.Version)throw new ArgumentException("Invalid current session.");
+                if(session.IsBottom){
+                    if(schemaVersion!=3 || OwnedBottomKit!=session.BottomKit || session.EquipmentInventoryRevision!=OwnedBottomKit.Equipment.InventoryRevision ||
+                        session.EquipmentRulesVersion!=OwnedBottomKit.Equipment.RulesVersion || session.RequiredLineMm<1 ||
+                        session.RequiredLineMm>OwnedBottomKit.Equipment.Spool(OwnedBottomKit.Equipment.Equipped(FloatEquipmentSlot.Reel).Id).RemainingLineMm || assets.Contains(session.Id))
+                        throw new ArgumentException("Invalid owned bottom rig session binding.");
+                }else if(schemaVersion==3){
                     if(session.EquipmentInventoryRevision!=equipment.InventoryRevision||session.EquipmentRulesVersion!=equipment.RulesVersion||session.RequiredLineMm<1||
                         !equipment.EvaluateCastReadiness(FloatEquipmentGate.Idle,session.RequiredLineMm,1,rules.CastStaminaCost,rules.CastStaminaCost).Valid||assets.Contains(session.Id))throw new ArgumentException("Invalid equipment session binding.");
                 }else if(session.EquipmentInventoryRevision!=0||session.EquipmentRulesVersion!=0||session.RequiredLineMm!=0)throw new ArgumentException("Legacy session contains equipment data.");
@@ -330,7 +379,9 @@ namespace FishingDesktop.GameCore
         internal static FloatGameState CreateNewWithEquipment(Guid profile,Guid branch,long walletMinor,int stamina,Guid baitStack,string baitDefinition,int baitCount,FloatEquipmentLedger equipment,FloatGameRules rules,FloatCommerceCatalog catalog,Guid foodStackId)
         {return new FloatGameState(profile,branch,0,walletMinor,stamina,baitStack,baitDefinition,baitCount,null,null,new FloatFish[0],new FloatReceipt[0],rules,3,catalog,foodStackId,0,null,Guid.Empty,null,equipment);}
         internal void AddEquipmentAssets(HashSet<Guid> ids)
-        {if(LegacyRig!=null)LegacyRig.AddAssets(ids);else{FloatGuard.Unique(ids,Equipment.RigId);foreach(var item in Equipment.Instances)FloatGuard.Unique(ids,item.Id);}}
+        {if(LegacyRig!=null)LegacyRig.AddAssets(ids);else{FloatGuard.Unique(ids,Equipment.RigId);foreach(var item in Equipment.Instances)FloatGuard.Unique(ids,item.Id);}
+            if(OwnedBottomKit!=null)foreach(var id in OwnedBottomKit.Ids)FloatGuard.Unique(ids,id);}
+        internal bool BottomKitOwns(Guid id){return OwnedBottomKit!=null && OwnedBottomKit.Ids.Contains(id);}
         internal bool ArchivedEquipmentIdentityWasUsed(Guid id){return archivedIdentities.Contains(id);}
     }
 }

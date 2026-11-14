@@ -6,7 +6,7 @@ import { createTackle } from './tackle.mjs';
 import { sampleFightFish } from './fight-fish.mjs';
 import { aimPoint, pickAim, projectAim, setBankCamera, waterGeometryKey } from './water-space.mjs';
 
-const viewNames=['water','cast','flight','bite','fight','sleeveColor'];
+const viewNames=['water','cast','flight','bite','fight','bottom','sleeveColor'];
 
 // All inputs are read-only page projections. The renderer neither advances a
 // fishing clock nor posts input. Projection helpers use live CSS client pixels.
@@ -38,7 +38,7 @@ export function createGameScene(canvas,{onFault}={}) {
   let lake=null,key=null,water=null,disposed=false,error=null,active=false;
   let width=0,height=0,aspect=0,frames=0,elapsed=0,lastFlight=null,pendingImpact=null,rodPhase='idle',fish=null;
   let viewYaw=0,sceneBuilds=0;
-  const views={water:null,cast:null,flight:null,bite:null,fight:null};
+  const views={water:null,cast:null,flight:null,bite:null,fight:null,bottom:null};
   const scheduler=createFrameScheduler({render(_now,dt){
     elapsed+=dt;
     if(pendingImpact){lake.impact(pendingImpact,elapsed);pendingImpact=null;}
@@ -104,7 +104,7 @@ export function createGameScene(canvas,{onFault}={}) {
       triangles:renderer.info.render.triangles,calls:renderer.info.render.calls,geometryVersion:water?.geometryVersion??null,rodPhase,
       shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
       sceneBuilds,mirrorUpdates:lake?.mirrorUpdates()??0,loadedMaterials:lake?.loadedMaterials()??0,cameraXmm:lake&&aspect>0?Math.round(camera.position.x*1000):null,
-      rodAnchorXmm:lake?tackle.anchorXmm():null,
+      rodAnchorXmm:lake?tackle.anchorXmm():null,bottomTipPermille:lake?tackle.bottomTipPermille():null,
       bobberVisible:frames>0&&Boolean(lake)&&tackle.float.visible,lineVisible:frames>0&&Boolean(lake)&&tackle.line.visible,error,disposed};
   }
   canvas.addEventListener('webglcontextlost',lost);

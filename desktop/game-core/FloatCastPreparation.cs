@@ -50,6 +50,7 @@ namespace FishingDesktop.GameCore
         readonly FloatGameOwner owner;
         readonly FloatCastPreparationRules rules;
         readonly Func<FloatCastTarget,bool> validateTarget;
+        readonly bool bottomRig;
         readonly int thread=Thread.CurrentThread.ManagedThreadId;
         FloatCastGesture gesture;
         FloatViewTicket view;
@@ -62,12 +63,12 @@ namespace FishingDesktop.GameCore
         int elapsed,power;
         bool busy;
 
-        internal FloatCastPreparation(FloatGameOwner owner,FloatCastPreparationRules rules,Func<FloatCastTarget,bool> validateTarget)
+        internal FloatCastPreparation(FloatGameOwner owner,FloatCastPreparationRules rules,Func<FloatCastTarget,bool> validateTarget,bool bottomRig=false)
         {
             if(owner==null||rules==null||validateTarget==null)throw new ArgumentNullException("preparation dependency");
             // Also assert construction on the owner's host thread.
             var initial=owner.Snapshot;
-            this.owner=owner;this.rules=rules;this.validateTarget=validateTarget;
+            this.owner=owner;this.rules=rules;this.validateTarget=validateTarget;this.bottomRig=bottomRig;
         }
         void ThreadCheck(){if(Thread.CurrentThread.ManagedThreadId!=thread)throw new InvalidOperationException("Use the preparation owner's host thread.");}
         FloatCastSnapshot Describe(){return new FloatCastSnapshot(phase,elapsed,power,target,command==null?Guid.Empty:command.SessionId);}
@@ -92,13 +93,19 @@ namespace FishingDesktop.GameCore
             if(state.Session!=null){code="session-busy";return false;}
             var budget=owner.SaveBudget;
             if(!budget.CanStartCast){code=budget.Code;return false;}
+            if(bottomRig&&!budget.CanStartBottomCast){code="save-settlement-reserve";return false;}
             if(state.BaitCount<1){code="bait-empty";return false;}
             if(state.Stamina<state.Rules.CastStaminaCost){code="stamina-insufficient";return false;}
-            if(state.Rig.DefinitionKey!=state.Rules.RigDefinitionKey){code="rig-invalid";return false;}
+            if(!bottomRig&&state.Rig.DefinitionKey!=state.Rules.RigDefinitionKey){code="rig-invalid";return false;}
             // This revision is the fixed slice's rule version. Future geometry
             // freshness belongs to the host validator, not a claimed map model.
             if(checkTarget==null||checkTarget.RulesVersion!=state.RulesVersion){code="target-invalid";return false;}
-            if(state.SchemaVersion==3){
+            if(bottomRig){
+                var kit=state.OwnedBottomKit;
+                if(kit==null || !BottomOwnedKit.Enabled(state)){code="bottom-kit-not-owned";return false;}
+                var kitLine=kit.Equipment.Spool(kit.Equipment.Equipped(FloatEquipmentSlot.Reel).Id);
+                if(checkTarget.RequiredLineMm>kitLine.RemainingLineMm){code="line-insufficient";return false;}
+            }else if(state.SchemaVersion==3){
                 if(checkTarget.RequiredLineMm>FloatEquipmentGuard.MaximumLineMm){code="target-invalid";return false;}
                 var check=state.Equipment.EvaluateCastReadiness(FloatEquipmentGate.Idle,checkTarget.RequiredLineMm,state.BaitCount,state.Stamina,state.Rules.CastStaminaCost);
                 if(!check.Valid){code=check.Issues[0].Code;return false;}
@@ -106,7 +113,7 @@ namespace FishingDesktop.GameCore
             else if(checkTarget.RequiredLineMm>state.Rig.LineLengthMm.Value){code="line-insufficient";return false;}
             if(expected!=null&&(state.Sequence!=expected.Sequence||state.RulesVersion!=expected.RulesVersion||
                 !Object.ReferenceEquals(state.LegacyRig,expected.LegacyRig)||!Object.ReferenceEquals(state.Equipment,expected.Equipment)||state.Rules.Signature!=expected.Rules.Signature||
-                state.BaitStackId!=expected.BaitStackId||state.BaitDefinitionKey!=expected.BaitDefinitionKey||
+                (bottomRig&&state.OwnedBottomKit!=expected.OwnedBottomKit)||state.BaitStackId!=expected.BaitStackId||state.BaitDefinitionKey!=expected.BaitDefinitionKey||
                 state.BaitCount!=expected.BaitCount||state.Stamina!=expected.Stamina)){
                 code="prepared-state-changed";return false;
             }
@@ -129,7 +136,10 @@ namespace FishingDesktop.GameCore
                 // A host validator is read-only by contract; still recheck all
                 // owner facts after it so a callback cannot authorize old data.
                 if(!Ready(newView,newDocument,newLease,newTarget,before,out code))return Result(false,code);
-                FloatCommand preparedCommand=before.SchemaVersion==3?(FloatCommand)new CastFloatWithEquipment(before.ProfileId,before.BranchId,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),newTarget.RequiredLineMm,before.Sequence,before.Rig.Revision,before.RulesVersion,before.Equipment.InventoryRevision,before.Equipment.RulesVersion):new CastFloat(before.ProfileId,before.BranchId,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),before.Sequence,before.Rig.Revision,before.RulesVersion);
+                FloatCommand preparedCommand;
+                if(bottomRig)preparedCommand=CastBottomKitWithEquipment.Create(before,newTarget.RequiredLineMm);
+                else if(before.SchemaVersion==3)preparedCommand=new CastFloatWithEquipment(before.ProfileId,before.BranchId,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),newTarget.RequiredLineMm,before.Sequence,before.Rig.Revision,before.RulesVersion,before.Equipment.InventoryRevision,before.Equipment.RulesVersion);
+                else preparedCommand=new CastFloat(before.ProfileId,before.BranchId,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),before.Sequence,before.Rig.Revision,before.RulesVersion);
                 view=newView;document=newDocument;lease=newLease;target=newTarget;frozen=before;command=preparedCommand;
                 gesture=new FloatCastGesture();elapsed=0;power=rules.MinimumPowerPermille;phase=FloatCastPhase.Charging;
                 return Result(true,"charging");

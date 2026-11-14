@@ -17,6 +17,8 @@ import { SpotMenu } from './spot-menu.mjs';
 import { Wardrobe, wardrobeMessages } from './wardrobe.mjs';
 import { fishName, fishFigure, installFishIllustrations, newCreelCatch } from './fish-illustration.mjs';
 import { BankWalk } from './bank-walk.mjs';
+import { BottomView, bottomPrompt, createBottomTipPanel } from './bottom-view.mjs';
+import { BottomShop, BottomStrike, confirmedLineEnd } from './bottom-controls.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -29,6 +31,8 @@ let castState = null, castRevision = 0;
 const flightNotices = new FlightNotices();
 const flightView = new FlightView(documentId);
 const biteView = new BiteView(documentId);
+const bottomView = new BottomView(documentId);
+let bottomLineEnd = null, bottomPanel = null;
 const fightView = new FightView(documentId);
 const shopView = new ShopView(documentId);
 const equipmentView = new EquipmentView(documentId);
@@ -45,7 +49,7 @@ let catchTimer = null;
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
 const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
-const canPrepare = () => canControl() && !inflight && !spotRequest && !wardrobe.busy && currentSpotWater() && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.SessionId && !snapshot.MenuOpen;
+const canPrepare = () => canControl() && !inflight && !spotRequest && !bottomShop.busy && !wardrobe.busy && currentSpotWater() && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.SessionId && !snapshot.MenuOpen;
 const castInput = new CastInput({ readContext: () => {
   const water = waterView.state();
   return { lease:authority.state().lease, allowed:canPrepare() && bankWalk.canCast(water),
@@ -59,11 +63,16 @@ function buttonAim() {
 }
 function strikeContext() {
   const bite = biteView.state();
-  return { lease: authority.state().lease, allowed: canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
+  return { lease: authority.state().lease, allowed: !bottomMethod() && canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
     Boolean(bite?.sessionId) && bite.sessionId === snapshot.SessionId && !castInput.state(),
     sessionId: bite?.sessionId, encounterId: bite?.encounterId, phase: bite?.phase };
 }
 const strikeInput = new StrikeInput({ readContext: strikeContext, post: send, newTransportId: () => crypto.randomUUID() });
+const bottomStrike = new BottomStrike({ documentId, post:send, newTransportId:() => crypto.randomUUID(), readContext:() => ({
+  allowed:canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult && !castInput.state() && !document.hidden,
+  sessionId:snapshot?.SessionId, bottom:currentBottom(), lease:authority.state().lease }) });
+function currentBottom() { return bottomView.forSession(snapshot?.SessionId); }
+function bottomMethod() { return bottomShop.state()?.method === 'bottom' || Boolean(currentBottom()); }
 function fightContext() {
   const fight = fightView.state();
   return { lease: authority.state().lease, allowed: canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
@@ -99,10 +108,10 @@ function campBusy() { const s = campInput.state(); return Boolean(s.inflight || 
 function campEngaged() { return ['working', 'ready', 'retry'].includes(campInput.state().phase); }
 // Another menu operation blocks new intent, not delivery of a current host
 // projection. Otherwise the fixed shop/equipment send order loses readiness.
-const canUseShop = () => !spotRequest && !wardrobe.busy && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
-const canUseEquipment = () => !spotRequest && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
-const canUseSpares = () => !spotRequest && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !campBusy() && !campEngaged();
-const canUseCamp = () => !spotRequest && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
+const canUseShop = () => !spotRequest && !bottomShop.busy && !wardrobe.busy && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
+const canUseEquipment = () => !spotRequest && !bottomShop.busy && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
+const canUseSpares = () => !spotRequest && !bottomShop.busy && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !campBusy() && !campEngaged();
+const canUseCamp = () => !spotRequest && !bottomShop.busy && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
 const equipmentPanel = new EquipmentPanel({ view: equipmentView, input: equipmentInput, snapshot: () => snapshot,
   canAct: canUseEquipment, changed: () => updateButtons() });
 const sparesPanel = new SparesPanel({ view: sparesView, input: sparesInput, snapshot: () => snapshot,
@@ -110,12 +119,14 @@ const sparesPanel = new SparesPanel({ view: sparesView, input: sparesInput, snap
 const campPanel = new CampPanel({ view: campView, input: campInput, snapshot: () => snapshot,
   canAct: canUseCamp, changed: () => updateButtons() });
 const spotMenu = new SpotMenu({ documentId, container: $('spot-menu'), canSelect: spotAccess, send: selectSpot, fishArt: fishFigure });
-const wardrobe = new Wardrobe({ documentId, container: $('wardrobe'), readContext: wardrobeContext, post: send,
+const wardrobe = new Wardrobe({ documentId, container: $('wardrobe'), readContext: () => tradeContext(!bottomShop.busy), post: send,
   newTransportId: () => crypto.randomUUID(), changed: updateButtons });
-function wardrobeContext() {
+const bottomShop = new BottomShop({ documentId, post:send, newTransportId:() => crypto.randomUUID(),
+  readContext:() => tradeContext(!wardrobe.busy) });
+function tradeContext(otherShopFree) {
   const shop = shopInput.state(), equipment = equipmentInput.state(), spares = sparesInput.state();
   return { lease: authority.state().lease, sequence: snapshot?.Sequence, walletMinor: snapshot?.WalletMinor,
-    allowed: canControl() && snapshot.MenuOpen && !snapshot.SessionId && !snapshot.PendingResult && !castInput.state() &&
+    allowed: otherShopFree && canControl() && snapshot.MenuOpen && !snapshot.SessionId && !snapshot.PendingResult && !castInput.state() &&
       !['charging','prepared'].includes(castState?.phase) && !spotRequest && !inflight && !shopBusy() && !shop.retry && !shop.quote &&
       !equipmentBusy() && !equipment.retry && !sparesBusy() && !spares.retry && !spares.quote && !campBusy() && !campEngaged() };
 }
@@ -167,13 +178,14 @@ const bankWalk = new BankWalk({ documentId, post:send, newTransportId:() => cryp
       !['charging','prepared'].includes(castState?.phase) && !document.hidden && document.hasFocus() && !visualPaused && hostPolicy?.canRun === true };
 } });
 function sceneProjection() {
-  const session = snapshot?.SessionId, water = waterView.state();
+  const session = snapshot?.SessionId, water = waterView.state(), bottom = currentBottom();
   const current = s => s?.sessionId && s.sessionId === session ? s : null;
   if (water?.landing && (!session || water.landing.sessionId !== session)) water.landing = null;
   const cast = castState && (session || castState.phase !== 'committed') ? { phase: castState.phase, powerPermille: castState.powerPermille,
     elapsedMilliseconds: castState.elapsedMilliseconds, inputSequence: castState.inputSequence } : null;
   const canAim = canPrepare() && bankWalk.canCast(water) && !castInput.state() && !document.hidden && !visualPaused && hostPolicy?.canRun === true;
   return { water, cast, flight: current(flightView.state()), bite: current(biteView.state()), fight: current(fightView.state()),
+    bottom:bottom ? { ...bottom, lineEnd:bottomLineEnd && { ...bottomLineEnd } } : null,
     canAim, bank:bankWalk.forWater(water), sleeveColor: wardrobe.sleeveColor };
 }
 function renderSceneShell() {
@@ -207,13 +219,15 @@ function renderSceneHud() {
   else if (session && fight?.sessionId === session && fight.phase !== 'idle') {
     action = $('fight-status').textContent;
     hint = ['fighting','landing-eligible'].includes(fight.phase) ? `张力 ${(fight.tensionMilliN / 1000).toFixed(1)} N · 泄力 ${fight.dragLevel}/10 · 按住左键收线，滚轮调泄力` : $('fight-detail').textContent;
-  } else if (session && bite?.sessionId === session && bite.phase !== 'idle') {
+  } else if (session && currentBottom()) {
+    [action,hint] = bottomPrompt(currentBottom().phase);
+  } else if (session && !bottomMethod() && bite?.sessionId === session && bite.phase !== 'idle') {
     action = $('bite-status').textContent; hint = bite.phase === 'strikeable' ? '现在按鼠标右键提竿。' : '留意漂尾，浮漂明显下沉时按右键提竿。';
   } else if (session) {
     action = flight?.sessionId === session ? $('flight-status').textContent : '钓组已出手';
     hint = flight?.phase === 'invalid' ? '收回这一竿后可重新选择水面落点。' : '等待钓组落水。';
   } else if (charging) { action = `蓄力 ${(castState.powerPermille / 10).toFixed(0)}%`; hint = '松开左键出手，右键取消。'; }
-  $('scene-action').textContent = action; $('scene-hint').textContent = hint;
+  $('scene-action').textContent = bottomMethod() && !session && canControl() ? '底钓 · ' + action : action; $('scene-hint').textContent = hint;
   $('scene-power').hidden = !charging; $('scene-power').value = charging ? castState.powerPermille : 0;
   const message = lastReply && ['escaped','landed'].includes(fight?.phase) ? $('fight-status').textContent :
     lastReply && !['charging','prepared','cast-candidate','reel-held','reel-released','menu-updated'].includes(lastReply.code) ? codes[lastReply.code] : '';
@@ -260,7 +274,7 @@ function render() {
       `银币 ${decimal(snapshot.WalletMinor)}`, `体力 ${snapshot.Stamina}`, `${names[snapshot.BaitDefinitionKey] ?? snapshot.BaitDefinitionKey} ${snapshot.BaitCount} 份`,
     ].map(text => { const span = document.createElement('span'); span.textContent = text; return span; }));
     const pending = snapshot.PendingFish;
-    $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${fishName(pending.SpeciesKey) ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : snapshot.SessionId ? '这一竿已出手，请观察轨迹与浮漂。' : '可以出手';
+    $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${fishName(pending.SpeciesKey) ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : snapshot.SessionId ? (bottomMethod() ? '底钓钓组已出手，请观察竿尖。' : '这一竿已出手，请观察轨迹与浮漂。') : '可以出手';
     $('capacity').textContent = `${snapshot.CreelCount} / ${snapshot.CreelCapacity}`;
     const rows = snapshot.Creel ?? [];
     for (const id of selected) if (!rows.some(f => f.Id === id)) selected.delete(id);
@@ -283,7 +297,7 @@ function renderCast() {
   $('cast-status').textContent = labels[phase] ?? '等待宿主确认';
   const power = ['charging', 'prepared', 'committed'].includes(phase) ? castState.powerPermille : 0;
   $('cast-power').value = power; $('cast-percent').textContent = `${(power / 10).toFixed(1)}%`;
-  $('cast-target').setAttribute('aria-disabled', String(!canPrepare() && !strikeContext().allowed && !fightContext().allowed));
+  $('cast-target').setAttribute('aria-disabled', String(!canPrepare() && !strikeContext().allowed && !bottomStrike.available && !fightContext().allowed));
   renderWater();
 }
 function renderWater() {
@@ -295,7 +309,8 @@ function renderWater() {
   $('water-near').textContent = `近端 ${metres(state.bounds.minZmm)} 米`;
   $('water-horizontal').textContent = `横向 ${metres(state.bounds.minXmm)} 至 ${metres(state.bounds.maxXmm)} 米`;
   const depths = state.bed.map(row => row.depthMm);
-  $('water-depth').textContent = `已配置河床水深 ${metres(Math.min(...depths))}–${metres(Math.max(...depths))} 米 · 漂深 ${metres(state.floatDepthMm)} 米 · 最低净空 ${metres(state.clearanceMm)} 米`;
+  const methodDepth = bottomMethod() ? '铅坠沉至底部后观察竿尖' : `漂深 ${metres(state.floatDepthMm)} 米 · 最低净空 ${metres(state.clearanceMm)} 米`;
+  $('water-depth').textContent = `已配置河床水深 ${metres(Math.min(...depths))}–${metres(Math.max(...depths))} 米 · ${methodDepth}`;
   const direction = { near: '近岸方向', far: '远岸方向', left: '左侧', right: '右侧' };
   const outside = p => p?.visible === false ? ` · 图外（${p.outside.map(value => direction[value]).join('、')}）` : '';
   const position = p => `横向 ${metres(p.xMm)} 米，离岸 ${metres(p.zMm)} 米，${p.depthMm === 0 ? '无有效水深' : `水深 ${metres(p.depthMm)} 米`}`;
@@ -314,7 +329,7 @@ function renderWater() {
 }
 function renderFlight() {
   const graph = flightView.diagram(), state = flightView.state();
-  const labels = { idle: '等待确认出手', flying: '钓组飞行中', waiting: '已落水，观察下方浮漂', invalid: '本次未进入有效水面', ended: '这一竿已结束' };
+  const labels = { idle: '等待确认出手', flying: '钓组飞行中', waiting: bottomMethod() ? '底钓钓组已落水，观察竿尖' : '已落水，观察下方浮漂', invalid: '本次未进入有效水面', ended: '这一竿已结束' };
   const reasons = { flying: '飞行中', 'water-contact': '已接触水面', 'outside-water': '落在水域外', 'line-limit': '所需线长已达可用上限', 'flight-timeout': '飞行超时', ended: '已结束' };
   const redundant = { flying: 'flying', waiting: 'water-contact', ended: 'ended' };
   const reason = state?.reason && state.reason !== redundant[state.phase] ? reasons[state.reason] ?? '未能继续本次轨迹' : '';
@@ -411,7 +426,8 @@ function updateButtons() {
   if (catchTimer !== null && (!canControl() || hostPolicy?.canRun === false || snapshot.MenuOpen || snapshot.SessionId || castInput.state() || document.hidden)) hideCatch();
   reconcileSpot();
   wardrobe.reconcile();
-  const active = canControl() && !inflight && !spotRequest && !wardrobe.busy && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
+  bottomShop.reconcile(); bottomStrike.reconcile(); renderBottom();
+  const active = canControl() && !inflight && !spotRequest && !bottomShop.busy && !wardrobe.busy && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
   const input = castInput.state();
   $('cast').disabled = !canPrepare() || !bankWalk.canCast(waterView.state()) || Boolean(input);
   $('cast-release').disabled = !canPrepare() || input?.phase !== 'charging' || input.source !== 'button';
@@ -456,6 +472,33 @@ function updateButtons() {
   if (scene.visible) renderSceneHud();
   renderCampNavigation();
   scene.refresh();
+}
+function renderBottom() {
+  const shop = bottomShop.state();
+  $('bottom-shop').hidden = !shop || !snapshot?.MenuOpen;
+  if (shop && snapshot?.MenuOpen) {
+    const affordable = typeof snapshot.WalletMinor === 'string' && /^\d+$/.test(snapshot.WalletMinor) && BigInt(snapshot.WalletMinor)>=6400n;
+    const method = shop.method === 'bottom' ? '底钓' : '浮漂';
+    $('bottom-shop-status').textContent = !shop.available ? '当前存档的底钓套装暂不可用。' : bottomShop.pending ? '正在确认本次操作…' :
+      bottomShop.confirming ? '支付 64.00 银币购入一套单钩底钓装备？' :
+      [shop.owned ? '已拥有' : affordable ? '64.00 银币 / 套' : '64.00 银币 / 套 · 余额不足', '当前钓法 · '+method,
+        shop.allowed ? '' : '请前往静水湾的底钓区使用'].filter(Boolean).join('　');
+    $('bottom-buy').hidden = shop.owned || bottomShop.confirming;
+    $('bottom-buy').disabled = !bottomShop.can('buy');
+    $('bottom-confirm').hidden = $('bottom-cancel').hidden = !bottomShop.confirming;
+    $('bottom-confirm').disabled = !bottomShop.confirming;
+    $('select-bottom').hidden = $('select-float').hidden = !shop.owned;
+    $('select-bottom').disabled = !bottomShop.can('select-bottom');
+    $('select-float').disabled = !bottomShop.can('select-float');
+  }
+  const bottom = currentBottom();
+  $('bite').hidden = bottomMethod();
+  $('bottom-observation').hidden = !bottom || Boolean(snapshot?.MenuOpen);
+  if (bottom && !bottomPanel) {
+    bottomPanel = createBottomTipPanel(document); $('bottom-diagram').append(bottomPanel.element);
+  }
+  bottomPanel?.render(bottomView,snapshot?.SessionId);
+  $('bottom-strike').disabled = !bottomStrike.available;
 }
 const campAreas = { map: 'spot-menu', creel: 'creel-section', gear: 'equipment', tackle: 'shop-net',
   food: 'shop-food', clothes: 'wardrobe', work: 'camp' };
@@ -506,7 +549,7 @@ function revoke(reason) {
   render();
 }
 function intent(action) {
-  if (!canControl() || inflight || spotRequest || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
+  if (!canControl() || inflight || spotRequest || bottomShop.busy || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
   fightInput.cancel();
   const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : snapshot.SessionId,
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
@@ -516,6 +559,11 @@ function intent(action) {
   render();
 }
 const codes = { 'cast-candidate': '这一竿已保存，已使用一份鱼饵。', 'recall-candidate': '已收回，扣饵保持。', 'released-candidate': '当前鱼已放流。', 'sale-candidate': '出售已确认。', 'menu-updated': '菜单状态已更新。', 'control-required': '请重新开启交互。', 'invalid-intent': '请求未识别。', 'version-conflict': '进度已更新，请重新操作。', 'bait-empty': '鱼饵已用完。', 'stamina-insufficient': '体力不足。', 'session-busy': '请先结束当前一竿。' };
+Object.assign(codes, { 'bottom-kit-purchased':'底钓套装购买已确认。', 'bottom-method-selected':'钓法已切换。',
+  'bottom-hooked':'底钓已中鱼，请手动收线。', 'bottom-shop-busy':'请先结束当前一竿或菜单操作。', 'bottom-shop-stale':'存档进度已变化，请重新选择。',
+  'bottom-unavailable':'当前未开放底钓。', 'bottom-kit-not-owned':'请先购买底钓套装。', 'bottom-kit-owned':'已经拥有底钓套装。',
+  'bottom-spot-unavailable':'请前往静水湾的底钓区。', 'bottom-strike-missed':'已经错过这次鱼口。',
+  'outside-bottom-patch':'落点离开底钓区，请收回并重新瞄准。', 'bed-too-steep':'落点底坡过陡，请换个落点。' });
 Object.assign(codes, { 'save-settlement-reserve': '存档空间不足以安全保存下一竿，已取消操作，未扣除鱼饵或体力。请保留当前存档。' });
 for (const [code, text] of Object.entries(wardrobeMessages)) if (code.startsWith('wardrobe-')) codes[code] = text;
 Object.assign(codes, { 'spot-selected': '钓点已切换。', 'spot-unchanged': '已在所选钓点。', 'spot-unavailable': '该钓点暂未开放。',
@@ -556,6 +604,17 @@ Object.assign(codes, { 'camp-work-started': '帮工已开始，请保持当前�
   'camp-creel-not-empty': '可以先出售鱼护里的渔获。', 'camp-schema-required': '此存档尚未支持营地帮工。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
+  if (m.kind === 'game-bottom-shop-state') {
+    if (bottomShop.apply(m)) { renderFlight(); renderCast(); updateButtons(); }
+    return;
+  }
+  if (m.kind === 'game-bottom-state') {
+    if (bottomView.apply(m)) {
+      bottomLineEnd = m.state.phase === 'idle' ? null : confirmedLineEnd(m.lineEnd);
+      renderFlight(); renderCast(); updateButtons();
+    }
+    return;
+  }
   if (m.kind === 'game-bank-state') {
     if (bankWalk.apply(m)) { castInput.reconcile(); updateButtons(); }
     return;
@@ -642,7 +701,7 @@ window.chrome.webview.addEventListener('message', event => {
     const walkReply = bankWalk.reply(m);
     if (['walk-updated','walk-stopped'].includes(m.code)) { if (walkReply) updateButtons(); return; }
     if (campOpening && campOpening.transportId === m.transportId && m.code !== 'menu-updated') campOpening = null;
-    wardrobe.reply(m);
+    wardrobe.reply(m); bottomShop.reply(m); bottomStrike.reply(m);
     if (spotRequest && m.transportId === spotRequest.transportId) {
       if (m.code === 'spot-selected' || m.code === 'spot-unchanged') spotRequest.acknowledged = true;
       else { spotRequest = null; spotMenu.reject(codes[m.code]); }
@@ -674,6 +733,14 @@ $('cast').addEventListener('click', () => {
 $('cast-release').addEventListener('click', () => { castInput.release(); render(); });
 $('cast-cancel').addEventListener('click', () => { castInput.cancel(); render(); });
 $('strike').addEventListener('click', () => { strikeInput.strike(); updateButtons(); });
+for (const [id, act] of [
+  ['bottom-buy', () => bottomShop.offer()], ['bottom-confirm', () => bottomShop.submit('buy')],
+  ['bottom-cancel', () => bottomShop.cancel()], ['select-bottom', () => bottomShop.submit('select-bottom')],
+  ['select-float', () => bottomShop.submit('select-float')], ['bottom-strike', () => bottomStrike.strike()],
+]) {
+  $(id).addEventListener('click', e => { if (e.detail<=1 && !$(id).disabled) { act(); updateButtons(); } });
+  $(id).addEventListener('keydown', e => { if (e.repeat && ['Space','Enter'].includes(e.code)) e.preventDefault(); });
+}
 $('land').addEventListener('click', () => { fightInput.land(); updateButtons(); });
 $('retry-land').addEventListener('click', () => { fightInput.retryLanding(); updateButtons(); });
 $('retry-escape').addEventListener('click', event => { if (event.detail > 1) return; fightInput.retryFailure(); updateButtons(); });
@@ -690,7 +757,7 @@ $('recall').addEventListener('click', () => intent('recall'));
 $('release').addEventListener('click', () => intent('release-current'));
 $('sell').addEventListener('click', () => intent('sell'));
 function toggleMenu(area = 'home') {
-  if (!canControl() || inflight || spotRequest || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
+  if (!canControl() || inflight || spotRequest || bottomShop.busy || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
   bankWalk.stop();
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
@@ -753,18 +820,25 @@ surface.addEventListener('lostpointercapture', event => { endReelPointer(event);
 surface.addEventListener('contextmenu', event => { event.preventDefault(); if (surfaceAvailable(surface) && castInput.cancel()) render(); });
 }
 bindCastSurface(target); bindCastSurface(canvas);
-for (const element of [target, canvas, $('bite-diagram')]) {
+for (const element of [target, canvas, $('bite-diagram'), $('bottom-diagram')]) {
   // mousedown fires for each newly pressed button, including a right-button
   // chord that Pointer Events reports as pointermove. Preparation cancellation
   // has priority and this physical press is then marked held, never buffered.
   element.addEventListener('mousedown', event => {
     if (event.button !== 2 || !surfaceAvailable(element)) return;
     event.preventDefault();
-    if (castInput.state()) { castInput.cancel(); strikeInput.mouseButtons(event.buttons); render(); return; }
-    if (strikeInput.mouseDown(event.button, event.buttons)) updateButtons();
+    if (castInput.state()) { castInput.cancel(); strikeInput.mouseButtons(event.buttons); bottomStrike.buttons(event.buttons); render(); return; }
+    if (bottomMethod()) {
+      strikeInput.mouseButtons(event.buttons);
+      if (bottomStrike.press(event.buttons)) updateButtons();
+    } else {
+      bottomStrike.buttons(event.buttons);
+      if (strikeInput.mouseDown(event.button, event.buttons)) updateButtons();
+    }
   });
 }
 $('bite-diagram').addEventListener('contextmenu', event => event.preventDefault());
+$('bottom-diagram').addEventListener('contextmenu', event => event.preventDefault());
 function beginReelPointer(event, element) {
   if (event.button !== 0 || !(event.buttons & 1) || !fightInput.begin(`pointer:${event.pointerId}`)) return;
   const held = fightInput.state().held;
@@ -802,8 +876,9 @@ for (const element of [target, canvas, $('fight-diagram')]) element.addEventList
   event.preventDefault(); changeFightLevel(speedKeyHeld ? 'speed' : 'drag', event.deltaY < 0 ? 1 : -1);
 }, { passive: false });
 window.addEventListener('pointerup', endReelPointer);
-window.addEventListener('mouseup', event => strikeInput.mouseButtons(event.buttons));
-window.addEventListener('mousemove', event => strikeInput.mouseButtons(event.buttons));
+for (const type of ['mouseup','mousemove']) window.addEventListener(type, event => {
+  strikeInput.mouseButtons(event.buttons); bottomStrike.buttons(event.buttons);
+});
 window.addEventListener('blur', () => revoke('blur'));
 window.addEventListener('pagehide', () => { revoke('pagehide'); scene.dispose(); });
 window.addEventListener('resize', () => { if (!landscape()) revoke('portrait'); render(); scene.resize(); });
@@ -842,6 +917,8 @@ const visual = { start: () => pauseVisual(false), stop: () => pauseVisual(true),
   state: () => scene.state().renderer ?? { running: false, frames: 0, kind: 'host-flight-projection' } };
 window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision,
   biteState: biteView.state(), biteRevision: biteView.revision, strikeInputState: strikeInput.state(),
+  bottomState:bottomView.state(), bottomRevision:bottomView.revision, bottomLineEnd:bottomLineEnd && { ...bottomLineEnd },
+  bottomShopState:bottomShop.state(), bottomShopPending:bottomShop.pending,
   fightState: fightView.state(), fightRevision: fightView.revision, fightInputState: fightInput.state(),
   shopState: shopView.state(), shopRevision: shopView.revision, shopInputState: shopInput.state(),
   equipmentState: equipmentView.state(), equipmentRevision: equipmentView.revision, equipmentInputState: equipmentInput.state(),

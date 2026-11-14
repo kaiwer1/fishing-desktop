@@ -115,3 +115,42 @@ test('malformed flight notices do not advance presentation highwater', () => {
   }
   assert.equal(notices.revision, 0); assert.equal(notices.apply(valid), true);
 });
+
+test('aimed casts freeze only the selected three integers and keep release and cancel unchanged', () => {
+  const f = fixture(); Object.assign(f.context, { requiresAim: true, geometryVersion: 2 });
+  const aim = { u: 1234, v: 5678, geometryVersion: 2 };
+  assert.equal(f.input.pointer(3, 1, true, aim), true);
+  aim.u = 9; f.messages[0].aim.v = 3; const state = f.input.state(); state.aim.geometryVersion = 8;
+  assert.deepEqual(f.input.state().aim, { u: 1234, v: 5678, geometryVersion: 2 });
+  assert.equal(f.input.pointer(3, 0), true);
+  assert.deepEqual(Object.keys(f.messages[1]).sort(), ['action', 'inputSequence', 'kind', 'lease', 'transportId']);
+  assert.equal(f.messages[1].inputSequence, '1'); assert.equal(f.messages[1].action, 'release');
+  f.input.hostState({ inputSequence: '1', phase: 'committed' });
+  assert.equal(f.input.begin('button', { u: 5000, v: 5000, geometryVersion: 2 }), true); f.input.cancel();
+  assert.equal('aim' in f.messages.at(-1), false); assert.equal(f.messages.at(-1).action, 'cancel');
+});
+
+test('aim-required mode rejects missing, partial, injected, out-of-range and stale geometry selections', () => {
+  const f = fixture(); Object.assign(f.context, { requiresAim: true, geometryVersion: 1 });
+  const valid = { u: 0, v: 10000, geometryVersion: 1 };
+  for (const aim of [null, {}, { ...valid, u: -1 }, { ...valid, v: 10001 }, { ...valid, u: .5 }, { ...valid, v: NaN },
+    { ...valid, geometryVersion: '1' }, { ...valid, geometryVersion: 0 }, { ...valid, geometryVersion: 2 },
+    { ...valid, geometryVersion: Number.MAX_SAFE_INTEGER + 1 }, { ...valid, powerPermille: 1000 },
+    Object.assign(Object.create({ geometryVersion: 1 }), { u: 0, v: 1, x: 1 })]) {
+    assert.equal(f.input.begin('button', aim), false);
+  }
+  assert.deepEqual(f.messages, []); assert.equal(f.input.begin('button', valid), true);
+  const legacy = fixture(); assert.equal(legacy.input.begin('button', valid), false); assert.equal(legacy.input.begin(), true);
+  assert.equal('aim' in legacy.messages[0], false);
+});
+
+test('geometry or aim-mode changes invalidate old gestures without retargeting their release', () => {
+  for (const change of [{ geometryVersion: 2 }, { requiresAim: false }, { lease: 'second-grant' }, { allowed: false }]) {
+    const f = fixture(); Object.assign(f.context, { requiresAim: true, geometryVersion: 1 });
+    f.input.pointer(3, 1, true, { u: 1, v: 2, geometryVersion: 1 }); Object.assign(f.context, change);
+    f.input.reconcile(); assert.equal(f.input.state(), null); assert.equal(f.input.pointer(3, 0), false);
+    assert.deepEqual(f.actions(), ['begin']);
+  }
+  const f = fixture(); f.input.begin(); Object.assign(f.context, { requiresAim: true, geometryVersion: 1 });
+  assert.equal(f.input.release(), false); assert.deepEqual(f.actions(), ['begin']);
+});

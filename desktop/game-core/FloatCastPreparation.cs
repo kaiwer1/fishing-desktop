@@ -9,11 +9,11 @@ namespace FishingDesktop.GameCore
     internal sealed class FloatCastTarget
     {
         internal readonly int Xmm,Ymm,Zmm;
-        internal readonly long RulesVersion,RequiredLineMm;
-        internal FloatCastTarget(int xMm,int yMm,int zMm,long rulesVersion,long requiredLineMm)
+        internal readonly long RulesVersion,RequiredLineMm,GeometryVersion;
+        internal FloatCastTarget(int xMm,int yMm,int zMm,long rulesVersion,long requiredLineMm,long geometryVersion=0)
         {
-            if(rulesVersion<=0||requiredLineMm<=0)throw new ArgumentOutOfRangeException("rulesVersion");
-            Xmm=xMm;Ymm=yMm;Zmm=zMm;RulesVersion=rulesVersion;RequiredLineMm=requiredLineMm;
+            if(rulesVersion<=0||requiredLineMm<=0||geometryVersion<0)throw new ArgumentOutOfRangeException("rulesVersion");
+            Xmm=xMm;Ymm=yMm;Zmm=zMm;RulesVersion=rulesVersion;RequiredLineMm=requiredLineMm;GeometryVersion=geometryVersion;
         }
     }
     internal sealed class FloatCastPreparationRules

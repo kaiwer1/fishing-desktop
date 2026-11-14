@@ -11,7 +11,9 @@ sealed partial class DualWindowContext
 {
     readonly string gameMode;
     internal bool GameMode { get { return gameMode != null; } }
-    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameFailureCase!=null; } }
+    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameFailureCase!=null; } }
+    bool GameWaterSelfTest { get { return gameMode=="water-self-test"; } }
+    bool GameWaterMode { get { return GameWaterSelfTest||gameMode=="new"||gameMode=="open"||gameMode=="line-break-new"||gameMode=="line-break-open"; } }
     bool GameLineBreakSelfTest { get { return gameMode == "line-break-self-test"; } }
     bool GameLineBreakMode { get { return GameLineBreakSelfTest || gameMode=="line-break-new" || gameMode=="line-break-open" || (gameMode!=null&&gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)); } }
     bool GameSparesSelfTest { get { return gameMode == "spares-self-test"; } }
@@ -26,7 +28,7 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision;
         internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater;
         internal GameShopPending Shop;
         internal GameEquipmentPending Equipment;
@@ -45,12 +47,13 @@ sealed partial class DualWindowContext
             if(GameLineBreakMode)ValidateGameLineBreakCatalog(inspection.State);
             game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion,GameLineBreakMode?(Action<FloatGameState>)ValidateGameLineBreakCatalog:null);
         }
-        else if(gameMode=="new" || GameLineBreakMode || GameSparesSelfTest || GameCampSelfTest){
+        else if(gameMode=="new" || GameLineBreakMode || GameWaterSelfTest || GameSparesSelfTest || GameCampSelfTest){
             var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture();
             game=FloatGameOwner.CreateNewWithEquipmentOffers(path,initial,CreateGameSparesCatalog(initial),GameSelfTest?(Action<FloatSaveFaultPoint>)GameShopSaveFault:null);
         }
         else if(GameSelfTest) game=FloatGameOwner.CreateNew(path,CreateGameFixture(),GameShopSaveFault);
         else throw new ArgumentException("Unknown game mode.");
+        InitializeGameWater();
         InitializeGameCast();
         InitializeGameCamp();
         InitializeGameFlight();

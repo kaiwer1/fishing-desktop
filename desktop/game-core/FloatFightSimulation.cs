@@ -410,6 +410,7 @@ namespace FishingDesktop.GameCore
         {return new FloatFightSnapshot(setup,step,remainder,phase,reason,LandingReason(),new FloatFightPoint(x,setup.FishStart.Y,z),new FloatFightPoint(vx,0,vz),
             line,Math.Max(0,line-Distance(x,z)),tension,Drag,energy,reeling,dragLevel,reelLevel,reeled,paidOut,landingAttempt,unhookExposureSteps,failureAttempt,lineBreakExposureSteps);}
         internal FloatFightSnapshot Snapshot{get{Check();return Describe();}}
+        internal FloatFightPoint InitialFishPosition{get{Check();return setup.FishStart;}}
         FloatFightResult Result(bool accepted,bool submit,bool terminal,string code,bool submitFailure=false)
         {return new FloatFightResult(accepted,submit,terminal,code,landingTicket,landingAttempt,Describe(),submitFailure,failureTicket,failureAttempt);}
         internal FloatFightResult Advance(Guid sessionId,int activeMilliseconds)

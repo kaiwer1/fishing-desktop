@@ -6,6 +6,7 @@
 <style>
 *{box-sizing:border-box}body{margin:0;background:#202421;color:#ededdf;font:16px/1.55 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1120px;margin:auto;padding:24px}header{border-bottom:1px solid #737965;padding-bottom:16px}h1{font-size:24px;margin:0 0 8px}p{margin:8px 0}.muted{color:#bac1b0;font-size:14px}#status{color:#d3df8a}#stats{display:flex;flex-wrap:wrap;gap:14px;margin:20px 0}#stats span{padding:8px 16px;background:#343a31}button{font:inherit;background:#454c3a;border:1px solid #8c9872;color:#fff;padding:9px 18px;cursor:pointer;margin:0 8px 8px 0}button:disabled{opacity:.4;cursor:default}button:focus-visible{outline:3px solid #d6e18c;outline-offset:2px}section{padding:16px 0;border-top:1px solid #555e4d}h2{font-size:18px;margin:0 0 12px}#creel{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;list-style:none;padding:0}.fish{padding:14px;background:#343a31}.fish label{display:flex;gap:8px;align-items:flex-start}#notice{min-height:26px;color:#d9d498}#portrait{display:none}body[data-role=observer] .interactive{display:none}@media(orientation:portrait){main{display:none}#portrait{display:flex;height:100vh;align-items:center;justify-content:center;font-size:24px}}
 #cast-target{border:1px solid #8c9872;background:#2b342b;padding:20px;margin:14px 0;min-height:130px;user-select:none;touch-action:none;cursor:crosshair}#cast-target[aria-disabled=true]{opacity:.55;cursor:default}#cast-power{width:min(65%,420px);height:20px;vertical-align:middle;accent-color:#bdcd7a;margin-right:12px}#cast-status{min-height:25px}
+#cast-target [hidden]{display:none}#water-aim-svg{display:block;width:100%;height:280px;background:#202b29;touch-action:none;overflow:hidden}#water-aim-svg text{fill:#dae3d1;font:13px system-ui,sans-serif;pointer-events:none}#water-aim-panel p{font-size:13px}#water-outside{color:#e0b778}#water-target-status,#water-prediction-status,#water-landing-status{font-variant-numeric:tabular-nums}
 #flight-diagram{display:block;width:100%;max-height:250px;background:#252d2b;border:1px solid #596358}#flight-diagram text{fill:#bac7bf;font:12px system-ui,sans-serif}#flight-diagram .axis{stroke:#576963;stroke-width:1}#flight-diagram .water{stroke:#82b4bb;stroke-width:1.5}#flight-metrics{font-variant-numeric:tabular-nums}#flight-status{min-height:25px}#flight-clipped{color:#e0b778}
 #bite-layout{display:flex;gap:24px;align-items:center;flex-wrap:wrap}#bite-diagram{width:360px;max-width:100%;height:250px;flex:0 1 360px;border:1px solid #596358;background:#252d2b;cursor:crosshair;user-select:none;touch-action:none}#bite-diagram text{fill:#bac7bf;font:13px system-ui,sans-serif}#bite-copy{flex:1 1 280px}#bite-status{color:#d3df8a;font-size:18px}#bite-bait{color:#bac1b0}
 #fight-layout{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}#fight-diagram{width:480px;max-width:100%;height:250px;flex:1 1 380px;background:#253e40;border:1px solid #596358;cursor:crosshair;touch-action:none;user-select:none}#fight-diagram text{fill:#bac7bf;font:12px system-ui,sans-serif}#fight-copy{flex:1 1 320px}#fight-status{font-size:18px;color:#d3df8a}#fight-metrics{font-variant-numeric:tabular-nums}#fight-energy{width:130px;height:16px;accent-color:#a8c37d;vertical-align:middle}#fight-controls{display:flex;gap:18px;flex-wrap:wrap}#fight-controls button{padding:2px 12px;margin:6px}#fight-controls span{display:inline-block;min-width:55px;text-align:center}#fight-clipped{color:#e0b778}#reel-hold{touch-action:none;user-select:none}
@@ -19,7 +20,22 @@
 <p id="session">等待进度</p>
 <div id="cast-workbench">
 <section id="casting"><h2>抛竿准备</h2><p id="cast-status" role="status">尚未蓄力</p><progress id="cast-power" max="1000" value="0" aria-label="宿主确认的蓄力"></progress><span id="cast-percent">0%</span>
-<div id="cast-target" class="interactive" role="group" aria-label="临时抛竿操作区"><strong>临时抛竿操作区</strong><p>左键按住蓄力，松开出手。准备时右键取消；落水后右键提竿；中鱼后左键按住收线。</p><p class="muted">固定朝向的简化水域，尚无真实场景。</p></div>
+<div id="cast-target" class="interactive" role="group" aria-label="抛竿操作区">
+<div id="cast-legacy"><strong>临时抛竿操作区</strong><p>左键按住蓄力，松开出手。准备时右键取消；落水后右键提竿；中鱼后左键按住收线。</p><p class="muted">固定朝向的简化水域，尚无真实场景。</p></div>
+<div id="water-aim-panel" hidden><strong>水面瞄准 · 单钓位俯视图</strong><p>在图内按住左键蓄力，松开出手；右键取消。中鱼后左键按住收线。图中仅显示当前瞄准范围。</p>
+<svg id="water-aim-svg" viewBox="0 0 480 280" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="water-aim-title water-aim-description">
+<title id="water-aim-title">单钓位水面瞄准图</title><desc id="water-aim-description">上方较远，下方较近。圆环为宿主目标，菱形为预计落点，实心点为实际落点；图外落点只用文字说明。</desc>
+<rect x="0" y="0" width="480" height="280" fill="#304d50"/>
+<path d="M120 0V280M240 0V280M360 0V280M0 70H480M0 140H480M0 210H480" stroke="#507879" fill="none"/>
+<text id="water-far" x="240" y="18" text-anchor="middle">远端 —</text><text id="water-near" x="240" y="267" text-anchor="middle">近端 —</text>
+<g id="water-target-mark" visibility="hidden"><circle r="10" fill="none" stroke="#e8d788" stroke-width="2"/><path d="M-15 0H15M0 -15V15" stroke="#e8d788"/></g>
+<g id="water-prediction-mark" visibility="hidden"><path d="M0 -7L7 0L0 7L-7 0Z" fill="#9cd3e4" stroke="#e2f0e7"/></g>
+<g id="water-landing-mark" visibility="hidden"><circle id="water-landing-circle" r="5" fill="#a8c37d" stroke="#fff" stroke-width="1.5"/></g>
+</svg>
+<p id="water-horizontal" class="muted">横向范围 —</p><p id="water-depth" class="muted">等待河床数据</p>
+<p id="water-target-status">等待宿主目标</p><p id="water-prediction-status">预计落点：等待宿主计算</p><p id="water-landing-status">实际落点：尚未落水</p>
+<p id="water-outside" hidden>图外落点不绘制在图内，具体方向见上方文字。</p>
+<p class="muted">圆环：目标 · 菱形：预计 · 实心点：实际。河床与落点数据来自宿主；最终场景美术尚未接入。</p></div></div>
 <div class="interactive"><button id="cast" disabled>开始蓄力</button><button id="cast-release" disabled>松开出手</button><button id="cast-cancel" disabled>取消蓄力</button></div></section>
 <section id="flight"><h2>飞行与落水 · 固定平面示意</h2><p id="flight-status">等待确认出手</p>
 <svg id="flight-diagram" viewBox="0 0 720 240" role="img" aria-labelledby="flight-title flight-description">

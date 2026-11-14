@@ -57,7 +57,7 @@ export class EquipmentPanel {
       input.retry ? '上次装备操作确认未写入，请重试原操作或取消。' : input.inflight || input.awaitingState ? '正在确认装备变更…' : state.available ? '装配会立即保存；卸下的部件回到背包。' : reasons[state.reason] ?? '当前不能换件。';
     const items = state?.items ?? [], issues = state?.issues ?? [], equipped = slot => items.find(item => item.location === 'rig-slot' && item.slot === slot);
     $('equipment-capacity').textContent = `当前名额 ${items.length} / 128 · 已归档 ${state?.archivedItemsCount ?? 0} 件 · 归档累计损失鱼线 ${archivedMeters(state?.archivedLineMm ?? '0')}`;
-    $('equipment-readiness').textContent = state?.schemaVersion !== 3 ? '' : issues.length ? issues.map(issue => `${slotNames[issue.slot] ? `${slotNames[issue.slot]}：` : ''}${reasons[issue.code] ?? issue.code}`).join('；') : '钓组完整，可在关闭菜单后抛竿。';
+    $('equipment-readiness').textContent = state?.schemaVersion !== 3 ? '' : issues.length ? issues.map(issue => `${slotNames[issue.slot] ? `${slotNames[issue.slot]}：` : ''}${reasons[issue.code] ?? issue.code}`).join('；') : '钓组完整。抛竿时按所选目标复核需要的线长。';
     const reel = equipped('reel'), line = items.find(item => item.location === 'reel-spool' && item.reelId === reel?.id);
     $('equipment-line-status').textContent = line ? `当前渔轮：${title(line)} · 剩余 ${meters(line.remainingLineMm)}` : '当前渔轮未装可用鱼线';
     const signature = JSON.stringify(items);

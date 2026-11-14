@@ -25,7 +25,17 @@ sealed partial class DualWindowContext
             throw new InvalidOperationException("Fight requires the locked current hooked encounter.");
         var state=game.Snapshot.State;var flight=gameFlight.Snapshot;
         var anchor=new FloatFightPoint(0,1.5,0);var fish=new FloatFightPoint(flight.Xmm/1000,-.2,flight.Zmm/1000);
-        double distance=Math.Sqrt(fish.X*fish.X+1.7*1.7+fish.Z*fish.Z);
+        var water=new FloatFightWater(0,-2,-40,40,3,80);
+        if(gameWater!=null){
+            if(!GameWaterCanFish())throw new InvalidOperationException("A fight requires a valid sampled working depth.");
+            anchor=new FloatFightPoint(gameWater.AnchorXmm/1000.0,gameWater.AnchorYmm/1000.0,gameWater.AnchorZmm/1000.0);
+            fish=new FloatFightPoint(flight.Xmm/1000.0,gameWaterLanding.Sample.HookYmm/1000.0,flight.Zmm/1000.0);
+            // Conservative fixed-depth work box, not the actual river bed.
+            water=new FloatFightWater(gameWater.SurfaceYmm/1000.0,(gameWater.SurfaceYmm-FloatStillWaterGeometry.FloatDepthMm-FloatStillWaterGeometry.MinimumBottomClearanceMm)/1000.0,
+                gameWater.SafeWorkMinimumXmm/1000.0,gameWater.SafeWorkMaximumXmm/1000.0,gameWater.SafeWorkMinimumZmm/1000.0,gameWater.SafeWorkMaximumZmm/1000.0);
+        }
+        double dx=fish.X-anchor.X,dy=fish.Y-anchor.Y,dz=fish.Z-anchor.Z;
+        double distance=Math.Sqrt(dx*dx+dy*dy+dz*dz);
         // Only the private scripted escape case starts with extra already-owned
         // line paid out and a resting fish. Ordinary play uses its real landing.
         bool failureFixture=GameSelfTest&&gameFailureFixture;
@@ -35,7 +45,7 @@ sealed partial class DualWindowContext
         // Original development equipment/flat-depth slice. The extra depth
         // uses the real existing spool budget; this is not new inventory line.
         var setup=new FloatFightSetup(bite.SessionId,bite.EncounterId,bite.Target,state.Rig.Revision,anchor,fish,installedLineMm,initialLine,
-            new FloatFightWater(0,-2,-40,40,3,80),new FloatFightRigRules(80,1,40,200,1,20,.2,1.6,40,3,3,5,5),
+            water,new FloatFightRigRules(80,1,40,200,1,20,.2,1.6,40,3,3,5,5),
             new FloatFightFishRules(bite.Target.SpeciesId=="carp"?3:2,2,20,.05,.005,10,failureFixture?FloatFightBehavior.Rest:FloatFightBehavior.Seeded),
             new FloatLandingRules(state.OwnedNet!=null && state.EquippedNetId==state.OwnedNet.Id,5,1,1,.5),GameSelfTest?91u:BitConverter.ToUInt32(bite.EncounterId.ToByteArray(),0),
             new FloatUnhookRules(.25,60,2),gameLineBreakRules);

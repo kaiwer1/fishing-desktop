@@ -1,5 +1,8 @@
 // Page input pairing only. The host owns elapsed time, power, target, costs and
 // the opaque preparation token. No page reply can create or replay a cast.
+const validAim = (aim, version) => aim && Object.keys(aim).sort().join(',') === 'geometryVersion,u,v' &&
+  ['u', 'v'].every(key => Number.isInteger(aim[key]) && aim[key] >= 0 && aim[key] <= 10000) &&
+  Number.isSafeInteger(aim.geometryVersion) && aim.geometryVersion > 0 && aim.geometryVersion === version;
 export class CastInput {
   #readContext;
   #post;
@@ -13,15 +16,18 @@ export class CastInput {
     this.#post = post;
     this.#id = newTransportId;
   }
-  state() { return this.#active ? { ...this.#active } : null; }
+  state() { return this.#active ? { ...this.#active, ...(this.#active.aim ? { aim: { ...this.#active.aim } } : {}) } : null; }
   #sameContext() {
     const context = this.#readContext();
-    return Boolean(this.#active && context.allowed && context.lease === this.#active.lease);
+    return Boolean(this.#active && context.allowed && context.lease === this.#active.lease &&
+      (context.requiresAim === true) === Boolean(this.#active.aim) &&
+      (!this.#active.aim || this.#active.aim.geometryVersion === context.geometryVersion));
   }
   #send(action, active) {
     const transportId = this.#id();
     this.#pending.set(transportId, { action, inputSequence: active.inputSequence });
-    this.#post({ kind: 'game-cast', lease: active.lease, transportId, action, inputSequence: active.inputSequence });
+    this.#post({ kind: 'game-cast', lease: active.lease, transportId, action, inputSequence: active.inputSequence,
+      ...(action === 'begin' && active.aim ? { aim: { ...active.aim } } : {}) });
   }
   forget() { this.#active = null; this.#pending.clear(); }
   reconcile() {
@@ -29,12 +35,14 @@ export class CastInput {
     // physical release. The monotonic page-lifetime sequence is never reset.
     if (this.#active && !this.#sameContext()) this.forget();
   }
-  begin(source = 'button') {
+  begin(source = 'button', aim = null) {
     this.reconcile();
     const context = this.#readContext();
     if (this.#active || !context.allowed || !context.lease || this.#next === Number.MAX_SAFE_INTEGER) return false;
+    if (context.requiresAim === true ? !validAim(aim, context.geometryVersion) : aim !== null) return false;
     this.#pending.clear();
-    this.#active = { source, lease: context.lease, inputSequence: String(++this.#next), phase: 'charging' };
+    this.#active = { source, lease: context.lease, inputSequence: String(++this.#next), phase: 'charging',
+      ...(aim ? { aim: Object.freeze({ u: aim.u, v: aim.v, geometryVersion: aim.geometryVersion }) } : {}) };
     this.#send('begin', this.#active);
     return true;
   }
@@ -53,12 +61,12 @@ export class CastInput {
     this.#send('cancel', active); // captured lease, never a replacement grant
     return true;
   }
-  pointer(pointerId, buttons, begin = false) {
+  pointer(pointerId, buttons, begin = false, aim = null) {
     if (!Number.isSafeInteger(pointerId) || !Number.isSafeInteger(buttons) || buttons < 0 || buttons > 31) return false;
     // A second mouse button may arrive as pointermove, not pointerdown.
     if (buttons & 2) return this.cancel();
     const source = `pointer:${pointerId}`;
-    if (begin && (buttons & 1)) return this.begin(source);
+    if (begin && (buttons & 1)) return this.begin(source, aim);
     if (!(buttons & 1)) return this.release(source);
     return false;
   }

@@ -10,6 +10,8 @@ import { SparesView, SparesInput } from './spares-view.mjs';
 import { SparesPanel } from './spares-panel.mjs';
 import { CampView, CampInput } from './camp-view.mjs';
 import { CampPanel } from './camp-panel.mjs';
+import { WaterView } from './water-view.mjs';
+import { pickAim } from './water-aim.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -25,6 +27,8 @@ const shopView = new ShopView(documentId);
 const equipmentView = new EquipmentView(documentId);
 const sparesView = new SparesView(documentId);
 const campView = new CampView(documentId);
+const waterView = new WaterView(documentId);
+let selectedAim = null;
 let saveFaulted = false;
 let speedKeyHeld = false;
 const selected = new Set();
@@ -33,7 +37,13 @@ const send = message => window.chrome.webview.postMessage({ ...message, document
 const landscape = () => innerWidth > innerHeight;
 const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
 const canPrepare = () => canControl() && !inflight && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.SessionId && !snapshot.MenuOpen;
-const castInput = new CastInput({ readContext: () => ({ lease: authority.state().lease, allowed: canPrepare() }), post: send, newTransportId: () => crypto.randomUUID() });
+const castInput = new CastInput({ readContext: () => ({ lease: authority.state().lease, allowed: canPrepare(),
+  requiresAim: waterView.state()?.enabled === true, geometryVersion: waterView.state()?.geometryVersion }), post: send, newTransportId: () => crypto.randomUUID() });
+function buttonAim() {
+  const water = waterView.state();
+  return water?.enabled ? selectedAim?.geometryVersion === water.geometryVersion ? { ...selectedAim } :
+    { u: 5000, v: 5000, geometryVersion: water.geometryVersion } : null;
+}
 function strikeContext() {
   const bite = biteView.state();
   return { lease: authority.state().lease, allowed: canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
@@ -134,6 +144,33 @@ function renderCast() {
   const power = ['charging', 'prepared', 'committed'].includes(phase) ? castState.powerPermille : 0;
   $('cast-power').value = power; $('cast-percent').textContent = `${(power / 10).toFixed(1)}%`;
   $('cast-target').setAttribute('aria-disabled', String(!canPrepare() && !strikeContext().allowed && !fightContext().allowed));
+  renderWater();
+}
+function renderWater() {
+  const state = waterView.state(), graph = waterView.diagram(), enabled = state?.enabled === true;
+  $('cast-legacy').hidden = enabled; $('water-aim-panel').hidden = !enabled;
+  if (!enabled) return;
+  const metres = value => (value / 1000).toFixed(2);
+  $('water-far').textContent = `远端 ${metres(state.bounds.maxZmm)} 米`;
+  $('water-near').textContent = `近端 ${metres(state.bounds.minZmm)} 米`;
+  $('water-horizontal').textContent = `横向 ${metres(state.bounds.minXmm)} 至 ${metres(state.bounds.maxXmm)} 米`;
+  const depths = state.bed.map(row => row.depthMm);
+  $('water-depth').textContent = `已配置河床水深 ${metres(Math.min(...depths))}–${metres(Math.max(...depths))} 米 · 漂深 ${metres(state.floatDepthMm)} 米 · 最低净空 ${metres(state.clearanceMm)} 米`;
+  const direction = { near: '近岸方向', far: '远岸方向', left: '左侧', right: '右侧' };
+  const outside = p => p?.visible === false ? ` · 图外（${p.outside.map(value => direction[value]).join('、')}）` : '';
+  const position = p => `横向 ${metres(p.xMm)} 米，离岸 ${metres(p.zMm)} 米，${p.depthMm === 0 ? '无有效水深' : `水深 ${metres(p.depthMm)} 米`}`;
+  for (const name of ['target', 'prediction', 'landing']) {
+    const marker = $(`water-${name}-mark`), p = graph[name];
+    marker.setAttribute('visibility', p?.visible ? 'visible' : 'hidden');
+    if (p?.visible) marker.setAttribute('transform', `translate(${p.x.toFixed(2)} ${p.y.toFixed(2)})`);
+  }
+  $('water-target-status').textContent = state.target ? `宿主瞄准目标：${position(state.target)} · 需线 ${metres(state.target.requiredLineMm)} 米` :
+    '在图内按住左键瞄准蓄力。按钮使用上次选择，首次使用图中心；目标等待宿主确认。';
+  $('water-prediction-status').textContent = state.prediction ? `预计落点（${(state.prediction.powerPermille / 10).toFixed(1)}% 蓄力）：${position(state.prediction)}${outside(graph.prediction)}` : '预计落点：等待宿主计算';
+  const reasons = { 'water-sampled': '水域检查通过', 'outside-water': '水域外', 'float-clearance-insufficient': '漂深净空不足' };
+  $('water-landing-status').textContent = state.landing ? `实际落点：${state.landing.accepted ? '水域检查通过' : reasons[state.landing.reason] ?? '未通过水域检查'} · ${position(state.landing)}${outside(graph.landing)}` : '实际落点：尚未落水';
+  $('water-landing-circle').setAttribute('fill', state.landing?.accepted ? '#a8c37d' : '#de997d');
+  $('water-outside').hidden = ![graph.prediction, graph.landing].some(p => p?.visible === false);
 }
 function renderFlight() {
   const graph = flightView.diagram(), state = flightView.state();
@@ -324,6 +361,14 @@ Object.assign(codes, { 'camp-work-started': '帮工已开始，请保持当前�
   'camp-creel-not-empty': '可以先出售鱼护里的渔获。', 'camp-schema-required': '此存档尚未支持营地帮工。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
+  if (m.kind === 'game-water-state') {
+    const previousGeometry = waterView.geometryKey();
+    if (waterView.apply(m)) {
+      if (waterView.geometryKey() !== previousGeometry) { castInput.cancel(); selectedAim = null; }
+      castInput.reconcile(); renderCast(); updateButtons();
+    }
+    return;
+  }
   if (m.kind === 'game-flight-state') {
     // Host positions can arrive frequently. Update the diagram alone; neither
     // rebuild the creel nor start an independent page animation clock.
@@ -401,7 +446,9 @@ window.chrome.webview.addEventListener('message', event => {
   if (m.kind === 'host-policy' && (!hostPolicy || m.revision >= hostPolicy.revision)) hostPolicy = m;
   render();
 });
-$('cast').addEventListener('click', () => { castInput.begin(); render(); });
+$('cast').addEventListener('click', () => {
+  const aim = buttonAim(); if (castInput.begin('button', aim) && aim) selectedAim = Object.freeze({ ...aim }); render();
+});
 $('cast-release').addEventListener('click', () => { castInput.release(); render(); });
 $('cast-cancel').addEventListener('click', () => { castInput.cancel(); render(); });
 $('strike').addEventListener('click', () => { strikeInput.strike(); updateButtons(); });
@@ -451,8 +498,13 @@ target.addEventListener('pointerdown', event => {
   if (event.button === 0 && ['fighting', 'landing-eligible'].includes(fightContext().phase)) {
     beginReelPointer(event, target); return;
   }
-  const changed = castInput.pointer(event.pointerId, event.buttons, true);
+  const water = waterView.state();
+  const aiming = water?.enabled && event.button === 0 && !(event.buttons & 2);
+  const aim = aiming ? pickAim($('water-aim-svg'), event, water.geometryVersion) : null;
+  if (aiming && !aim) return;
+  const changed = castInput.pointer(event.pointerId, event.buttons, true, aim);
   if (changed) {
+    if (aim && castInput.state()?.source === `pointer:${event.pointerId}`) selectedAim = Object.freeze({ ...aim });
     event.preventDefault();
     if (castInput.state()?.source === `pointer:${event.pointerId}`) {
       try { target.setPointerCapture(event.pointerId); } catch { castInput.pointerCancelled(event.pointerId); }
@@ -535,6 +587,7 @@ window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authorit
   shopState: shopView.state(), shopRevision: shopView.revision, shopInputState: shopInput.state(),
   equipmentState: equipmentView.state(), equipmentRevision: equipmentView.revision, equipmentInputState: equipmentInput.state(),
   sparesState: sparesView.state(), sparesRevision: sparesView.revision, sparesInputState: sparesInput.state(),
-  campState: campView.state(), campRevision: campView.revision, campInputState: campInput.state() }),
+  campState: campView.state(), campRevision: campView.revision, campInputState: campInput.state(),
+  waterState: waterView.state(), waterRevision: waterView.revision }),
   sendRaw: message => window.chrome.webview.postMessage(message), cancel: () => revoke('test-cancel') };
 render(); renderFlight();

@@ -24,7 +24,7 @@ sealed partial class DualWindowContext
     {
         // This is a fixed host target for input integration, not a water raycast.
         gameCast=new FloatCastPreparation(game,new FloatCastPreparationRules(1600,150),
-            target=>target.Xmm==0 && target.Ymm==0 && target.Zmm==15000 && target.RequiredLineMm==15000);
+            target=>gameWater==null?target.Xmm==0 && target.Ymm==0 && target.Zmm==15000 && target.RequiredLineMm==15000:GameWaterTargetCurrent(target));
     }
     static bool GameInputSequence(Dictionary<string,object> message,out long sequence)
     {
@@ -71,30 +71,39 @@ sealed partial class DualWindowContext
         Send(pane,new {kind="game-cast-state",documentId=pane.Ticket.DocumentId,revision=checked(++binding.CastRevision),
             inputSequence=gameCastInput==null?null:gameCastInput.Sequence.ToString(CultureInfo.InvariantCulture),
             phase=state.Phase.ToString().ToLowerInvariant(),powerPermille=state.PowerPermille,elapsedMilliseconds=state.ElapsedMilliseconds});
+        SendGameWater(pane);
     }
     void BroadcastGameCast(){foreach(var pane in windows.Values)SendGameCast(pane);}
     void ReceiveGameCast(ProbeWindow pane,GameBinding binding,Dictionary<string,object> message,string transport)
     {
         string action;long sequence;
-        if(message.Count!=6 || !StringField(message,"action",out action) || !GameInputSequence(message,out sequence) ||
+        if(!StringField(message,"action",out action) || message.Count!=(gameWater!=null&&action=="begin"?7:6) || !GameInputSequence(message,out sequence) ||
             (action!="begin" && action!="release" && action!="cancel")){
             GameReply(pane,transport,"invalid-intent");return;
         }
         AdvanceActivity();
         FloatCastResult result;
         if(action=="begin"){
+            FloatCastLaunchPlan plan=null;string aimCode;
+            if(gameWater!=null&&!ParseGameWaterAim(message,out plan,out aimCode)){GameReply(pane,transport,aimCode);return;}
             // Consume even refused new begin attempts. A late delivery must
             // never become a fresh cast after the current session ends.
             if(sequence<=binding.CastHighWater){GameReply(pane,transport,"stale-input");return;}
             binding.CastHighWater=sequence;
             var state=game.Snapshot.State;
             if(state==null){GameReply(pane,transport,"state-unavailable");return;}
-            result=gameCast.Begin(binding.View,binding.Document,binding.Lease,new FloatCastTarget(0,0,15000,state.RulesVersion,15000));
+            var previousPlan=gameWaterPlan;var previousTarget=gameWaterTarget;
+            if(gameWater!=null){
+                if(gameCast.Snapshot.Phase==FloatCastPhase.Charging||gameCast.Snapshot.Phase==FloatCastPhase.Prepared){GameReply(pane,transport,"gesture-active");return;}
+                gameWaterPlan=plan;gameWaterTarget=new FloatCastTarget(plan.Target.Xmm,plan.Target.SurfaceYmm,plan.Target.Zmm,state.RulesVersion,plan.RequiredLineMm,plan.GeometryVersion);
+            }
+            result=gameCast.Begin(binding.View,binding.Document,binding.Lease,gameWater==null?new FloatCastTarget(0,0,15000,state.RulesVersion,15000):gameWaterTarget);
             if(result.Accepted){
+                gameWaterLanding=null;gameWaterLandingSession=Guid.Empty;
                 gameCastInput=new GameCastInput {Pane=pane,Binding=binding,Document=binding.Document,Lease=binding.Lease,
                     WireLease=binding.WireLease,DocumentId=pane.Ticket.DocumentId,Navigation=pane.NavigationGeneration,Sequence=sequence,Gesture=result.Gesture};
                 gameCastMillisecondRemainder=0;
-            }
+            }else{gameWaterPlan=previousPlan;gameWaterTarget=previousTarget;}
         }else{
             var input=gameCastInput;
             if(!GameCastCurrent(input) || input.Sequence!=sequence || !Object.ReferenceEquals(input.Binding,binding)){
@@ -116,6 +125,7 @@ sealed partial class DualWindowContext
             AdvanceActivity();
             if(!GameCastCurrent(input) || !game.Snapshot.CanSimulate){CancelGameCast(input.Pane);return;}
             if(gameCast.Snapshot.Phase!=FloatCastPhase.Prepared)return;
+            if(gameWater!=null&&GameWaterReleasePlan(gameCast.Snapshot)==null){CancelGameCast(input.Pane);return;}
             var result=gameCast.CommitPrepared(input.Gesture);
             if(result.ShouldStartFlight){
                 StartGameFlight(result.Snapshot);

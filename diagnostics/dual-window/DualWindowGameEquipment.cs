@@ -110,9 +110,7 @@ sealed partial class DualWindowContext
                 location=GameEquipmentPlaceName(item.Location.Place),slot=item.Location.Slot.HasValue?GameEquipmentSlotName(item.Location.Slot.Value):null,
                 reelId=item.Location.Place==FloatEquipmentPlace.ReelSpool?item.Location.OwnerId.ToString("D"):null,
                 initialLineMm=item.InitialLineMm,remainingLineMm=item.RemainingLineMm});
-            // The current development cast target explicitly requires 15 m;
-            // this is the same flat-water target used by InitializeGameCast.
-            var readiness=equipment.EvaluateCastReadiness(FloatEquipmentGate.Idle,15000,state.BaitCount,state.Stamina,state.Rules.CastStaminaCost);
+            var readiness=equipment.EvaluateCastReadiness(FloatEquipmentGate.Idle,gameWater==null?15000:gameWaterMinimumLineMm,state.BaitCount,state.Stamina,state.Rules.CastStaminaCost);
             foreach(var issue in readiness.Issues)issues.Add(new{code=issue.Code,slot=issue.Slot.HasValue?GameEquipmentSlotName(issue.Slot.Value):null,
                 itemId=GameEquipmentId(issue.ItemId),relatedId=GameEquipmentId(issue.RelatedId)});
         }

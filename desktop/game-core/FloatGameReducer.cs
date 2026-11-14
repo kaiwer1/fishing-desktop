@@ -27,13 +27,40 @@ namespace FishingDesktop.GameCore
         {if(kit==null)throw new ArgumentNullException("kit");Kit=kit;}
         internal override string Detail{get{return String.Join("|",Kit.Ids);}}
     }
-    internal sealed class CastBottomKitWithEquipment : FloatCommand
+    internal sealed class BuyAdditionalBottomKit : FloatCommand
+    {
+        internal readonly int KitNumber;
+        internal readonly BottomOwnedKit Kit;
+        internal BuyAdditionalBottomKit(Guid profile,Guid branch,Guid request,Guid businessEvent,int kitNumber,BottomOwnedKit kit,
+            long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
+            :base("buy-additional-bottom-kit-v1",profile,branch,request,businessEvent,Guid.Empty,expectedSequence,expectedRigRevision,expectedRulesVersion)
+        {
+            if(kitNumber<2||kitNumber>3)throw new ArgumentOutOfRangeException("kitNumber");
+            if(kit==null)throw new ArgumentNullException("kit");
+            KitNumber=kitNumber;Kit=kit;
+        }
+        internal override string Detail{get{return FloatGuard.Number(KitNumber)+"|"+String.Join("|",Kit.Ids);}}
+    }
+    internal sealed class BuyBankRodStand : FloatCommand
+    {
+        internal readonly OwnedBankRodStand Stand;
+        internal BuyBankRodStand(Guid profile,Guid branch,Guid request,Guid businessEvent,Guid standId,
+            long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
+            :base("buy-bank-rod-stand-v1",profile,branch,request,businessEvent,Guid.Empty,expectedSequence,expectedRigRevision,expectedRulesVersion)
+        {Stand=new OwnedBankRodStand(standId);}
+        internal override string Detail{get{return Stand.Id.ToString("N");}}
+    }
+    internal class CastBottomKitWithEquipment : FloatCommand
     {
         internal readonly Guid KitRigId,LineId,LeaderId;
         internal readonly long KitRigRevision,LineRevision,RequiredLineMm;
         internal CastBottomKitWithEquipment(Guid profile,Guid branch,Guid request,Guid businessEvent,Guid session,Guid kitRig,Guid line,Guid leader,
             long kitRigRevision,long lineRevision,long requiredLineMm,long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
-            :base("cast-bottom-kit-v1",profile,branch,request,businessEvent,session,expectedSequence,expectedRigRevision,expectedRulesVersion)
+            :this("cast-bottom-kit-v1",profile,branch,request,businessEvent,session,kitRig,line,leader,kitRigRevision,lineRevision,
+                requiredLineMm,expectedSequence,expectedRigRevision,expectedRulesVersion){}
+        protected CastBottomKitWithEquipment(string kind,Guid profile,Guid branch,Guid request,Guid businessEvent,Guid session,Guid kitRig,Guid line,Guid leader,
+            long kitRigRevision,long lineRevision,long requiredLineMm,long expectedSequence,long expectedRigRevision,long expectedRulesVersion)
+            :base(kind,profile,branch,request,businessEvent,session,expectedSequence,expectedRigRevision,expectedRulesVersion)
         {
             FloatGuard.Id(session,"session");FloatGuard.Id(kitRig,"kitRig");FloatGuard.Id(line,"line");FloatGuard.Id(leader,"leader");
             if(kitRigRevision<1 || lineRevision<1 || requiredLineMm<1 || requiredLineMm>FloatEquipmentGuard.MaximumLineMm)throw new ArgumentOutOfRangeException("bottom rig binding");
@@ -48,6 +75,53 @@ namespace FishingDesktop.GameCore
         }
         internal override string Detail{get{return KitRigId.ToString("N")+"|"+LineId.ToString("N")+"|"+LeaderId.ToString("N")+"|"+
             FloatGuard.Number(KitRigRevision)+"|"+FloatGuard.Number(LineRevision)+"|"+FloatGuard.Number(RequiredLineMm);}}
+    }
+    internal sealed class CastBankBottomRod : CastBottomKitWithEquipment
+    {
+        internal CastBankBottomRod(Guid profile,Guid branch,Guid request,Guid businessEvent,Guid session,Guid kitRig,Guid line,Guid leader,
+            long kitRigRevision,long lineRevision,long requiredLineMm,long sequence,long rigRevision,long rulesVersion)
+            :base("cast-bank-bottom-rod-v1",profile,branch,request,businessEvent,session,kitRig,line,leader,
+                kitRigRevision,lineRevision,requiredLineMm,sequence,rigRevision,rulesVersion){}
+        internal static CastBankBottomRod Create(FloatGameState state,Guid rigId,long requiredLineMm)
+        {
+            var kit=state.BottomKitFor(rigId);if(kit==null)throw new InvalidOperationException("The bank rod must be owned.");
+            var equipment=kit.Equipment;var line=equipment.Spool(equipment.Equipped(FloatEquipmentSlot.Reel).Id);
+            return new CastBankBottomRod(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),rigId,line.Id,kit.LeaderId,
+                equipment.RigRevision,line.Revision,requiredLineMm,state.Sequence,state.Rig.Revision,state.RulesVersion);
+        }
+    }
+    internal enum BankRodEnding : byte { Recall=1,Land=2,Release=3,RecoverStartup=4,RecoverShutdown=5,Unhooked=6 }
+    internal sealed class SettleBankBottomRod : FloatCommand
+    {
+        internal readonly Guid RigId,FishId,EncounterId;
+        internal readonly BankRodEnding Ending;
+        internal readonly string Species;
+        internal readonly long MassMg;
+        internal readonly int FightModelVersion;
+        internal SettleBankBottomRod(Guid profile,Guid branch,Guid request,Guid businessEvent,Guid rigId,Guid session,
+            BankRodEnding ending,Guid fishId,Guid encounterId,string species,long massMg,long sequence,long rigRevision,long rulesVersion,int fightModelVersion=0)
+            :base("settle-bank-bottom-rod-v1",profile,branch,request,businessEvent,session,sequence,rigRevision,rulesVersion)
+        {
+            FloatGuard.Id(rigId,"rig");FloatGuard.Id(session,"session");
+            if(!Enum.IsDefined(typeof(BankRodEnding),ending))throw new ArgumentOutOfRangeException("ending");
+            if(ending==BankRodEnding.Land){
+                FloatGuard.Id(fishId,"fish");FloatGuard.Id(encounterId,"encounter");species=FloatGuard.Key(species);
+                if(massMg<=0)throw new ArgumentOutOfRangeException("massMg");
+            }else if(ending==BankRodEnding.Unhooked){
+                FloatGuard.Id(encounterId,"encounter");
+                if(fishId!=Guid.Empty||species!=null||massMg!=0||fightModelVersion!=2)throw new ArgumentException("Invalid bank unhook facts.");
+            }else if(fishId!=Guid.Empty||encounterId!=Guid.Empty||species!=null||massMg!=0)throw new ArgumentException("Unexpected fish data.");
+            if(ending!=BankRodEnding.Unhooked&&fightModelVersion!=0)throw new ArgumentException("Unexpected fight model.");
+            RigId=rigId;Ending=ending;FishId=fishId;EncounterId=encounterId;Species=species;MassMg=massMg;FightModelVersion=fightModelVersion;
+        }
+        internal static SettleBankBottomRod Create(FloatGameState state,Guid rigId,Guid session,BankRodEnding ending)
+        {return new SettleBankBottomRod(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),rigId,session,ending,Guid.Empty,Guid.Empty,null,0,state.Sequence,state.Rig.Revision,state.RulesVersion);}
+        internal static SettleBankBottomRod Land(FloatGameState state,Guid rigId,Guid session,Guid fishId,Guid encounterId,string species,long massMg,Guid? eventId=null)
+        {return new SettleBankBottomRod(state.ProfileId,state.BranchId,Guid.NewGuid(),eventId??Guid.NewGuid(),rigId,session,BankRodEnding.Land,fishId,encounterId,species,massMg,state.Sequence,state.Rig.Revision,state.RulesVersion);}
+        internal static SettleBankBottomRod Unhooked(FloatGameState state,Guid rigId,Guid session,Guid encounterId,int fightModelVersion,Guid eventId)
+        {return new SettleBankBottomRod(state.ProfileId,state.BranchId,Guid.NewGuid(),eventId,rigId,session,BankRodEnding.Unhooked,Guid.Empty,encounterId,null,0,state.Sequence,state.Rig.Revision,state.RulesVersion,fightModelVersion);}
+        internal override string Detail{get{return RigId.ToString("N")+"|"+FloatGuard.Number((byte)Ending)+"|"+FishId.ToString("N")+"|"+
+            EncounterId.ToString("N")+"|"+Species+"|"+FloatGuard.Number(MassMg)+"|"+FloatGuard.Number(FightModelVersion);}}
     }
     internal enum FloatClothingAction : byte { Buy=1,Wear=2,Remove=3 }
     internal sealed class ChangeFloatClothing : FloatCommand
@@ -260,7 +334,7 @@ namespace FishingDesktop.GameCore
         static bool FishWasCreated(FloatGameState state,Guid id)
         {foreach(var row in state.Receipts)if(row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected)foreach(var fish in row.FishIds)if(fish==id)return true;return false;}
         static bool EncounterWasUsed(FloatGameState state,Guid id)
-        {if(state.BottomKitOwns(id)||state.ArchivedEquipmentIdentityWasUsed(id))return true;foreach(var row in state.Receipts)if(((row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected||row.Outcome==FloatOutcome.Unhooked||row.Outcome==FloatOutcome.TerminalLost)&&row.EncounterId==id)||((row.Outcome==FloatOutcome.TerminalLost||row.Outcome==FloatOutcome.CampWorkRewarded)&&row.EventId==id))return true;return false;}
+        {if(state.BankGearIdentityUsed(id)||state.BankJournalIdentityUsed(id)||state.ArchivedEquipmentIdentityWasUsed(id))return true;foreach(var row in state.Receipts)if(((row.Outcome==FloatOutcome.Landed||row.Outcome==FloatOutcome.CapacityRejected||row.Outcome==FloatOutcome.Unhooked||row.Outcome==FloatOutcome.TerminalLost)&&row.EncounterId==id)||((row.Outcome==FloatOutcome.TerminalLost||row.Outcome==FloatOutcome.CampWorkRewarded)&&row.EventId==id))return true;return false;}
         // Loss and paid camp-work identities are durable reservations. Only
         // histories containing these outcomes acquire their respective rules;
         // earlier journals keep their original identity behavior.
@@ -271,10 +345,14 @@ namespace FishingDesktop.GameCore
         static bool RequestWasUsed(FloatGameState state,Guid id)
         {foreach(var row in state.Receipts)if(row.RequestId==id)return true;return false;}
         static bool AssetExists(FloatGameState state,Guid id)
-        {var ids=new HashSet<Guid>();state.AddEquipmentAssets(ids);ids.Add(state.BaitStackId);if(state.FoodStackId!=Guid.Empty)ids.Add(state.FoodStackId);if(state.OwnedNet!=null)ids.Add(state.OwnedNet.Id);foreach(var fish in state.Creel)ids.Add(fish.Id);if(state.Session!=null&&state.Session.PendingFish!=null)ids.Add(state.Session.PendingFish.Id);return ids.Contains(id)||TerminalIdentityWasUsed(state,id)||state.ArchivedEquipmentIdentityWasUsed(id);}
+        {var ids=new HashSet<Guid>();state.AddEquipmentAssets(ids);ids.Add(state.BaitStackId);if(state.FoodStackId!=Guid.Empty)ids.Add(state.FoodStackId);if(state.OwnedNet!=null)ids.Add(state.OwnedNet.Id);foreach(var fish in state.Creel)ids.Add(fish.Id);if(state.Session!=null&&state.Session.PendingFish!=null)ids.Add(state.Session.PendingFish.Id);return ids.Contains(id)||state.BankGearIdentityUsed(id)||state.BankJournalIdentityUsed(id)||TerminalIdentityWasUsed(state,id)||state.ArchivedEquipmentIdentityWasUsed(id);}
         static bool EquipmentPurchaseIdentityUsed(FloatGameState state,FloatCommand command,Guid id)
         {
-            if(id==state.ProfileId||id==state.BranchId||id==command.RequestId||id==command.EventId||AssetExists(state,id)||FishWasCreated(state,id)||UsedSession(state,id)||EncounterWasUsed(state,id)||EventWasUsed(state,id)||RequestWasUsed(state,id))return true;
+            return id==command.RequestId||id==command.EventId||KnownPurchaseIdentity(state,id);
+        }
+        static bool KnownPurchaseIdentity(FloatGameState state,Guid id)
+        {
+            if(id==state.ProfileId||id==state.BranchId||AssetExists(state,id)||FishWasCreated(state,id)||UsedSession(state,id)||EncounterWasUsed(state,id)||EventWasUsed(state,id)||RequestWasUsed(state,id))return true;
             foreach(var item in state.Equipment.Instances)if(item.Location.Place==FloatEquipmentPlace.Lost&&item.Location.OwnerId==id)return true;
             return false;
         }
@@ -289,6 +367,8 @@ namespace FishingDesktop.GameCore
         static string Code(FloatOutcome outcome)
         {switch(outcome){
             case FloatOutcome.BottomKitPurchased:return "bottom-kit-purchase-candidate";
+            case FloatOutcome.AdditionalBottomKitPurchased:return "additional-bottom-kit-purchase-candidate";
+            case FloatOutcome.BankRodStandPurchased:return "bank-rod-stand-purchase-candidate";
             case FloatOutcome.ClothingPurchased:return "clothing-purchase-candidate";
             case FloatOutcome.ClothingWorn:return "clothing-wear-candidate";
             case FloatOutcome.ClothingRemoved:return "clothing-remove-candidate";
@@ -300,9 +380,9 @@ namespace FishingDesktop.GameCore
             string fingerprint=command.Fingerprint;
             foreach(var row in state.Receipts)if(row.RequestId==command.RequestId)
                 return row.Fingerprint==fingerprint?new FloatReduction(Code(row.Outcome),receipt:row,replay:true):Reject("request-conflict");
-            if(state.BottomKitOwns(command.RequestId)||state.ArchivedEquipmentIdentityWasUsed(command.RequestId))return Reject("request-identity-used");
-            if(state.BottomKitOwns(command.EventId)||state.ArchivedEquipmentIdentityWasUsed(command.EventId))return Reject("event-identity-used");
-            if(state.BottomKitOwns(command.SessionId)||state.ArchivedEquipmentIdentityWasUsed(command.SessionId))return Reject("session-identity-used");
+            if(state.BankGearIdentityUsed(command.RequestId)||state.BankJournalIdentityUsed(command.RequestId)||state.ArchivedEquipmentIdentityWasUsed(command.RequestId))return Reject("request-identity-used");
+            if(state.BankGearIdentityUsed(command.EventId)||state.BankJournalIdentityUsed(command.EventId)||state.ArchivedEquipmentIdentityWasUsed(command.EventId))return Reject("event-identity-used");
+            if(state.BankGearIdentityUsed(command.SessionId)||state.ArchivedEquipmentIdentityWasUsed(command.SessionId))return Reject("session-identity-used");
             if(TerminalIdentityWasUsed(state,command.RequestId))return Reject("request-identity-used");
             foreach(var row in state.Receipts)if(row.EventId==command.EventId)return Reject("event-already-used");
             if(TerminalIdentityWasUsed(state,command.EventId))return Reject("event-identity-used");
@@ -310,6 +390,16 @@ namespace FishingDesktop.GameCore
             if(command.ExpectedSequence!=state.Sequence||command.ExpectedRigRevision!=state.Rig.Revision||command.ExpectedRulesVersion!=state.RulesVersion)return Reject("version-conflict");
             if(rules==null)return Reject("configuration-missing");
             if(rules.Signature!=state.Rules.Signature)return Reject("configuration-mismatch");
+            var bankCast=command as CastBankBottomRod;
+            var bankEnd=command as SettleBankBottomRod;
+            bool bankOperation=bankCast!=null||bankEnd!=null;
+            if(state.BankSessions.Count>0&&!bankOperation)return Reject("session-busy");
+            if(bankOperation){
+                if(!BottomOwnedKit.Enabled(state)||state.OwnedBankRodStand==null)return Reject("bank-stand-required");
+                if(state.Session!=null)return Reject("session-busy");
+                if(state.HasPendingBankResult&&(bankCast!=null||bankEnd.Ending==BankRodEnding.Land||bankEnd.Ending==BankRodEnding.Unhooked))return Reject("bank-result-pending");
+                if(command.RequestId==command.EventId||KnownPurchaseIdentity(state,command.RequestId)||KnownPurchaseIdentity(state,command.EventId))return Reject("bank-identity-invalid");
+            }
             var equipmentCommand=command as FloatEquipmentCommand;
             if(equipmentCommand!=null){
                 if(state.SchemaVersion!=3)return Reject("equipment-schema-required");
@@ -323,6 +413,7 @@ namespace FishingDesktop.GameCore
             long wallet=state.WalletMinor;int stamina=state.Stamina,baits=state.BaitCount;var fish=new List<FloatFish>(state.Creel);var session=state.Session;var affected=new List<Guid>();Guid encounterId=Guid.Empty;FloatOutcome outcome;
             int schema=state.SchemaVersion,foods=state.FoodCount;Guid branch=state.BranchId,foodStack=state.FoodStackId,equipped=state.EquippedNetId;var net=state.OwnedNet;var catalog=state.CommerceCatalog;var origin=state.UpgradeOrigin;
             var equipment=state.Equipment;var equipmentOffers=state.EquipmentOffers;var equipmentOrigin=state.EquipmentUpgradeOrigin;FloatEquipmentLossSummary equipmentLoss=null;FloatEquipmentArchiveSummary equipmentArchive=null;
+            var bankSessions=new List<FloatSession>(state.BankSessions);
             try{
                 if(command is BuyBottomKit){
                     if(!BottomOwnedKit.Enabled(state))return Reject("bottom-kit-unavailable");
@@ -332,6 +423,25 @@ namespace FishingDesktop.GameCore
                     var kit=((BuyBottomKit)command).Kit;
                     foreach(var id in kit.Ids)if(EquipmentPurchaseIdentityUsed(state,command,id))return Reject("asset-identity-used");
                     wallet-=BottomOwnedKit.PriceMinor;outcome=FloatOutcome.BottomKitPurchased;
+                }else if(command is BuyAdditionalBottomKit || command is BuyBankRodStand){
+                    if(!BottomOwnedKit.Enabled(state))return Reject("bank-gear-unavailable");
+                    if(session!=null)return Reject("session-busy");
+                    if(command.RequestId==command.EventId || KnownPurchaseIdentity(state,command.RequestId) ||
+                        KnownPurchaseIdentity(state,command.EventId))return Reject("purchase-identity-invalid");
+                    var additional=command as BuyAdditionalBottomKit;
+                    long price;
+                    if(additional!=null){
+                        if(state.OwnedBottomKits.Count>=additional.KitNumber)return Reject("bottom-kit-already-owned");
+                        if(state.OwnedBottomKits.Count+1!=additional.KitNumber)return Reject("bottom-kit-previous-required");
+                        foreach(var id in additional.Kit.Ids)if(EquipmentPurchaseIdentityUsed(state,command,id))return Reject("asset-identity-used");
+                        price=BottomOwnedKit.AdditionalPriceMinor;outcome=FloatOutcome.AdditionalBottomKitPurchased;
+                    }else{
+                        if(state.OwnedBankRodStand!=null)return Reject("bank-rod-stand-already-owned");
+                        if(EquipmentPurchaseIdentityUsed(state,command,((BuyBankRodStand)command).Stand.Id))return Reject("asset-identity-used");
+                        price=OwnedBankRodStand.PriceMinor;outcome=FloatOutcome.BankRodStandPurchased;
+                    }
+                    if(wallet<price)return Reject("wallet-insufficient");
+                    wallet-=price;
                 }else if(command is HostFloatCampReward){
                     var reward=(HostFloatCampReward)command;
                     if(reward.PolicyVersion!=FloatCampWorkRules.PolicyVersion)return Reject("camp-policy-unsupported");
@@ -449,10 +559,39 @@ namespace FishingDesktop.GameCore
                         if(((UseFloatFood)command).FoodStackId!=foodStack)return Reject("food-not-owned");if(foods<=0)return Reject("food-empty");if(stamina>=rules.MaximumStamina)return Reject("stamina-full");
                         stamina=(int)Math.Min((long)rules.MaximumStamina,(long)stamina+catalog.FoodStaminaRestore);foods=checked(foods-1);outcome=FloatOutcome.FoodUsed;
                     }
+                }else if(bankEnd!=null){
+                    var rod=state.BankSessionFor(bankEnd.RigId);
+                    if(rod==null||rod.Id!=bankEnd.SessionId)return Reject("session-not-current");
+                    if(rod.CapacityBlocked&&bankEnd.Ending!=BankRodEnding.Release)return Reject("release-current-required");
+                    bankSessions.Remove(rod);
+                    switch(bankEnd.Ending){
+                    case BankRodEnding.Land:
+                        if(bankEnd.FishId==bankEnd.EncounterId || EquipmentPurchaseIdentityUsed(state,command,bankEnd.FishId))return Reject("fish-identity-used");
+                        if(EquipmentPurchaseIdentityUsed(state,command,bankEnd.EncounterId))return Reject("encounter-identity-used");
+                        var rule=rules.Find(bankEnd.Species);if(rule==null)return Reject("configuration-missing");
+                        if(bankEnd.MassMg<rule.MinimumMassMg||bankEnd.MassMg>rule.MaximumMassMg)return Reject("fish-mass-invalid");
+                        var caught=new FloatFish(bankEnd.FishId,rod.Id,bankEnd.EncounterId,bankEnd.Species,bankEnd.MassMg,rule.Value(bankEnd.MassMg),rules.Version);
+                        affected.Add(caught.Id);encounterId=caught.EncounterId;
+                        if(fish.Count>=rules.CreelCapacity){
+                            bankSessions.Add(new FloatSession(rod.Id,rod.ReleaseEventId,rod.RigRevision,rod.RulesVersion,caught,
+                                rod.EquipmentInventoryRevision,rod.EquipmentRulesVersion,rod.RequiredLineMm,rod.BottomKit,rod.BankRigId));
+                            outcome=FloatOutcome.CapacityRejected;
+                        }else{fish.Add(caught);outcome=FloatOutcome.Landed;}
+                        break;
+                    case BankRodEnding.Release:
+                        if(!rod.CapacityBlocked)return Reject("pending-fish-not-current");
+                        affected.Add(rod.PendingFish.Id);encounterId=rod.PendingFish.EncounterId;outcome=FloatOutcome.Released;break;
+                    case BankRodEnding.Recall:outcome=FloatOutcome.Recalled;break;
+                    case BankRodEnding.Unhooked:
+                        if(EquipmentPurchaseIdentityUsed(state,command,bankEnd.EncounterId))return Reject("encounter-identity-used");
+                        encounterId=bankEnd.EncounterId;outcome=FloatOutcome.Unhooked;break;
+                    default:outcome=FloatOutcome.Recovered;break;
+                    }
                 }else if(command is CastBottomKitWithEquipment){
-                    var cast=(CastBottomKitWithEquipment)command;var kit=state.OwnedBottomKit;
+                    var cast=(CastBottomKitWithEquipment)command;var kit=bankCast==null?state.OwnedBottomKit:state.BottomKitFor(cast.KitRigId);
                     if(!BottomOwnedKit.Enabled(state) || kit==null)return Reject("bottom-kit-not-owned");
                     if(session!=null)return Reject("session-busy");
+                    if(bankCast!=null&&state.BankSessionFor(cast.KitRigId)!=null)return Reject("rig-session-busy");
                     if(EquipmentPurchaseIdentityUsed(state,command,cast.SessionId))return Reject("session-identity-used");
                     var parts=kit.Equipment;var line=parts.Spool(parts.Equipped(FloatEquipmentSlot.Reel).Id);
                     if(parts.RigId!=cast.KitRigId || parts.RigRevision!=cast.KitRigRevision || line.Id!=cast.LineId ||
@@ -460,7 +599,9 @@ namespace FishingDesktop.GameCore
                     if(line.RemainingLineMm<cast.RequiredLineMm)return Reject("line-insufficient");
                     if(baits<1)return Reject("bait-empty");if(stamina<rules.CastStaminaCost)return Reject("stamina-insufficient");
                     baits-=1;stamina-=rules.CastStaminaCost;
-                    session=new FloatSession(cast.SessionId,cast.EventId,parts.RigRevision,rules.Version,null,parts.InventoryRevision,parts.RulesVersion,cast.RequiredLineMm,kit);
+                    var started=new FloatSession(cast.SessionId,cast.EventId,parts.RigRevision,rules.Version,null,parts.InventoryRevision,parts.RulesVersion,
+                        cast.RequiredLineMm,kit,bankCast==null?Guid.Empty:cast.KitRigId);
+                    if(bankCast==null)session=started;else bankSessions.Add(started);
                     outcome=FloatOutcome.CastCommitted;
                 }else if(command is CastFloatWithEquipment){
                     if(session!=null)return Reject("session-busy");var cast=(CastFloatWithEquipment)command;
@@ -528,7 +669,7 @@ namespace FishingDesktop.GameCore
                 long sequence=checked(state.Sequence+1);
                 var receipt=new FloatReceipt(command,sequence,rules.Version,outcome,encounterId,state.WalletMinor,wallet,state.Stamina,stamina,state.BaitCount,baits,affected,state.FoodCount,foods,state.OwnedNet==null?Guid.Empty:state.OwnedNet.Id,net==null?Guid.Empty:net.Id,state.EquippedNetId,equipped,equipmentLoss,equipmentArchive);
                 var history=new List<FloatReceipt>(state.Receipts);history.Add(receipt);
-                var candidate=new FloatGameState(state.ProfileId,branch,sequence,wallet,stamina,state.BaitStackId,state.BaitDefinitionKey,baits,schema==3?null:state.LegacyRig,session,fish,history,rules,schema,catalog,foodStack,foods,net,equipped,origin,equipment,equipmentOffers,equipmentOrigin);
+                var candidate=new FloatGameState(state.ProfileId,branch,sequence,wallet,stamina,state.BaitStackId,state.BaitDefinitionKey,baits,schema==3?null:state.LegacyRig,session,fish,history,rules,schema,catalog,foodStack,foods,net,equipped,origin,equipment,equipmentOffers,equipmentOrigin,bankSessions);
                 return new FloatReduction(Code(outcome),candidate,receipt);
             }catch(OverflowException){return Reject("arithmetic-overflow");}
         }

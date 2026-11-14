@@ -30,7 +30,7 @@ sealed partial class DualWindowContext
     bool GameWalkFree()
     {
         var state=game.Snapshot;
-        if(!state.CanSimulate || state.State==null || state.State.Session!=null || state.PendingResult ||
+        if(!state.CanSimulate || state.State==null || state.State.Session!=null || GameHeldBankSession!=null || state.PendingResult ||
             GameFailureUnconfirmed || !owner.ActivityState().CanRun)return false;
         var phase=gameCast.Snapshot.Phase;
         return phase!=FloatCastPhase.Charging && phase!=FloatCastPhase.Prepared && phase!=FloatCastPhase.Unknown;
@@ -39,7 +39,7 @@ sealed partial class DualWindowContext
     {
         if(!GameWalkMoving || (pane!=null && pane!=gameWalkPane))return;
         gameWalk.SetMotion(0,false);gameWalkPane=null;gameWalkLease=null;gameWalkMilliseconds=0;
-        BroadcastGameWalk();
+        BroadcastGameWalk();if(GameBankMode)BroadcastBankStand();
     }
     void AdvanceGameWalk(double activeSeconds)
     {
@@ -59,7 +59,7 @@ sealed partial class DualWindowContext
         // The previous cast is already settled. Do not pair a stale projected
         // target or landing with the newly moved anchor.
         gameWaterPlan=null;gameWaterTarget=null;gameWaterLanding=null;gameWaterLandingSession=Guid.Empty;
-        ConfigureGameWaterBudget();BroadcastGameWater();BroadcastGameWalk();
+        ConfigureGameWaterBudget();BroadcastGameWater();BroadcastGameWalk();if(GameBankMode)BroadcastBankStand();
     }
     void ReceiveGameWalk(ProbeWindow pane,GameBinding binding,Dictionary<string,object> message,string transport)
     {
@@ -85,7 +85,7 @@ sealed partial class DualWindowContext
         gameWalkPane=next==0?null:pane;gameWalkLease=next==0?null:binding.Lease;
         if(next==0)gameWalkMilliseconds=0;
         GameReply(pane,transport,next==0?"walk-stopped":"walk-updated");
-        BroadcastGameWalk();
+        BroadcastGameWalk();if(GameBankMode)BroadcastBankStand();
     }
     void SendGameWalk(ProbeWindow pane)
     {

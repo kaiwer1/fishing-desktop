@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod)
 $ErrorActionPreference='Stop'
 if($GameLineBreak -and ($GameSpares -or $GameCamp)){throw 'Run line-break integration separately.'}
 if($GameWater -and ($GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run water integration separately.'}
@@ -9,7 +9,8 @@ if($GameWardrobe -and ($GamePlayer -or $GameAtlas -or $GameScene -or $GameWater 
 if($GameCatch -and ($GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run catch integration separately.'}
 if($GameWalk -and ($GameWallpaper -or $GameWallpaperPrepare -or $GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run bank-walk integration separately.'}
 if($GameBottom -and ($GameWalk -or $GameWallpaper -or $GameWallpaperPrepare -or $GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run bottom fishing integration separately.'}
-if($GameWalk -or $GameBottom){$Game=$true}
+if($GameMultiRod -and ($GameWalk -or $GameBottom -or $GameWallpaper -or $GameWallpaperPrepare -or $GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run the multi-rod player alone.'}
+if($GameWalk -or $GameBottom -or $GameMultiRod){$Game=$true}
 if($GameWallpaperPrepare){$GameWallpaper=$true}
 if($GameWallpaper -and ($GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run wallpaper game integration separately.'}
 if($GameWater -or $GameScene -or $GameAtlas -or $GamePlayer -or $GameWardrobe -or $GameCatch -or $GameWallpaper){$Game=$true}
@@ -106,6 +107,7 @@ try{
   if($GameSpares){$taskMode='--game-spares-self-test'}
   if($GameCamp){$taskMode='--game-camp-self-test'}
   if($GameWalk){$taskMode='--game-walk-self-test'}
+  if($GameMultiRod){$taskMode='--game-multi-rod-self-test'}
   if($GameBottom){$taskMode='--game-bottom-self-test'}
   if($GameWallpaper){$taskMode=if($GameWallpaperPrepare){'--game-wallpaper-prepare-self-test'}else{'--game-wallpaper-self-test'}}
   if($GameCatch){$taskMode='--game-catch-self-test'}
@@ -137,6 +139,12 @@ try{
     if(Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt')){throw 'Failure boundary test reported an unexpected host error.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if($taskGameExit.normalExit -or $taskGameExit.code -ne 'unconfirmed-failure-no-settlement'){throw 'Unconfirmed failure exit was not preserved.'}
+  }elseif($GameMultiRod){
+    if(-not $taskReport.passed -or -not $taskReport.multiRodConnected -or -not $taskReport.closedJournalVerified -or $taskReport.checks.Count -ne 9 -or $taskReport.personalSaveRead -or -not $taskReport.naturalBottomBite -or -not $taskReport.manualReel){throw 'Multi-rod settlement or journal evidence mismatch.'}
+    if($taskReport.ownedBottomKits -ne 3 -or $taskReport.peakBankSessions -ne 3 -or $taskReport.standSlots -ne 3 -or $taskReport.manualRecalls -ne 2 -or $taskReport.parkedBites -lt 2 -or $taskReport.sequence -ne 13 -or $taskReport.value -ne 10000 -or $taskReport.gameFlightEmissions -ne 3 -or $taskReport.gameHookedEmissions -ne 1 -or $taskReport.gameNaturalLandings -ne 1 -or $taskReport.baitCount -ne 9 -or $taskReport.stamina -ne 94){throw 'Multi-rod equipment, catch or cast resources mismatch.'}
+    foreach($photo in 'multi-rod-stand.png','multi-rod-catch.png'){if(-not (Test-Path -LiteralPath (Join-Path $taskRun $photo) -PathType Leaf)){throw 'Multi-rod player screenshot missing.'}}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session'){throw 'Multi-rod shutdown mismatch.'}
   }elseif($GameBottom){
     if(-not $taskReport.passed -or $taskReport.checks.Count -ne 10 -or -not $taskReport.gameLoaded -or -not $taskReport.bottomFishingConnected -or -not $taskReport.realMouseCast -or -not $taskReport.naturalBottomBite -or -not $taskReport.realMouseStrike -or -not $taskReport.manualReel -or -not $taskReport.netPurchased -or -not $taskReport.saleVerified -or $taskReport.controlledFishFacts -or $taskReport.controlledFightTime -or $taskReport.personalSaveRead -or $taskReport.desktopLayer){throw 'Bottom fishing input or natural catch evidence mismatch.'}
     if(-not $taskReport.closedJournalVerified -or -not $taskReport.originalFloatGearUnchanged -or $taskReport.schemaVersion -ne 3 -or $taskReport.sequence -ne 7 -or $taskReport.ownedBottomIds -ne 7 -or $taskReport.remainingBottomLineMm -ne 50000 -or $taskReport.equipmentInstances -ne 6 -or $taskReport.remainingLineMm -ne 50000){throw 'Bottom kit or original float equipment changed on journal replay.'}

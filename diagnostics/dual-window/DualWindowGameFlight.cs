@@ -27,7 +27,8 @@ sealed partial class DualWindowContext
     void StartGameFlight(FloatCastSnapshot cast)
     {
         var state=game.Snapshot.State;
-        if(state==null || state.Session==null || state.Session.Id!=cast.SessionId || state.Session.CapacityBlocked)
+        var active=GameBankMode?GameHeldBankSession:(state==null?null:state.Session);
+        if(active==null || active.Id!=cast.SessionId || active.CapacityBlocked)
             throw new InvalidOperationException("Flight requires the newly confirmed active cast.");
         var target=cast.Target;
         if(gameWater!=null){
@@ -37,11 +38,13 @@ sealed partial class DualWindowContext
             gameFlightWater=new FloatFlightWater(gameWater.SurfaceYmm,gameWater.MinimumXmm,gameWater.MaximumXmm,gameWater.MinimumZmm,gameWater.MaximumZmm);
             gameFlightRules=new FloatFlightRules(plan.MinimumSpeedMmPerSecond,plan.FullSpeedMmPerSecond,plan.LaunchAngleDegrees,plan.GravityMmPerSecondSquared,plan.MaximumFlightMilliseconds);
         }
+        long line=GameBankMode?active.BottomKit.Equipment.Spool(active.BottomKit.Equipment.Equipped(FloatEquipmentSlot.Reel).Id).RemainingLineMm:GameInstalledLineMm(state);
         var launch=new FloatFlightLaunch(gameFlightOrigin,new FloatFlightPoint(target.Xmm,target.Ymm,target.Zmm),
-            gameFlightWater,gameFlightRules,cast.PowerPermille,GameInstalledLineMm(state));
+            gameFlightWater,gameFlightRules,cast.PowerPermille,line);
         gameFlight=new FloatFlightSimulation(cast.SessionId,launch);
         gameFlightMillisecondRemainder=0;gameFlightTrailAt=0;
         gameFlightTrail.Clear();gameFlightTrail.Add(FlightPoint(gameFlight.Snapshot));
+        if(GameBankMode)RegisterBankFlight(active);
     }
     bool ReconcileGameFlight()
     {
@@ -49,15 +52,17 @@ sealed partial class DualWindowContext
         var flight=gameFlight.Snapshot;
         if(flight.Phase==FloatFlightPhase.Ended)return false;
         var state=game.Snapshot;
-        if(state.State!=null && state.State.Session!=null && state.State.Session.Id==flight.SessionId && !state.PendingResult)return false;
+        var active=GameBankMode?GameHeldBankSession:(state.State==null?null:state.State.Session);
+        if(active!=null && active.Id==flight.SessionId && !active.CapacityBlocked)return false;
         gameFlight.End(flight.SessionId);gameFlightMillisecondRemainder=0;return true;
     }
     bool GameReadyForFish()
     {
         if(gameFlight==null)return false;
         var state=game.Snapshot;var flight=gameFlight.Snapshot;
-        return state.CanSimulate && state.State!=null && state.State.Session!=null && !state.PendingResult &&
-            state.State.Session.Id==flight.SessionId && flight.Phase==FloatFlightPhase.Waiting && GameWaterCanFish();
+        var active=GameBankMode?GameHeldBankSession:(state.State==null?null:state.State.Session);
+        return state.CanSimulate && active!=null && !active.CapacityBlocked &&
+            active.Id==flight.SessionId && flight.Phase==FloatFlightPhase.Waiting && GameWaterCanFish();
     }
     void AdvanceGameFlight(double activeSeconds)
     {

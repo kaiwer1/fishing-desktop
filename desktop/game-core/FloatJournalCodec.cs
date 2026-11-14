@@ -12,7 +12,7 @@ namespace FishingDesktop.GameCore
     {
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
-        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17,EquipmentUpgrade=18,ArchiveEquipment=19,CampReward=20,Clothing=21,BottomKit=22,BottomCast=23;
+        const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17,EquipmentUpgrade=18,ArchiveEquipment=19,CampReward=20,Clothing=21,BottomKit=22,BottomCast=23,AdditionalBottomKit=24,BankStand=25,BankCast=26,BankEnding=27;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -128,6 +128,10 @@ namespace FishingDesktop.GameCore
         {
             if(command is CastFloat)return Cast;if(command is RecallFloat)return Recall;if(command is ReleaseCurrentFloatFish)return Release;
             if(command is BuyBottomKit)return BottomKit;
+            if(command is BuyAdditionalBottomKit)return AdditionalBottomKit;
+            if(command is BuyBankRodStand)return BankStand;
+            if(command is CastBankBottomRod)return BankCast;
+            if(command is SettleBankBottomRod)return BankEnding;
             if(command is CastBottomKitWithEquipment)return BottomCast;
             if(command is SellFloatFish)return Sale;if(command is HostFloatFish)return HostFish;if(command is RecoverFloatSession)return Recovery;
             if(command is UpgradeFloatProfile)return Upgrade;if(command is BuyFloatSupply)return Purchase;if(command is EquipFloatNet)return Equip;if(command is UseFloatFood)return Food;if(command is HostFloatUnhooked)return Unhooked;
@@ -176,11 +180,21 @@ namespace FishingDesktop.GameCore
                 }else if(type==Equip)writer.Guid(((EquipFloatNet)command).NetId);
                 else if(type==Food)writer.Guid(((UseFloatFood)command).FoodStackId);
                 else if(type==Unhooked){var unhooked=(HostFloatUnhooked)command;writer.Guid(unhooked.EncounterId);writer.I32(unhooked.FightModelVersion);}
-                else if(type==BottomCast){
+                else if(type==BankEnding){
+                    var end=(SettleBankBottomRod)command;writer.Guid(end.RigId);writer.Byte((byte)end.Ending);
+                    if(end.Ending==BankRodEnding.Land){writer.Guid(end.FishId);writer.Guid(end.EncounterId);writer.Text(end.Species);writer.I64(end.MassMg);}
+                    else if(end.Ending==BankRodEnding.Unhooked){writer.Guid(end.EncounterId);writer.I32(end.FightModelVersion);}
+                }else if(type==BottomCast||type==BankCast){
                     var cast=(CastBottomKitWithEquipment)command;writer.Guid(cast.KitRigId);writer.Guid(cast.LineId);writer.Guid(cast.LeaderId);
                     writer.I64(cast.KitRigRevision);writer.I64(cast.LineRevision);writer.I64(cast.RequiredLineMm);
                 }else if(type==BottomKit){
                     foreach(var id in ((BuyBottomKit)command).Kit.Ids)writer.Guid(id);
+                }else if(type==AdditionalBottomKit){
+                    var additional=(BuyAdditionalBottomKit)command;
+                    writer.Byte((byte)additional.KitNumber);
+                    foreach(var id in additional.Kit.Ids)writer.Guid(id);
+                }else if(type==BankStand){
+                    writer.Guid(((BuyBankRodStand)command).Stand.Id);
                 }else if(type==Clothing){
                     var clothing=(ChangeFloatClothing)command;writer.Byte((byte)clothing.Action);writer.Text(clothing.ItemId);
                 }else if(type==CampReward){
@@ -211,14 +225,29 @@ namespace FishingDesktop.GameCore
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,(reader,schema)=>{
-                byte type=reader.Byte();if(type<Cast||type>BottomCast||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(type<Cast||type>BankEnding||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
+                if(type==BankCast)return new CastBankBottomRod(profile,branch,request,businessEvent,session,
+                    reader.Guid(),reader.Guid(),reader.Guid(),reader.I64(),reader.I64(),reader.I64(),sequence,rig,rules);
+                if(type==BankEnding){
+                    Guid bankRig=reader.Guid();var ending=(BankRodEnding)reader.Byte();Guid bankFish=Guid.Empty,bankEncounter=Guid.Empty;
+                    string bankSpecies=null;long bankMass=0;int fight=0;
+                    if(ending==BankRodEnding.Land){bankFish=reader.Guid();bankEncounter=reader.Guid();bankSpecies=reader.Text();bankMass=reader.I64();}
+                    else if(ending==BankRodEnding.Unhooked){bankEncounter=reader.Guid();fight=reader.I32();}
+                    return new SettleBankBottomRod(profile,branch,request,businessEvent,bankRig,session,ending,bankFish,bankEncounter,bankSpecies,bankMass,sequence,rig,rules,fight);
+                }
                 if(type==BottomCast)return new CastBottomKitWithEquipment(profile,branch,request,businessEvent,session,
                     reader.Guid(),reader.Guid(),reader.Guid(),reader.I64(),reader.I64(),reader.I64(),sequence,rig,rules);
-                if(type==BottomKit){
+                if(type==BankStand){
+                    if(session!=Guid.Empty)throw Invalid("Stand purchase contains a session.");
+                    return new BuyBankRodStand(profile,branch,request,businessEvent,reader.Guid(),sequence,rig,rules);
+                }
+                if(type==BottomKit||type==AdditionalBottomKit){
                     if(session!=Guid.Empty)throw Invalid("Kit purchase contains a session.");
+                    int number=type==AdditionalBottomKit?reader.Byte():1;
                     var kit=new BottomOwnedKit(reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid());
+                    if(type==AdditionalBottomKit)return new BuyAdditionalBottomKit(profile,branch,request,businessEvent,number,kit,sequence,rig,rules);
                     return new BuyBottomKit(profile,branch,request,businessEvent,kit,sequence,rig,rules);
                 }
                 if(type==Clothing){

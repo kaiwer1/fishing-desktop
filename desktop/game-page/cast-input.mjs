@@ -20,7 +20,7 @@ export class CastInput {
   state() { return this.#active ? { ...this.#active, ...(this.#active.aim ? { aim: { ...this.#active.aim } } : {}) } : null; }
   #sameContext() {
     const context = this.#readContext();
-    return Boolean(this.#active && context.allowed && context.lease === this.#active.lease &&
+    return Boolean(this.#active && context.allowed && context.lease === this.#active.lease && context.bankHand === this.#active.bankHand &&
       (context.requiresAim === true) === Boolean(this.#active.aim) &&
       (!this.#active.aim || (this.#active.aim.geometryVersion === context.geometryVersion && this.#active.aim.poseRevision === context.poseRevision)));
   }
@@ -28,7 +28,7 @@ export class CastInput {
     const transportId = this.#id();
     this.#pending.set(transportId, { action, inputSequence: active.inputSequence });
     this.#post({ kind: 'game-cast', lease: active.lease, transportId, action, inputSequence: active.inputSequence,
-      ...(action === 'begin' && active.aim ? { aim: { ...active.aim } } : {}) });
+      ...(active.bankHand ? {bankHand:active.bankHand} : {}), ...(action === 'begin' && active.aim ? { aim: { ...active.aim } } : {}) });
   }
   forget() { this.#active = null; this.#pending.clear(); }
   reconcile() {
@@ -43,7 +43,7 @@ export class CastInput {
     if (context.requiresAim === true ? !validAim(aim, context.geometryVersion, context.poseRevision) : aim !== null) return false;
     this.#pending.clear();
     this.#active = { source, lease: context.lease, inputSequence: String(++this.#next), phase: 'charging',
-      ...(aim ? { aim: Object.freeze({ ...aim }) } : {}) };
+      ...(context.bankHand ? {bankHand:context.bankHand} : {}), ...(aim ? { aim: Object.freeze({ ...aim }) } : {}) };
     this.#send('begin', this.#active);
     return true;
   }

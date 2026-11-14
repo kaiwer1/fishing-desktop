@@ -10,14 +10,14 @@ using FishingDesktop.GameCore;
 sealed partial class DualWindowContext
 {
     readonly string gameMode;
-    internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest||GameBottomSelfTest; } }
+    internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest; } }
     internal bool PlayerMode { get { return gameMode=="player-window"||gameMode=="player-wallpaper"; } }
     bool GamePlayerSelfTest { get { return gameMode=="player-self-test"; } }
     bool GameCatchSelfTest { get { return gameMode=="catch-self-test"; } }
     bool GameAtlasSelfTest { get { return gameMode=="atlas-self-test"; } }
-    bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||GameBottomSelfTest||PlayerMode; } }
+    bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||PlayerMode; } }
     internal bool GameMode { get { return gameMode != null; } }
-    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameSceneSelfTest || GameAtlasSelfTest || GamePlayerSelfTest || GameWardrobeSelfTest || GameCatchSelfTest || GameWallpaperSelfTest || GameWalkSelfTest || GameBottomSelfTest || GameFailureCase!=null; } }
+    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameSceneSelfTest || GameAtlasSelfTest || GamePlayerSelfTest || GameWardrobeSelfTest || GameCatchSelfTest || GameWallpaperSelfTest || GameWalkSelfTest || GameBottomSelfTest || GameMultiRodSelfTest || GameFailureCase!=null; } }
     bool GameSceneSelfTest { get { return gameMode=="scene-self-test"; } }
     bool GameWaterSelfTest { get { return gameMode=="water-self-test"; } }
     bool GameWaterMode { get { return GameWaterSelfTest||GameAtlasMode||GameSceneSelfTest||gameMode=="new"||gameMode=="open"||gameMode=="line-break-new"||gameMode=="line-break-open"; } }
@@ -35,7 +35,7 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, WardrobeRevision, WalkRevision, BottomRevision, BottomShopRevision;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, WardrobeRevision, WalkRevision, BottomRevision, BottomShopRevision, BankStandRevision, BankKitRevision;
         internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater, WalkHighWater, BottomStrikeHighWater;
         internal GameShopPending Shop;
         internal GameEquipmentPending Equipment;
@@ -55,7 +55,7 @@ sealed partial class DualWindowContext
             game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion,GameLineBreakMode?(Action<FloatGameState>)ValidateGameLineBreakCatalog:null);
         }
         else if(GameAtlasMode || gameMode=="new" || GameLineBreakMode || GameWaterSelfTest || GameSceneSelfTest || GameSparesSelfTest || GameCampSelfTest){
-            var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture(atlas:GameAtlasMode);
+            var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture(wallet:GameMultiRodSelfTest?30000:12000,atlas:GameAtlasMode);
             game=FloatGameOwner.CreateNewWithEquipmentOffers(path,initial,CreateGameSparesCatalog(initial),GameSelfTest?(Action<FloatSaveFaultPoint>)GameShopSaveFault:null);
         }
         else if(GameSelfTest) game=FloatGameOwner.CreateNew(path,CreateGameFixture(),GameShopSaveFault);
@@ -64,6 +64,7 @@ sealed partial class DualWindowContext
         InitializeGameCast();
         InitializeGameCamp();
         InitializeGameFlight();
+        RestoreBankResultHand();
         // This opt-in build uses only its private fixture save. Opening never
         // falls back to creating new funds, bait or equipment.
         desktopAllowForegroundChanges = true;
@@ -126,6 +127,7 @@ sealed partial class DualWindowContext
         ClearGameWalk(pane);CancelGameCast(pane);
         ClearGameFightInput(pane);
         ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
+        if(b.Lease!=null&&Object.ReferenceEquals(b.Lease,gameBankControl))BankLease(null);
         game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.Document=null;
     }
     void GameAttached(ProbeWindow pane)
@@ -145,6 +147,7 @@ sealed partial class DualWindowContext
         ClearGameWalk(pane);CancelGameCast(pane);
         ClearGameFightInput(pane);
         ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
+        if(b.Lease!=null&&Object.ReferenceEquals(b.Lease,gameBankControl))BankLease(null);
         game.CloseView(b.View); gameViews.Remove(pane);
     }
     void GameLease(ProbeWindow pane,string wireLease)
@@ -154,10 +157,11 @@ sealed partial class DualWindowContext
         ClearGameWalk(pane);CancelGameCast(pane);
         ClearGameFightInput(pane);
         ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
+        if(b.Lease!=null&&Object.ReferenceEquals(b.Lease,gameBankControl))BankLease(null);
         game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0; b.EquipmentHighWater=0; b.CampHighWater=0; b.WalkHighWater=0; b.BottomStrikeHighWater=0;
         var state=game.Snapshot;
         if (wireLease == null || b.Document == null || state.Faulted || state.HostPaused || state.ShutdownConfirmed) return;
-        b.Lease=game.GrantControl(b.View,b.Document); b.WireLease=wireLease;
+        b.Lease=game.GrantControl(b.View,b.Document); b.WireLease=wireLease;BankLease(b.Lease);
     }
     void SyncGamePolicy()
     {
@@ -189,9 +193,9 @@ sealed partial class DualWindowContext
         var snapshot=game.ReadView(b.View,b.Document);
         int count=snapshot.State==null?0:snapshot.State.Creel.Count;
         if (b.Offset>count) b.Offset=0;
-        var projected=FloatPageProjection.Create(snapshot,b.Offset,50);
+        var projected=FloatPageProjection.Create(snapshot,b.Offset,50,GameHeldBankSession);
         Send(pane,new {kind="game-snapshot",documentId=pane.Ticket.DocumentId,revision=checked(++b.Revision),snapshot=projected});
-        SendGameSpots(pane);SendGameWardrobe(pane);SendBottomShop(pane);
+        SendGameSpots(pane);SendGameWardrobe(pane);SendBottomShop(pane);SendBankKit(pane);SendBankStand(pane);
         SendGameCast(pane);
         SendGameWalk(pane);SendGameFlight(pane);
         SendGameBite(pane);SendGameBottom(pane);
@@ -228,6 +232,9 @@ sealed partial class DualWindowContext
             if(kind=="game-camp")Broadcast();
             return;
         }
+        if(kind=="game-bank-kit"){ReceiveBankKit(pane,b,m,transport);return;}
+        if(kind=="game-stand"){ReceiveBankStand(pane,b,m,transport);return;}
+        if(GameBankMode&&kind=="game-bottom-shop"){GameReply(pane,transport,"bank-leave-first");return;}
         if(kind=="game-bottom-shop"){ReceiveBottomShop(pane,b,m,transport);return;}
         if(kind=="game-bottom-strike"){ReceiveBottomStrike(pane,b,m,transport);return;}
         if(kind=="game-bank-walk"){ReceiveGameWalk(pane,b,m,transport);return;}
@@ -254,6 +261,7 @@ sealed partial class DualWindowContext
             GameReply(pane,transport,"menu-updated"); Broadcast(); return;
         }
         object raw; FloatCommand command;
+        if(GameBankMode&&kind=="game-intent"&&m.Count==5&&m.TryGetValue("intent",out raw)&&ReceiveBankRodEnd(pane,b,raw as Dictionary<string,object>,transport))return;
         if (kind!="game-intent" || m.Count!=5 || !m.TryGetValue("intent",out raw) ||
             !FloatPageCommands.TryParse(raw as Dictionary<string,object>,game.Snapshot.State,out command)) {
             GameReply(pane,transport,"invalid-intent"); return;

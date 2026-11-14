@@ -18,13 +18,16 @@ sealed partial class DualWindowContext
         internal string WireLease,DocumentId;
         internal int Navigation;
         internal long Sequence;
+        internal Guid BankRig;
+        internal long BankHand;
         internal FloatCastGesture Gesture;
     }
     void InitializeGameCast()
     {
         // This is a fixed host target for input integration, not a water raycast.
         gameCast=new FloatCastPreparation(game,new FloatCastPreparationRules(1600,150),
-            target=>gameWater==null?target.Xmm==0 && target.Ymm==0 && target.Zmm==15000 && target.RequiredLineMm==15000:GameWaterTargetCurrent(target),gameBottomSelected);
+            target=>gameWater==null?target.Xmm==0 && target.Ymm==0 && target.Zmm==15000 && target.RequiredLineMm==15000:GameWaterTargetCurrent(target),gameBottomSelected,
+            GameBankMode?gameBankStand.Held:Guid.Empty);
     }
     static bool GameInputSequence(Dictionary<string,object> message,out long sequence)
     {
@@ -40,7 +43,8 @@ sealed partial class DualWindowContext
             !input.Pane.AwaitingNavigationStart && input.Pane.NavigationGeneration==input.Navigation &&
             GameAuthorized(input.Pane,input.DocumentId,input.WireLease,out binding) && Object.ReferenceEquals(binding,input.Binding) &&
             Object.ReferenceEquals(binding.Document,input.Document) && Object.ReferenceEquals(binding.Lease,input.Lease) &&
-            game.CanControl(binding.View,input.Document,input.Lease);
+            game.CanControl(binding.View,input.Document,input.Lease) && (!GameBankMode ? input.BankRig==Guid.Empty :
+            input.BankRig!=Guid.Empty && gameBankStand.Held==input.BankRig && gameBankStand.HandGeneration==input.BankHand && BankCanOperate(Guid.Empty));
     }
     void CancelGameCast(ProbeWindow pane=null)
     {
@@ -76,8 +80,9 @@ sealed partial class DualWindowContext
     void BroadcastGameCast(){foreach(var pane in windows.Values)SendGameCast(pane);}
     void ReceiveGameCast(ProbeWindow pane,GameBinding binding,Dictionary<string,object> message,string transport)
     {
+        if(!BankWireHand(pane,transport,message))return;
         string action;long sequence;
-        if(!StringField(message,"action",out action) || message.Count!=(gameWater!=null&&action=="begin"?7:6) || !GameInputSequence(message,out sequence) ||
+        if(!StringField(message,"action",out action) || message.Count!=(gameWater!=null&&action=="begin"?7:6)+(GameBankMode?1:0) || !GameInputSequence(message,out sequence) ||
             (action!="begin" && action!="release" && action!="cancel")){
             GameReply(pane,transport,"invalid-intent");return;
         }
@@ -93,6 +98,7 @@ sealed partial class DualWindowContext
             if(GameWalkMoving){GameReply(pane,transport,"walk-busy");return;}
             var state=game.Snapshot.State;
             if(state==null){GameReply(pane,transport,"state-unavailable");return;}
+            if(GameBankMode&&!BankCanOperate(Guid.Empty)){GameReply(pane,transport,"stand-hand-stale");return;}
             var previousPlan=gameWaterPlan;var previousTarget=gameWaterTarget;
             if(gameWater!=null){
                 if(gameCast.Snapshot.Phase==FloatCastPhase.Charging||gameCast.Snapshot.Phase==FloatCastPhase.Prepared){GameReply(pane,transport,"gesture-active");return;}
@@ -103,7 +109,8 @@ sealed partial class DualWindowContext
             if(result.Accepted){
                 gameWaterLanding=null;gameWaterLandingSession=Guid.Empty;
                 gameCastInput=new GameCastInput {Pane=pane,Binding=binding,Document=binding.Document,Lease=binding.Lease,
-                    WireLease=binding.WireLease,DocumentId=pane.Ticket.DocumentId,Navigation=pane.NavigationGeneration,Sequence=sequence,Gesture=result.Gesture};
+                    WireLease=binding.WireLease,DocumentId=pane.Ticket.DocumentId,Navigation=pane.NavigationGeneration,Sequence=sequence,Gesture=result.Gesture,
+                    BankRig=GameBankMode?gameBankStand.Held:Guid.Empty,BankHand=GameBankMode?gameBankStand.HandGeneration:0};
                 gameCastMillisecondRemainder=0;
             }else{gameWaterPlan=previousPlan;gameWaterTarget=previousTarget;}
         }else{

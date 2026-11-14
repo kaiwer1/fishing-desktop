@@ -3,10 +3,11 @@ import { createFrameScheduler } from '../../src/frame-scheduler.js';
 import { renderSize } from '../../src/display.js';
 import { createLake } from './lake.mjs';
 import { createTackle } from './tackle.mjs';
+import { createRodStand, standAtWater } from './rod-stand.mjs';
 import { sampleFightFish } from './fight-fish.mjs';
 import { aimPoint, pickAim, projectAim, setBankCamera, waterGeometryKey } from './water-space.mjs';
 
-const viewNames=['water','cast','flight','bite','fight','bottom','sleeveColor'];
+const viewNames=['water','cast','flight','bite','fight','bottom','sleeveColor','stand'];
 
 // All inputs are read-only page projections. The renderer neither advances a
 // fishing clock nor posts input. Projection helpers use live CSS client pixels.
@@ -35,7 +36,7 @@ export function createGameScene(canvas,{onFault}={}) {
     aimMarker.scale.setScalar(Math.min(2.2,Math.max(1,camera.position.distanceTo(aimMarker.position)/19)));
     aimMarker.visible=true;
   }
-  let lake=null,key=null,water=null,disposed=false,error=null,active=false;
+  let lake=null,stand=null,key=null,water=null,disposed=false,error=null,active=false;
   let width=0,height=0,aspect=0,frames=0,elapsed=0,lastFlight=null,pendingImpact=null,rodPhase='idle',fish=null;
   let viewYaw=0,sceneBuilds=0;
   const views={water:null,cast:null,flight:null,bite:null,fight:null,bottom:null};
@@ -78,6 +79,7 @@ export function createGameScene(canvas,{onFault}={}) {
       return;
     }
     if(lake)lake.dispose();
+    if(stand){stand.dispose();stand=null;}tackle.group.visible=true;
     lake=null;water=null;key=null;aspect=0;pendingImpact=null;lastFlight=null;fish=null;hideAim();
     if(nextKey){
       lake=createLake(next,name=>new URL('./scene-assets/'+name,canvas.ownerDocument.baseURI).href);
@@ -87,9 +89,16 @@ export function createGameScene(canvas,{onFault}={}) {
   function update(data={}){
     if(disposed||error)return;
     try {
+      const oldWaterKey=key;
       for(const name of viewNames)if(Object.hasOwn(data,name))views[name]=data[name];
       if(Object.hasOwn(data,'canAim')){canAim=data.canAim===true;if(!canAim)hideAim();}
       if(Object.hasOwn(data,'water'))resetLake(data.water);
+      if(key!==oldWaterKey&&!Object.hasOwn(data,'stand'))views.stand=null;
+      if(Object.hasOwn(data,'stand')||Object.hasOwn(data,'water')){
+        if(!stand&&standAtWater(views.stand,water)){stand=createRodStand();scene.add(stand.group);}
+        const placed=stand?.update(views.stand,water)??false;
+        tackle.group.visible=!placed||Boolean(views.stand.heldRig);
+      }
       fish=lake?sampleFightFish(views,fish):null;
       lake?.fish(fish);
       const f=views.flight;
@@ -104,8 +113,8 @@ export function createGameScene(canvas,{onFault}={}) {
       triangles:renderer.info.render.triangles,calls:renderer.info.render.calls,geometryVersion:water?.geometryVersion??null,rodPhase,
       shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
       sceneBuilds,mirrorUpdates:lake?.mirrorUpdates()??0,loadedMaterials:lake?.loadedMaterials()??0,cameraXmm:lake&&aspect>0?Math.round(camera.position.x*1000):null,
-      rodAnchorXmm:lake?tackle.anchorXmm():null,bottomTipPermille:lake?tackle.bottomTipPermille():null,
-      bobberVisible:frames>0&&Boolean(lake)&&tackle.float.visible,lineVisible:frames>0&&Boolean(lake)&&tackle.line.visible,error,disposed};
+      rodAnchorXmm:lake?tackle.anchorXmm():null,bottomTipPermille:lake?tackle.bottomTipPermille():null,stand:stand?.state()??null,
+      bobberVisible:frames>0&&Boolean(lake)&&tackle.group.visible&&tackle.float.visible,lineVisible:frames>0&&Boolean(lake)&&tackle.group.visible&&tackle.line.visible,error,disposed};
   }
   canvas.addEventListener('webglcontextlost',lost);
   canvas.addEventListener('pointermove',hover);
@@ -127,7 +136,7 @@ export function createGameScene(canvas,{onFault}={}) {
       for(const name of ['pointerleave','pointerdown','pointercancel'])canvas.removeEventListener(name,hideAim);
       aimMarker.geometry.dispose();aimMarker.material.dispose();
       doc?.removeEventListener('visibilitychange',sync);doc?.defaultView?.removeEventListener('blur',hideAim);
-      lake?.dispose();lake=null;tackle.dispose();renderer.dispose();scene.clear();
+      lake?.dispose();lake=null;stand?.dispose();stand=null;tackle.dispose();renderer.dispose();scene.clear();
     }
   };
 }

@@ -71,13 +71,14 @@ export class FightInput {
   #faulted = false;
   constructor({ readContext, post, newTransportId }) { this.#readContext = readContext; this.#post = post; this.#id = newTransportId; }
   state() { return { held: this.#held ? { ...this.#held } : null, pending: [...this.#pending.values()].map(p => ({ ...p })), faulted: this.#faulted }; }
-  #same(a, b) { return a.lease === b.lease && a.sessionId === b.sessionId && a.encounterId === b.encounterId; }
+  #same(a, b) { return a.lease === b.lease && a.bankHand === b.bankHand && a.sessionId === b.sessionId && a.encounterId === b.encounterId; }
   #valid(c) { return Boolean(!this.#faulted && c.allowed && c.lease && guid(c.sessionId) && guid(c.encounterId)); }
   #send(action, c, value) {
     if (this.#next === Number.MAX_SAFE_INTEGER || this.#held && action !== 'reel-stop' && this.#next >= Number.MAX_SAFE_INTEGER - 1) return null;
     const m = { kind: 'game-fight', lease: c.lease, transportId: this.#id(), sessionId: c.sessionId, encounterId: c.encounterId,
       inputSequence: String(++this.#next), action };
     if (value !== undefined) m.value = value;
+    if (c.bankHand) m.bankHand=c.bankHand;
     // Retain only bounded reply pairing; dropping an old reply record cannot
     // undo a held release or resend any action.
     if (this.#pending.size >= 64) this.#pending.delete(this.#pending.keys().next().value);
@@ -93,7 +94,8 @@ export class FightInput {
     // Reserve one sequence for the paired stop at the artificial JS limit.
     if (this.#held || !this.#valid(c) || !activePhases.has(c.phase) || this.#next >= Number.MAX_SAFE_INTEGER - 1) return false;
     const sent = this.#send('reel-start', c);
-    this.#held = { source, lease: c.lease, sessionId: c.sessionId, encounterId: c.encounterId, startTransportId: sent.transportId };
+    this.#held = { source, lease: c.lease, sessionId: c.sessionId, encounterId: c.encounterId, startTransportId: sent.transportId,
+      ...(c.bankHand ? {bankHand:c.bankHand} : {}) };
     return true;
   }
   end(source = 'button', startTransportId = null) {

@@ -18,14 +18,14 @@ sealed partial class DualWindowContext
     }
     long GameCastReservation(FloatCastLaunchPlan plan)
     {
-        if(!gameBottomSelected)return plan.RequiredLineMm;
+        if(!gameBottomSelected&&!GameBankMode)return plan.RequiredLineMm;
         var patch=GameBottomPatch();BottomContact c;
         if(patch==null||patch.Resolve(gameWater.Version,plan.Target.Xmm,plan.Target.Zmm,50000,out c)!=null)return -1;
         return Math.Max(plan.RequiredLineMm,c.RequiredLineMm);
     }
     bool GameBottomLandingAllowed(FloatCastLaunchPlan plan,long reserved)
     {
-        if(!gameBottomSelected)return true;
+        if(!gameBottomSelected&&!GameBankMode)return true;
         var patch=GameBottomPatch();BottomContact c;
         return patch!=null&&patch.Resolve(gameWater.Version,FlightMm(plan.PredictedXmm),FlightMm(plan.PredictedZmm),50000,out c)==null&&c.RequiredLineMm<=reserved;
     }
@@ -40,6 +40,7 @@ sealed partial class DualWindowContext
     {
         string a;long seq;if(m.Count!=6||!StringField(m,"action",out a)||(a!="buy"&&a!="select-bottom"&&a!="select-float")||!GameEquipmentExpectedSequence(m,out seq)){GameReply(p,t,"invalid-intent");return;}
         AdvanceActivity();var v=game.Snapshot;var s=v.State;
+        if(GameBankMode){GameReply(p,t,"bank-leave-first");return;}
         if(!game.CanControl(b.View,b.Document,b.Lease)||!GameAtlasMode||s==null||!BottomOwnedKit.Enabled(s)){GameReply(p,t,"bottom-unavailable");return;}
         if(!v.MenuOpen||v.PendingResult||s.Session!=null||GameCampActive||b.Shop!=null||b.Equipment!=null||b.Spares!=null){GameReply(p,t,"bottom-shop-busy");return;}
         if(seq!=s.Sequence){GameReply(p,t,"bottom-shop-stale");Broadcast();return;}
@@ -74,10 +75,7 @@ sealed partial class DualWindowContext
             BottomEquipmentBridge kit;var patch=GameBottomPatch();
             if(patch!=null&&BottomOwnedEquipment.Bind(s,out kit)==null&&Object.ReferenceEquals(active.BottomKit,s.OwnedBottomKit)){
                 var pool=gameFishingWater.CreatePool(gameWaterLanding.Sample,s.Rules);gameFishingPool=pool;
-                var rules=new Dictionary<string,FloatFightFishRules>();
-                foreach(string key in new[]{"carp","crucian"})rules.Add(key,new FloatFightFishRules(key=="carp"?3:2,2,20,.05,.005,10,FloatFightBehavior.Seeded));
-                var config=new BottomFightConfig(new FloatFightRigRules(80,1,40,200,1,20,.2,1.6,40,3,3,5,5),
-                    new FloatLandingRules(s.OwnedNet!=null&&s.EquippedNetId==s.OwnedNet.Id,5,1,1,.5),rules,new FloatUnhookRules(.25,60,2));
+                var config=BottomFightConfiguration(s);
                 if(pool!=null)BottomFightHandoff.AtWaterContact(active.Id,kit.Assembly,patch,gameWater.Version,gameWaterLanding.Sample.Xmm,gameWaterLanding.Sample.Zmm,
                     GameSelfTest?1u:BitConverter.ToUInt32(active.Id.ToByteArray(),0),pool.Environment,config,out gameBottom);
             }
@@ -88,6 +86,13 @@ sealed partial class DualWindowContext
         if(whole==0)return;
         while(whole>0){int n=Math.Min(whole,250);gameBottom.Advance(active.Id,n);whole-=n;}
         BroadcastBottom();
+    }
+    static BottomFightConfig BottomFightConfiguration(FloatGameState state)
+    {
+        var rules=new Dictionary<string,FloatFightFishRules>();
+        foreach(string key in new[]{"carp","crucian"})rules.Add(key,new FloatFightFishRules(key=="carp"?3:2,2,20,.05,.005,10,FloatFightBehavior.Seeded));
+        return new BottomFightConfig(new FloatFightRigRules(80,1,40,200,1,20,.2,1.6,40,3,3,5,5),
+            new FloatLandingRules(state.OwnedNet!=null&&state.EquippedNetId==state.OwnedNet.Id,5,1,1,.5),rules,new FloatUnhookRules(.25,60,2));
     }
     static string BottomPhaseName(BottomRigSnapshot b)
     {
@@ -100,7 +105,7 @@ sealed partial class DualWindowContext
     void SendGameBottom(ProbeWindow p)
     {
         GameBinding b;if(!GameAtlasMode||!p.Ready||!gameViews.TryGetValue(p,out b)||b.Document==null)return;
-        var s=game.Snapshot.State;var session=s==null?null:s.Session;
+        var s=game.Snapshot.State;var session=GameBankMode?GameHeldBankSession:(s==null?null:s.Session);
         bool current=session!=null&&session.IsBottom&&session.Id==gameBottomAttempt;
         var state=current&&gameBottom!=null?gameBottom.Snapshot:null;
         object end=state==null?null:new {xMm=state.Contact.Xmm,yMm=state.SinkerYmm,zMm=state.Contact.Zmm};
@@ -111,19 +116,27 @@ sealed partial class DualWindowContext
     void BroadcastBottom(){foreach(var pane in windows.Values)SendGameBottom(pane);}
     void ReceiveBottomStrike(ProbeWindow p,GameBinding b,Dictionary<string,object> m,string t)
     {
-        long seq;object raw;Guid id;if(m.Count!=6||!GameInputSequence(m,out seq)||!m.TryGetValue("sessionId",out raw)||!GameGuid(raw,false,out id)){GameReply(p,t,"invalid-intent");return;}
+        if(!BankWireHand(p,t,m))return;
+        long seq;object raw;Guid id;if(m.Count!=6+(GameBankMode?1:0)||!GameInputSequence(m,out seq)||!m.TryGetValue("sessionId",out raw)||!GameGuid(raw,false,out id)){GameReply(p,t,"invalid-intent");return;}
         if(seq<=b.BottomStrikeHighWater){GameReply(p,t,"stale-input");return;}b.BottomStrikeHighWater=seq;
         AdvanceActivity();var s=game.Snapshot.State;
-        if(!game.CanControl(b.View,b.Document,b.Lease)||!GameReadyForFish()||s.Session==null||!s.Session.IsBottom||s.Session.Id!=id||gameBottom==null||gameBottom.Snapshot.SessionId!=id){GameReply(p,t,"bottom-unavailable");return;}
+        var active=GameBankMode?GameHeldBankSession:(s==null?null:s.Session);
+        if(!game.CanControl(b.View,b.Document,b.Lease)||!GameReadyForFish()||active==null||!active.IsBottom||active.Id!=id||gameBottom==null||gameBottom.Snapshot.SessionId!=id){GameReply(p,t,"bottom-unavailable");return;}
         var snap=gameBottom.Snapshot;
         if(snap.Phase!=BottomPhase.Strikeable){GameReply(p,t,"bottom-strike-missed");return;}
-        FloatFightSimulation fight;var result=gameBottom.StrikeAndStart(id,snap.RigId,snap.RigRevision,snap.EncounterId,true,out fight);
-        if(result.ShouldStartFight&&fight!=null){
+        FloatFightSimulation fight;bool hooked;
+        if(GameBankMode){
+            var why=gameBankScheduler.StrikeHeld(snap.RigId,id,snap.RigRevision,snap.EncounterId,gameBankStand.ControlEpoch,
+                gameBankStand.HandGeneration,checked(++bankRodControlSequence),out fight);
+            hooked=why==null&&fight!=null;
+        }else hooked=gameBottom.StrikeAndStart(id,snap.RigId,snap.RigRevision,snap.EncounterId,true,out fight).ShouldStartFight;
+        if(hooked&&fight!=null){
             gameFight=fight;gameLineBreakRules=null;gameFightMillisecondRemainder=0;gameReelInput=null;
             gameLandingCommand=null;gameLandingTicket=null;gameLandingRetry=false;
             gameFailureCommand=null;gameFailureTicket=null;gameFailureRetry=false;
             gameHookedEmissions=checked(gameHookedEmissions+1);BroadcastGameFight();
         }
-        GameReply(p,t,result.ShouldStartFight?"bottom-hooked":"bottom-strike-missed");BroadcastBottom();
+        GameReply(p,t,hooked?"bottom-hooked":"bottom-strike-missed");BroadcastBottom();
+        if(GameBankMode)BroadcastBankStand();
     }
 }

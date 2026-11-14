@@ -18,7 +18,7 @@ namespace FishingDesktop.GameCore
         internal FloatOwnerSnapshot(FloatGameState state, bool faulted, bool paused, bool menu, bool shutdown)
         {
             State = state; Faulted = faulted; HostPaused = paused; MenuOpen = menu; ShutdownConfirmed = shutdown;
-            PendingResult = state != null && state.Session != null && state.Session.CapacityBlocked;
+            PendingResult = state != null && ((state.Session != null && state.Session.CapacityBlocked)||state.HasPendingBankResult);
             // Eligibility at this layer only. No clock, physics, offline catch,
             // render visibility or new input authority is implied by true.
             CanSimulate = !faulted && !paused && !menu && !PendingResult && !shutdown;
@@ -134,7 +134,11 @@ namespace FishingDesktop.GameCore
             return new FloatCommitResult(code, null, null, false, false, false);
         }
         static bool UserType(FloatCommand command)
-        { return command is CastFloat || command is CastFloatWithEquipment || command is CastBottomKitWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is ArchiveLostFloatEquipment || command is ChangeFloatClothing || command is BuyBottomKit || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
+        { var bankEnd=command as SettleBankBottomRod;
+          return (bankEnd!=null && (bankEnd.Ending==BankRodEnding.Recall||bankEnd.Ending==BankRodEnding.Release)) ||
+            command is CastFloat || command is CastFloatWithEquipment || command is CastBottomKitWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is ArchiveLostFloatEquipment || MenuGearCommand(command) || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
+        static bool MenuGearCommand(FloatCommand command)
+        { return command is ChangeFloatClothing || command is BuyBottomKit || command is BuyAdditionalBottomKit || command is BuyBankRodStand; }
         bool HasRecordedRequest(FloatCommand command)
         {
             if (command == null) return false;
@@ -200,7 +204,7 @@ namespace FishingDesktop.GameCore
             // Authority is checked before inspecting any old request receipt.
             if (!Authorized(view, document, lease)) return Refused("control-required");
             if (!UserType(command)) return Refused("user-command-not-allowed");
-            if ((command is ChangeFloatClothing || command is BuyBottomKit) && !_menu) return Refused("menu-required");
+            if (MenuGearCommand(command) && !_menu) return Refused("menu-required");
             if ((command is CastFloat || command is CastFloatWithEquipment || command is CastBottomKitWithEquipment) && (_menu || Current().PendingResult) && !HasRecordedRequest(command)) return Refused("domain-paused");
             return Run(() => _store.Execute(command));
         }
@@ -210,10 +214,12 @@ namespace FishingDesktop.GameCore
             // Camp completion is a separate host fact while the menu is open.
             // It never relaxes the fishing simulation gate or page authority.
             if(command is HostFloatCampReward){
-                if(_hostPaused||!_menu||_store.State.Session!=null)return Refused("simulation-paused");
+                if(_hostPaused||!_menu||_store.State.Session!=null||_store.State.BankSessions.Count!=0)return Refused("simulation-paused");
                 return Run(()=>_store.Execute(command));
             }
-            if (!(command is HostFloatFish) && !(command is RecoverFloatSession) && !(command is HostFloatUnhooked) && !(command is HostFloatTerminalLoss)) return Refused("host-command-not-allowed");
+            var end=command as SettleBankBottomRod;
+            if (!(command is HostFloatFish) && !(command is RecoverFloatSession) && !(command is HostFloatUnhooked) && !(command is HostFloatTerminalLoss) &&
+                (end==null || (end.Ending!=BankRodEnding.Land&&end.Ending!=BankRodEnding.Unhooked))) return Refused("host-command-not-allowed");
             if (!Current().CanSimulate && !HasRecordedRequest(command)) return Refused("simulation-paused");
             return Run(() => _store.Execute(command));
         }

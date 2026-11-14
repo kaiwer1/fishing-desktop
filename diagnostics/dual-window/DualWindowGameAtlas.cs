@@ -28,7 +28,7 @@ sealed partial class DualWindowContext
         if(!game.CanControl(binding.View,binding.Document,binding.Lease)){GameReply(pane,transport,"control-required");return;}
         var s=game.Snapshot;
         if(gameFishingWater==null){GameReply(pane,transport,"spot-unavailable");return;}
-        if(!s.MenuOpen||s.State.Session!=null||s.PendingResult||GameCampActive||GameFailureUnconfirmed||binding.Shop!=null||binding.Spares!=null||binding.Equipment!=null){
+        if(!s.MenuOpen||s.State.BankSessions.Count!=0||s.State.Session!=null||s.PendingResult||GameCampActive||GameFailureUnconfirmed||binding.Shop!=null||binding.Spares!=null||binding.Equipment!=null){
             GameReply(pane,transport,"spot-switch-busy");return;
         }
         if((int)version!=gameWater.Version){GameReply(pane,transport,"spot-stale");return;}
@@ -40,7 +40,7 @@ sealed partial class DualWindowContext
         ClearGameWalk();CancelGameCast();ClearGameFightInput();
         gameCastInput=null;gameWaterPlan=null;gameWaterTarget=null;gameWaterLanding=null;gameWaterLandingSession=Guid.Empty;
         gameBite=null;gameFight=null;gameFishingPool=null;gameFlight=null;gameFlightTrail.Clear();
-        gameBottomSelected=false;gameBottom=null;gameBottomAttempt=Guid.Empty;gameWater=next.Geometry;gameFishingWater=next;InitializeGameWalk();ConfigureGameWaterBudget();InitializeGameCast();InitializeGameFlight();
+        ClearBankMode();gameBottomSelected=false;gameBottom=null;gameBottomAttempt=Guid.Empty;gameWater=next.Geometry;gameFishingWater=next;InitializeGameWalk();ConfigureGameWaterBudget();InitializeGameCast();InitializeGameFlight();
         GameReply(pane,transport,"spot-selected");Broadcast();
     }
 }

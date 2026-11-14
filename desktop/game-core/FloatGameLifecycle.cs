@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace FishingDesktop.GameCore
 {
@@ -7,9 +9,11 @@ namespace FishingDesktop.GameCore
         public readonly bool Confirmed, NoActiveSession, PendingResultPreserved;
         public readonly string Code;
         public readonly FloatCommitResult Transaction;
-        internal FloatLifecycleResult(bool noActiveSession, bool pendingResult, FloatCommitResult transaction)
+        public readonly ReadOnlyCollection<FloatCommitResult> Transactions;
+        internal FloatLifecycleResult(bool noActiveSession, bool pendingResult, FloatCommitResult transaction,List<FloatCommitResult> transactions=null)
         {
             NoActiveSession = noActiveSession; PendingResultPreserved = pendingResult; Transaction = transaction;
+            Transactions=(transactions??(transaction==null?new List<FloatCommitResult>():new List<FloatCommitResult>{transaction})).AsReadOnly();
             Confirmed = noActiveSession || pendingResult || (transaction != null && transaction.Committed);
             Code = noActiveSession ? "no-active-session" : pendingResult ? "pending-result-preserved" : transaction.Code;
         }
@@ -30,6 +34,17 @@ namespace FishingDesktop.GameCore
             if (reason != FloatRecoveryReason.StartupInterrupted && reason != FloatRecoveryReason.OwnerShutdown)
                 throw new ArgumentOutOfRangeException("reason");
             var state = store.State;
+            if(state.BankSessions.Count>0){
+                var rows=new List<FloatCommitResult>();bool pending=false;FloatCommitResult last=null;
+                var ending=reason==FloatRecoveryReason.StartupInterrupted?BankRodEnding.RecoverStartup:BankRodEnding.RecoverShutdown;
+                foreach(var rod in state.BankSessions){
+                    if(rod.CapacityBlocked){pending=true;continue;}
+                    last=store.Execute(SettleBankBottomRod.Create(store.State,rod.BankRigId,rod.Id,ending));
+                    rows.Add(last);
+                    if(!last.Committed)return new FloatLifecycleResult(false,false,last,rows);
+                }
+                return new FloatLifecycleResult(false,pending,last,rows);
+            }
             if (state.Session == null) return new FloatLifecycleResult(true, false, null);
             // A known, saved capacity refusal is a result, not an unfinished
             // simulation. Preserve it until an authorized explicit release.

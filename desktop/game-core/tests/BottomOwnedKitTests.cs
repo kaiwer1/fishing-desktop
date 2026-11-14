@@ -18,7 +18,7 @@ static class BottomOwnedKitTests
     static BottomOwnedKit Kit(Guid? rig=null,Guid? leader=null){return new BottomOwnedKit(rig??G(),G(),G(),G(),G(),G(),leader??G());}
     static BuyBottomKit Buy(FloatGameState s,BottomOwnedKit kit=null)
     {return new BuyBottomKit(s.ProfileId,s.BranchId,G(),G(),kit??Kit(),s.Sequence,s.Rig.Revision,s.RulesVersion);}
-    static FloatGameState New(int schema=3,int version=2,int balance=12000)
+    internal static FloatGameState New(int schema=3,int version=2,int balance=12000)
     {
         var rig=new FixedFloatRig(G(),1,"starter",G(),G(),G(),50000,G(),G(),G());
         var rules=new FloatGameRules(version,"starter","worm",2,100,1,1000000,new[]{new FloatSpeciesRule("carp",100000,3000000,120)});

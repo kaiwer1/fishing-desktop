@@ -2,11 +2,11 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 试玩包 0.4.0-preview.3](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.3)**。选择 `FishingDesktop-0.4.0-preview.3-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 试玩包 0.4.0-preview.4](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.4)**。选择 `FishingDesktop-0.4.0-preview.4-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
-![第二版 Windows 试玩：静水湾岸边](docs/preview-0.4/shore-lake.png)
+![静水湾三槽竿架](docs/preview-0.4/multi-rod-stand.png)
 
-[看江湾滩岸](docs/preview-0.4/shore-river.png) · [看海湾礁岸](docs/preview-0.4/shore-coast.png)
+[看竿架模式的渔获](docs/preview-0.4/multi-rod-catch.png) · [看静水湾岸景](docs/preview-0.4/shore-lake.png) · [看江湾滩岸](docs/preview-0.4/shore-river.png) · [看海湾礁岸](docs/preview-0.4/shore-coast.png)
 
 ### 用浮漂钓第一条鱼
 
@@ -23,7 +23,16 @@
 2. 用蚯蚓作饵，将鼠标对准静水湾底钓区的水面，按住左键蓄力，松开抛竿。等铅坠落底、钓组稳住，观察明色竿尖。**轻点时继续等，出现「竿尖下压」时按一次右键提竿。** 中鱼后按住左键收线，鱼靠岸时按提示抄鱼。
 3. 留在静水湾时，可回渔具店点「使用浮漂」。前往江湾或海湾会自动切回浮漂，返回静水湾后可再次选择已购的底钓套装。
 
-当前开放一支手持竿、一个铅坠和一个钩。饵笼、竿架及同时多竿垂钓属于后续开发。各钓场通过 M 切换，渔具、食品、服装和卖鱼都在营地菜单中办理。
+### 在静水湾架三支底竿
+
+新存档有 **120 银币**。第一套底竿 64，第二、第三套各 48，三槽竿架 16，抄网 24。备齐三竿、竿架和抄网共 **200 银币**。先花 104 买第一竿、竿架和抄网就能开始，剩余 16 可用于补给；卖鱼后再逐套添竿。余额低于 32、鱼护为空且各竿都已收回时，也可到营地帮工，每完成一分钟并领取可得 8 银币。
+
+1. 在静水湾打开营地「渔具店」，到「三槽竿架与备用底竿」购买竿架，点「进入竿架模式」，再按 Esc 返回岸边。已购底竿起初都在架上。
+2. 空手时按 **E** 取最近可拿的竿，或按 **1 / 2 / 3** 取对应槽的竿。左键蓄力、松开抛投，等底钓组沉底稳住、槽位提示进入「等鱼」后，按 **X** 放入最近空位。此时可拿下一竿继续抛投。手里已有可放的竿时，按其他有竿的槽号可直接换竿。
+3. 观察每个槽位的竿尖。「竿尖轻点」时继续等；某一槽显示「竿尖下压」时，按对应数字取竿，趁鱼口仍在按右键提竿。左键收线，靠岸后抄鱼。每竿各有鱼口，全套共用鱼饵、体力和鱼护。
+4. 要卖鱼，先处理手中的渔获，再依次取回架上仍在水里的竿，点「收回这一竿」。按 C 到鱼护勾选并出售。要添竿或换钓场，先在渔具店点「退出竿架模式」，然后购买或按 M 选新钓场。
+
+三处钓场均可用浮漂。静水湾的底竿使用单钩和铅坠，饵笼仍在开发计划中。渔具、食品、服装和卖鱼都在营地菜单中办理。
 
 | 钓场 | 可钓鱼种 |
 | --- | --- |
@@ -33,7 +42,8 @@
 
 ### 试玩版本与素材
 
-- **0.4.0-preview.3** 新增静水湾单钩铅坠底钓，三处钓场继续开放浮漂钓法。
+- **0.4.0-preview.4** 静水湾开放三槽竿架和两套可逐次购买的备用底竿。升级前先退出游戏，另存 `%LOCALAPPDATA%\FishingDesktop\Preview\game.fltj`。新版可接着玩上一版正常退出的进度。买竿架、添竿或用竿架抛竿后，旧版无法读取这些新记录；如需降级，请退出游戏并恢复更新前的备份。
+- **0.4.0-preview.3** 新增静水湾单钩铅坠底钓，三处钓场继续开放浮漂钓法。[第三版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.3)
 - **0.4.0-preview.2** 加入沿岸走位。静水湾岸土、江湾卵石和海湾礁石分别使用 Poly Haven 的 Forest Ground 04、Floor Pebbles 01 和 Rock 01 三款 CC0 材质。三张贴图随包提供，游玩时从本地读取。[第二版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.2) · [素材作者、原图与许可](desktop/game-scene/assets/SCENE-ASSET-CREDITS.txt)
 - **0.4.0-preview.1** 首次提供单竿浮漂、三处钓场、鱼护和营地商店的 Windows 试玩。[第一版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.1) · [第一版海湾](docs/preview-0.4/player-coast.png) · [鱼护画面](docs/preview-0.4/game-catch.png)
 

@@ -75,13 +75,13 @@ export class BottomStrike {
   reconcile() {
     if (!this.#pending) return;
     const c=this.#read(), p=this.#pending;
-    if (!c.allowed || c.sessionId !== p.sessionId || c.lease !== p.lease || c.bottom?.phase !== 'bite') this.#pending=null;
+    if (!c.allowed || c.sessionId !== p.sessionId || c.bankHand !== p.bankHand || c.lease !== p.lease || c.bottom?.phase !== 'bite') this.#pending=null;
   }
   strike() {
     this.reconcile();
     if (!this.available || this.#next === Number.MAX_SAFE_INTEGER) return false;
     const c=this.#read(), transportId=this.#newId();
-    this.#pending={ sessionId:c.sessionId, lease:c.lease, transportId };
+    this.#pending={ sessionId:c.sessionId, lease:c.lease, transportId, ...(c.bankHand ? {bankHand:c.bankHand} : {}) };
     try { this.#post({ kind:'game-bottom-strike', documentId:this.#documentId, ...this.#pending, inputSequence:String(++this.#next) }); }
     catch { this.#pending=null; return false; }
     return true;

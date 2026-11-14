@@ -66,7 +66,18 @@ sealed partial class DualWindowContext
     {
         if(gameWater==null)return true;
         UpdateGameWaterLanding();
-        return gameWaterPlan!=null&&Object.ReferenceEquals(gameWaterPlan.Geometry,gameWater)&&gameFlight!=null&&gameWaterLandingSession==gameFlight.Snapshot.SessionId&&gameWaterLanding!=null&&gameWaterLanding.Accepted&&
+        if(gameWaterPlan==null||gameFlight==null)return false;
+        // A stored rod keeps its own cast anchor while the angler walks to a
+        // different post on this same surveyed bank. Only its confirmed cast
+        // and original landing may reuse this footprint.
+        bool sameSurvey=Object.ReferenceEquals(gameWaterPlan.Geometry,gameWater);
+        if(!sameSurvey&&GameBankMode){
+            BankLiveRod rod;
+            sameSurvey=bankLive.TryGetValue(gameBankStand.Held,out rod)&&rod.Flight==gameFlight&&rod.Plan==gameWaterPlan&&
+                rod.Landing==gameWaterLanding&&rod.Plan.GeometryVersion==gameWater.Version&&
+                rod.Plan.Geometry.WaterId==gameWater.WaterId&&rod.Plan.Geometry.SpotId==gameWater.SpotId;
+        }
+        return sameSurvey&&gameWaterLandingSession==gameFlight.Snapshot.SessionId&&gameWaterLanding!=null&&gameWaterLanding.Accepted&&
             gameWaterLanding.Sample.GeometryVersion==gameWater.Version;
     }
     void SendGameWater(ProbeWindow pane)

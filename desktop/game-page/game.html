@@ -32,7 +32,9 @@ body[data-scene-mode=scene][data-scene-menu=open] main{position:fixed;inset:6vh 
 body[data-scene-mode=scene] main header,body[data-scene-mode=scene] #cast-workbench,body[data-scene-mode=scene] #bite,body[data-scene-mode=scene] #fight,body[data-scene-mode=scene] #session,body[data-scene-mode=scene] #recall,body[data-scene-mode=scene] #release{display:none}
 #scene-menu-bar{position:sticky;top:0;background:#202822;padding-top:5px;z-index:1}
 #scene-map-tools p{color:#ced7bb}
+.bank-stand-box{pointer-events:none;color:#edf0df}.bank-stand-box[hidden]{display:none}.bank-stand-box:empty{display:none}.bank-stand-box section{padding:3px 0;border:0}.bank-stand-box h2{font-size:14px;margin:0}.bank-stand-box p,.bank-stand-box li{font-size:13px;margin:0}.bank-stand-box ol{list-style:none;margin:2px 0;padding:0}.bank-stand-box [data-alarm=bite]{color:#ffe592}.bank-stand-box [data-alarm=touch]{color:#ecc6a4}#scene-stand{position:absolute;right:3vw;bottom:4vh;background:#18261fe0;border-left:2px solid #a9b58c;padding:8px 12px}
 #bottom-diagram figure{margin:0 0 8px}#bottom-diagram svg{max-width:100%;height:auto}#bottom-diagram figcaption{margin-top:5px}body[data-scene-mode=scene] #bottom-observation{display:none}
+.scene-hud:has(#scene-stand:not([hidden])) .scene-readout{max-width:49vw}#scene-stand{max-width:40vw}#scene-stand small{display:block;max-width:28em}
 #camp-home[hidden],#camp-overview[hidden]{display:none}#camp-home{border:0;padding:10px 0 20px}#camp-home h2{font-size:clamp(20px,3vw,32px);margin:0}#camp-home-head{display:flex;gap:20px;align-items:baseline;justify-content:space-between;border-bottom:1px solid #606d59;margin-bottom:10px}#camp-location{color:#d4dcbf;font-size:14px}
 #camp-destinations{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}#camp-destinations button{margin:0;display:grid;grid-template-columns:1fr auto;align-items:start;gap:4px 8px;text-align:left;background:#354438;border:1px solid #65735d;border-left:3px solid #adc08b;padding:10px 12px;min-height:65px}#camp-destinations button:hover:enabled{background:#465640}#camp-destinations strong{font-size:17px;line-height:1.2}#camp-destinations small{grid-column:1/-1;color:#d0dac7;line-height:1.35}#camp-destinations kbd,.scene-actions kbd{align-self:center;font:11px/1.2 system-ui,sans-serif;color:#d7dfca;border:1px solid #87917f;padding:1px 4px;border-radius:2px}
 #camp-overview{background:#354c3e}body[data-camp=open] #scene-menu-bar{position:sticky;top:0;z-index:2}body[data-camp=open] #camp-home,body[data-camp=open] #spot-menu,body[data-camp=open] #creel-section,body[data-camp=open] #equipment,body[data-camp=open] #shop-food,body[data-camp=open] #shop-net,body[data-camp=open] #wardrobe,body[data-camp=open] #camp{scroll-margin-top:62px}
@@ -50,6 +52,7 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <canvas id="scene-canvas" aria-label="钓场水面，按住鼠标左键蓄力，松开抛竿"></canvas>
 <div class="scene-hud"><div class="scene-place"><strong id="scene-spot-name">岸边钓位</strong><small id="scene-spot-region"></small><small id="bank-position" hidden></small></div>
 <div class="scene-actions"><button id="scene-menu">钓点与补给</button><button id="scene-to-map">俯视瞄准</button></div>
+<aside id="scene-stand" class="bank-stand-box" hidden></aside>
 <div class="scene-readout"><strong id="scene-action">等待钓场</strong><p id="scene-hint"></p>
 <progress id="scene-power" max="1000" value="0" aria-label="抛竿蓄力" hidden></progress><p id="scene-message" role="status" hidden></p>
 <div><button id="scene-recall" hidden>收回这一竿</button><button id="scene-release" hidden>放流当前鱼</button><button id="scene-land" hidden>抄鱼</button><button id="scene-retry-land" hidden>重试收鱼</button><button id="scene-retry-escape" hidden>重试失败结算</button></div>
@@ -107,6 +110,7 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 </div></section>
 <section id="bottom-observation" hidden><h2>观察竿尖</h2><div id="bottom-diagram"></div>
 <button id="bottom-strike" class="interactive" disabled>提竿</button></section>
+<aside id="map-stand" class="bank-stand-box" hidden></aside>
 <section id="fight"><h2>手动遛鱼 · 受力训练</h2><div id="fight-layout">
 <svg id="fight-diagram" viewBox="0 0 480 250" role="img" aria-labelledby="fight-title fight-description">
 <title id="fight-title">鱼的位置与鱼线</title><desc id="fight-description">俯视示意：岸边在下方，圆点表示宿主确认的鱼的位置，线连接固定竿根。按住左键收线，滚轮调整泄力，按住 R 使用滚轮调整速度。</desc>
@@ -150,6 +154,11 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <div class="interactive"><button id="bottom-buy" disabled>购买套装 · 64.00 银币</button>
 <button id="bottom-confirm" hidden disabled>确认支付 64.00 银币</button><button id="bottom-cancel" hidden>取消</button>
 <button id="select-bottom" hidden disabled>使用底钓</button><button id="select-float" hidden disabled>使用浮漂</button></div></article>
+<article id="bank-shop" hidden><h3>三槽竿架与备用底竿</h3><p id="bank-status"></p><p class="muted">在静水湾，至少备好一套底竿和一个竿架后即可架竿。先在旁边的单钩柜台购入第一套底竿。</p>
+<div class="interactive"><button id="bank-buy-stand" disabled>购买三槽竿架 · 16.00 银币</button>
+<button id="bank-buy-2" hidden disabled>购买第二套底竿 · 48.00 银币</button><button id="bank-buy-3" hidden disabled>购买第三套底竿 · 48.00 银币</button>
+<button id="bank-confirm" hidden disabled>确认购买</button><button id="bank-cancel" hidden>取消</button>
+<button id="bank-select" disabled>进入竿架模式</button><button id="bank-leave" hidden disabled>退出竿架模式</button></div></article>
 <article id="shop-bait"><h3>蚯蚓鱼饵</h3><p id="shop-bait-price">— 银币 / 包</p><p id="shop-bait-count">现有 — 份</p>
 <div class="interactive"><label>包数<input id="bait-packs" type="number" min="1" max="100" step="1" value="1" disabled></label><button id="quote-bait" disabled>获取鱼饵报价</button></div></article>
 <article id="shop-food"><h3>面包</h3><p id="shop-food-price">— 银币 / 份</p><p id="shop-food-count">现有 — 份</p>

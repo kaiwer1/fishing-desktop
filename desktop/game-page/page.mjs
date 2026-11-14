@@ -19,6 +19,8 @@ import { fishName, fishFigure, installFishIllustrations, newCreelCatch } from '.
 import { BankWalk } from './bank-walk.mjs';
 import { BottomView, bottomPrompt, createBottomTipPanel } from './bottom-view.mjs';
 import { BottomShop, BottomStrike, confirmedLineEnd } from './bottom-controls.mjs';
+import { StandView, createStandPanel } from './stand-view.mjs';
+import { BankKit, bindBankShop } from './bank-kit.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -49,11 +51,17 @@ let catchTimer = null;
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
 const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
-const canPrepare = () => canControl() && !inflight && !spotRequest && !bottomShop.busy && !wardrobe.busy && currentSpotWater() && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.SessionId && !snapshot.MenuOpen;
+const freeAtBank = () => canControl() && !inflight && !spotRequest && !gearBusy() && !wardrobe.busy && currentSpotWater() && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.MenuOpen;
+const canPrepare = () => {
+  if (!freeAtBank() || heldSession()) return false;
+  if (!bankKit.selected) return true;
+  const hand = stand.state()?.heldRig;
+  return handReady() && (hand.phase === 'idle' || (hand.phase === 'charging' && Boolean(castInput.state())));
+};
 const castInput = new CastInput({ readContext: () => {
   const water = waterView.state();
   return { lease:authority.state().lease, allowed:canPrepare() && bankWalk.canCast(water),
-    requiresAim:water?.enabled === true, geometryVersion:water?.geometryVersion, poseRevision:bankWalk.forWater(water)?.poseRevision };
+    requiresAim:water?.enabled === true, geometryVersion:water?.geometryVersion, poseRevision:bankWalk.forWater(water)?.poseRevision, bankHand:handGeneration() };
 }, post: send, newTransportId: () => crypto.randomUUID() });
 function buttonAim() {
   const water = waterView.state();
@@ -69,20 +77,27 @@ function strikeContext() {
 }
 const strikeInput = new StrikeInput({ readContext: strikeContext, post: send, newTransportId: () => crypto.randomUUID() });
 const bottomStrike = new BottomStrike({ documentId, post:send, newTransportId:() => crypto.randomUUID(), readContext:() => ({
-  allowed:canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult && !castInput.state() && !document.hidden,
-  sessionId:snapshot?.SessionId, bottom:currentBottom(), lease:authority.state().lease }) });
-function currentBottom() { return bottomView.forSession(snapshot?.SessionId); }
-function bottomMethod() { return bottomShop.state()?.method === 'bottom' || Boolean(currentBottom()); }
+  allowed:handReady() && canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult && !castInput.state() && !document.hidden,
+  sessionId:heldSession(), bottom:currentBottom(), lease:authority.state().lease, bankHand:handGeneration() }) });
+function heldSession(){return bankKit.selected ? stand.state()?.heldRig?.sessionId??null : snapshot?.SessionId;}
+function handGeneration(){return bankKit.selected ? stand.state()?.handGeneration : undefined;}
+function handReady(){
+  if(!bankKit.selected)return true;
+  const s=stand.state();
+  return Boolean(s?.heldRig && !s.pending && !stand.pending && (snapshot?.SessionId??null)===s.heldRig.sessionId);
+}
+function currentBottom() { return bottomView.forSession(heldSession()); }
+function bottomMethod() { return bankKit.selected || bottomShop.state()?.method === 'bottom' || Boolean(currentBottom()); }
 function fightContext() {
   const fight = fightView.state();
-  return { lease: authority.state().lease, allowed: canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
-    Boolean(fight?.sessionId) && fight.sessionId === snapshot.SessionId,
+  return { lease: authority.state().lease, bankHand:handGeneration(), allowed: handReady() && canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
+    Boolean(fight?.sessionId) && fight.sessionId === heldSession(),
     sessionId: fight?.sessionId, encounterId: fight?.encounterId, phase: fight?.phase, canRetryLanding: fight?.canRetryLanding, canRetryFailure: fight?.canRetryFailure };
 }
 const fightInput = new FightInput({ readContext: fightContext, post: send, newTransportId: () => crypto.randomUUID() });
 function failurePending() {
   const fight = fightView.state();
-  return fight?.phase === 'failure-pending' && fight.sessionId === snapshot?.SessionId;
+  return fight?.phase === 'failure-pending' && fight.sessionId === heldSession();
 }
 function shopContext() {
   const shop = shopView.state();
@@ -108,10 +123,11 @@ function campBusy() { const s = campInput.state(); return Boolean(s.inflight || 
 function campEngaged() { return ['working', 'ready', 'retry'].includes(campInput.state().phase); }
 // Another menu operation blocks new intent, not delivery of a current host
 // projection. Otherwise the fixed shop/equipment send order loses readiness.
-const canUseShop = () => !spotRequest && !bottomShop.busy && !wardrobe.busy && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
-const canUseEquipment = () => !spotRequest && !bottomShop.busy && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
-const canUseSpares = () => !spotRequest && !bottomShop.busy && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !campBusy() && !campEngaged();
-const canUseCamp = () => !spotRequest && !bottomShop.busy && !wardrobe.busy && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
+const gearFree = () => !spotRequest && !gearBusy() && !occupiedBank() && !wardrobe.busy;
+const canUseShop = () => gearFree() && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
+const canUseEquipment = () => gearFree() && !shopBusy() && !shopInput.state().retry && !sparesBusy() && !sparesInput.state().retry && !campBusy() && !campEngaged();
+const canUseSpares = () => gearFree() && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !campBusy() && !campEngaged();
+const canUseCamp = () => gearFree() && !shopBusy() && !shopInput.state().retry && !equipmentBusy() && !equipmentInput.state().retry && !sparesBusy() && !sparesInput.state().retry;
 const equipmentPanel = new EquipmentPanel({ view: equipmentView, input: equipmentInput, snapshot: () => snapshot,
   canAct: canUseEquipment, changed: () => updateButtons() });
 const sparesPanel = new SparesPanel({ view: sparesView, input: sparesInput, snapshot: () => snapshot,
@@ -119,14 +135,29 @@ const sparesPanel = new SparesPanel({ view: sparesView, input: sparesInput, snap
 const campPanel = new CampPanel({ view: campView, input: campInput, snapshot: () => snapshot,
   canAct: canUseCamp, changed: () => updateButtons() });
 const spotMenu = new SpotMenu({ documentId, container: $('spot-menu'), canSelect: spotAccess, send: selectSpot, fishArt: fishFigure });
-const wardrobe = new Wardrobe({ documentId, container: $('wardrobe'), readContext: () => tradeContext(!bottomShop.busy), post: send,
+const wardrobe = new Wardrobe({ documentId, container: $('wardrobe'), readContext: () => tradeContext(!gearBusy()), post: send,
   newTransportId: () => crypto.randomUUID(), changed: updateButtons });
 const bottomShop = new BottomShop({ documentId, post:send, newTransportId:() => crypto.randomUUID(),
-  readContext:() => tradeContext(!wardrobe.busy) });
+  readContext:() => tradeContext(!wardrobe.busy && !bankKit.busy && !bankKit.selected) });
+const bankKit = new BankKit({ documentId, post:send, newTransportId:() => crypto.randomUUID(),
+  readContext:() => tradeContext(!wardrobe.busy && !bottomShop.busy) });
+const renderBankShop = bindBankShop(bankKit,$,updateButtons);
+const stand = new StandView({documentId,post:send,newTransportId:()=>crypto.randomUUID(),readContext:()=>{
+  const w=waterView.state();
+  return {waterId:w?.waterId,spotId:w?.spotId,geometryVersion:w?.geometryVersion,lease:authority.state().lease,
+    menuOpen:snapshot?.MenuOpen, focused:!document.hidden && document.hasFocus(), allowed:bankKit.selected && canControl() &&
+      !inflight && !castInput.state() && !visualPaused && hostPolicy?.canRun!==false && bankWalk.canCast(w)};
+}});
+const standPanels=['map-stand','scene-stand'].map(id=>{
+  const panel=createStandPanel(document), container=$(id);
+  container.append(panel.element);return {panel,container};
+});
+function gearBusy(){return bottomShop.busy || bankKit.busy;}
+function occupiedBank(){return bankKit.selected && stand.state()?.slots.some(row=>row.rig?.sessionId);}
 function tradeContext(otherShopFree) {
   const shop = shopInput.state(), equipment = equipmentInput.state(), spares = sparesInput.state();
   return { lease: authority.state().lease, sequence: snapshot?.Sequence, walletMinor: snapshot?.WalletMinor,
-    allowed: otherShopFree && canControl() && snapshot.MenuOpen && !snapshot.SessionId && !snapshot.PendingResult && !castInput.state() &&
+    allowed: otherShopFree && canControl() && snapshot.MenuOpen && !snapshot.SessionId && !occupiedBank() && !snapshot.PendingResult && !castInput.state() &&
       !['charging','prepared'].includes(castState?.phase) && !spotRequest && !inflight && !shopBusy() && !shop.retry && !shop.quote &&
       !equipmentBusy() && !equipment.retry && !sparesBusy() && !spares.retry && !spares.quote && !campBusy() && !campEngaged() };
 }
@@ -136,6 +167,7 @@ function currentSpotWater() {
 function spotAccess() {
   if (!canControl()) return '开启交互后可以切换钓点。';
   if (!snapshot.MenuOpen) return '打开菜单后可以切换钓点。';
+  if (bankKit.selected) return '请先收回各竿，再到渔具店退出竿架模式。';
   if (snapshot.PendingResult) return '请先处理当前渔获。';
   if (snapshot.SessionId || castInput.state() || ['charging','prepared'].includes(castState?.phase)) return '请先收回这一竿或取消蓄力。';
   if (spotRequest || !currentSpotWater()) return '正在同步钓场…';
@@ -174,11 +206,11 @@ const scene = new ScenePresentation({ canvas: $('scene-canvas'), load: () => imp
 const bankWalk = new BankWalk({ documentId, post:send, newTransportId:() => crypto.randomUUID(), readContext:() => {
   const water = waterView.state();
   return { lease:authority.state().lease, waterId:water?.waterId, geometryVersion:water?.geometryVersion,
-    allowed:scene.visible && canPrepare() && !snapshot?.PendingResult && !castInput.state() &&
+    allowed:scene.visible && freeAtBank() && !heldSession() && !stand.pending && !snapshot?.PendingResult && !castInput.state() &&
       !['charging','prepared'].includes(castState?.phase) && !document.hidden && document.hasFocus() && !visualPaused && hostPolicy?.canRun === true };
 } });
 function sceneProjection() {
-  const session = snapshot?.SessionId, water = waterView.state(), bottom = currentBottom();
+  const session = heldSession(), water = waterView.state(), bottom = currentBottom();
   const current = s => s?.sessionId && s.sessionId === session ? s : null;
   if (water?.landing && (!session || water.landing.sessionId !== session)) water.landing = null;
   const cast = castState && (session || castState.phase !== 'committed') ? { phase: castState.phase, powerPermille: castState.powerPermille,
@@ -186,7 +218,7 @@ function sceneProjection() {
   const canAim = canPrepare() && bankWalk.canCast(water) && !castInput.state() && !document.hidden && !visualPaused && hostPolicy?.canRun === true;
   return { water, cast, flight: current(flightView.state()), bite: current(biteView.state()), fight: current(fightView.state()),
     bottom:bottom ? { ...bottom, lineEnd:bottomLineEnd && { ...bottomLineEnd } } : null,
-    canAim, bank:bankWalk.forWater(water), sleeveColor: wardrobe.sleeveColor };
+    canAim, stand:bankKit.selected ? stand.state() : null, bank:bankWalk.forWater(water), sleeveColor: wardrobe.sleeveColor };
 }
 function renderSceneShell() {
   const state = scene.state();
@@ -197,13 +229,14 @@ function renderSceneShell() {
   $('scene-to-water').hidden = Boolean(state.fault); $('scene-to-water').disabled = state.loading;
   $('scene-map-status').hidden = !state.fault;
   if (state.fault) $('scene-map-status').textContent = '岸边画面暂不可用，可以继续在俯视图钓鱼。重新打开窗口后可再进入岸边视角。';
+  renderStand();
   if (state.mode !== 'scene') return;
   renderSceneHud();
 }
 function renderSceneHud() {
   document.body.dataset.sceneMenu = !readOnly && snapshot?.MenuOpen ? 'open' : 'closed';
   if (readOnly || !scene.visible) return;
-  const session = snapshot?.SessionId, bite = biteView.state(), fight = fightView.state(), flight = flightView.state();
+  const session = heldSession(), bite = biteView.state(), fight = fightView.state(), flight = flightView.state();
   const bank = bankWalk.forWater(waterView.state());
   $('bank-position').hidden = !bank;
   if (bank) {
@@ -216,6 +249,9 @@ function renderSceneHud() {
   const charging = castState?.phase === 'charging' && !session;
   if (!canControl()) { action = $('status').textContent; hint = ''; }
   else if (snapshot.PendingResult) { action = '鱼护已满'; hint = $('session').textContent; }
+  else if (bankKit.selected && !stand.state()?.heldRig) {
+    action = '从竿架取竿'; hint = '按 1、2、3 取对应竿位的竿，或按 E 取最近的竿。';
+  }
   else if (session && fight?.sessionId === session && fight.phase !== 'idle') {
     action = $('fight-status').textContent;
     hint = ['fighting','landing-eligible'].includes(fight.phase) ? `张力 ${(fight.tensionMilliN / 1000).toFixed(1)} N · 泄力 ${fight.dragLevel}/10 · 按住左键收线，滚轮调泄力` : $('fight-detail').textContent;
@@ -274,14 +310,14 @@ function render() {
       `银币 ${decimal(snapshot.WalletMinor)}`, `体力 ${snapshot.Stamina}`, `${names[snapshot.BaitDefinitionKey] ?? snapshot.BaitDefinitionKey} ${snapshot.BaitCount} 份`,
     ].map(text => { const span = document.createElement('span'); span.textContent = text; return span; }));
     const pending = snapshot.PendingFish;
-    $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${fishName(pending.SpeciesKey) ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : snapshot.SessionId ? (bottomMethod() ? '底钓钓组已出手，请观察竿尖。' : '这一竿已出手，请观察轨迹与浮漂。') : '可以出手';
+    $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${fishName(pending.SpeciesKey) ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : heldSession() ? (bottomMethod() ? '底钓钓组已出手，请观察竿尖。' : '这一竿已出手，请观察轨迹与浮漂。') : bankKit.selected && !stand.state()?.heldRig ? '请先从竿架取竿。' : '可以出手';
     $('capacity').textContent = `${snapshot.CreelCount} / ${snapshot.CreelCapacity}`;
     const rows = snapshot.Creel ?? [];
     for (const id of selected) if (!rows.some(f => f.Id === id)) selected.delete(id);
     $('creel').replaceChildren(...rows.map(fish => {
       const item = document.createElement('li'); item.className = 'fish';
       const label = document.createElement('label'), checkbox = document.createElement('input'), text = document.createElement('span');
-      checkbox.type = 'checkbox'; checkbox.checked = selected.has(fish.Id); checkbox.disabled = !canControl() || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || Boolean(inflight);
+      checkbox.type = 'checkbox'; checkbox.checked = selected.has(fish.Id); checkbox.disabled = !canControl() || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || Boolean(inflight) || occupiedBank();
       checkbox.addEventListener('change', () => { if (checkbox.checked) selected.add(fish.Id); else selected.delete(fish.Id); updateButtons(); });
       const plate = fishFigure(document,fish.SpeciesKey); if (plate) item.append(plate);
       text.textContent = `${fishName(fish.SpeciesKey) ?? fish.SpeciesKey} · ${decimal(fish.MassMg, 6)} kg · ${decimal(fish.SaleValueMinor)} 银币`;
@@ -426,8 +462,9 @@ function updateButtons() {
   if (catchTimer !== null && (!canControl() || hostPolicy?.canRun === false || snapshot.MenuOpen || snapshot.SessionId || castInput.state() || document.hidden)) hideCatch();
   reconcileSpot();
   wardrobe.reconcile();
-  bottomShop.reconcile(); bottomStrike.reconcile(); renderBottom();
-  const active = canControl() && !inflight && !spotRequest && !bottomShop.busy && !wardrobe.busy && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
+  bankKit.reconcile(); stand.reconcile(); bottomShop.reconcile(); bottomStrike.reconcile(); renderBottom();
+  renderBankShop(snapshot?.MenuOpen); renderStand();
+  const active = canControl() && !inflight && !spotRequest && !gearBusy() && !wardrobe.busy && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
   const input = castInput.state();
   $('cast').disabled = !canPrepare() || !bankWalk.canCast(waterView.state()) || Boolean(input);
   $('cast-release').disabled = !canPrepare() || input?.phase !== 'charging' || input.source !== 'button';
@@ -444,11 +481,11 @@ function updateButtons() {
   const failureRetryPending = fightInput.state().pending.some(p => p.action === 'retry-escape' && p.sessionId === fight.sessionId && p.encounterId === fight.encounterId && p.lease === fight.lease);
   $('retry-escape').hidden = fight.phase !== 'failure-pending' || !fight.canRetryFailure;
   $('retry-escape').disabled = !fight.allowed || fight.phase !== 'failure-pending' || !fight.canRetryFailure || failureRetryPending;
-  $('recall').disabled = !active || !snapshot.SessionId || snapshot.PendingResult || failurePending();
-  $('release').disabled = !active || !snapshot.PendingResult;
+  $('recall').disabled = !active || !handReady() || !heldSession() || snapshot.PendingResult || failurePending();
+  $('release').disabled = !active || !handReady() || !snapshot.PendingResult;
   $('menu').disabled = !active;
   $('menu').textContent = snapshot?.MenuOpen ? '返回钓位' : spotMenu.revision ? '打开钓点、鱼护与商店' : '打开鱼护与商店';
-  $('sell').disabled = !active || campEngaged() || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || !selected.size;
+  $('sell').disabled = !active || campEngaged() || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || occupiedBank() || !selected.size;
   $('previous').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset <= 0;
   $('next').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset + (snapshot.Creel?.length ?? 0) >= snapshot.CreelCount;
   const shop = shopContext(), shopState = shopInput.state(), shopping = shop.allowed && shopState.ready && !shopBusy() && !shopState.faulted && canUseShop();
@@ -497,8 +534,15 @@ function renderBottom() {
   if (bottom && !bottomPanel) {
     bottomPanel = createBottomTipPanel(document); $('bottom-diagram').append(bottomPanel.element);
   }
-  bottomPanel?.render(bottomView,snapshot?.SessionId);
+  bottomPanel?.render(bottomView,heldSession());
   $('bottom-strike').disabled = !bottomStrike.available;
+}
+function renderStand() {
+  const visible = bankKit.selected && landscape() && !snapshot?.MenuOpen && Boolean(stand.state());
+  for (const {panel,container} of standPanels) {
+    container.hidden = !visible || (container === $('scene-stand') ? !scene.visible : scene.visible);
+    if (!container.hidden) panel.render(stand);
+  }
 }
 const campAreas = { map: 'spot-menu', creel: 'creel-section', gear: 'equipment', tackle: 'shop-net',
   food: 'shop-food', clothes: 'wardrobe', work: 'camp' };
@@ -541,6 +585,7 @@ function renderCampNavigation() {
   }
 }
 function revoke(reason) {
+  stand.clearInput();
   bankWalk.stop();
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
@@ -549,9 +594,10 @@ function revoke(reason) {
   render();
 }
 function intent(action) {
-  if (!canControl() || inflight || spotRequest || bottomShop.busy || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
+  if (!canControl() || inflight || spotRequest || gearBusy() || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
+  if (bankKit.selected && (action === 'sell' ? occupiedBank() : !handReady() || !heldSession())) return;
   fightInput.cancel();
-  const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : snapshot.SessionId,
+  const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : heldSession(),
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
   if (action === 'sell') command.fishIds = [...selected];
   inflight = crypto.randomUUID();
@@ -565,6 +611,10 @@ Object.assign(codes, { 'bottom-kit-purchased':'底钓套装购买已确认。', 
   'bottom-spot-unavailable':'请前往静水湾的底钓区。', 'bottom-strike-missed':'已经错过这次鱼口。',
   'outside-bottom-patch':'落点离开底钓区，请收回并重新瞄准。', 'bed-too-steep':'落点底坡过陡，请换个落点。' });
 Object.assign(codes, { 'save-settlement-reserve': '存档空间不足以安全保存下一竿，已取消操作，未扣除鱼饵或体力。请保留当前存档。' });
+Object.assign(codes, { 'bank-purchased':'竿架装备购买已确认。', 'bank-mode-selected':'钓竿模式已切换。', 'bank-busy':'请先收回各竿，完成当前操作。',
+  'bank-stale':'装备或进度已变化，请重新选择。', 'bank-unavailable':'当前无法使用竿架。','bank-kit-required':'请先购买底竿和竿架。',
+  'bank-leave-first':'请先退出竿架模式。','stand-updated':'取放已确认。','slot-unreachable':'请走到竿架附近。',
+  'ownership-stale':'竿位已变化，请重新选择。','slot-empty':'该竿位没有竿。','slot-occupied':'该竿位已占用。','hands-empty':'请先取竿。' });
 for (const [code, text] of Object.entries(wardrobeMessages)) if (code.startsWith('wardrobe-')) codes[code] = text;
 Object.assign(codes, { 'spot-selected': '钓点已切换。', 'spot-unchanged': '已在所选钓点。', 'spot-unavailable': '该钓点暂未开放。',
   'spot-switch-busy': '请先结束当前一竿或处理菜单中的操作。', 'spot-stale': '水域已更新，请重新选择钓点。' });
@@ -604,6 +654,14 @@ Object.assign(codes, { 'camp-work-started': '帮工已开始，请保持当前�
   'camp-creel-not-empty': '可以先出售鱼护里的渔获。', 'camp-schema-required': '此存档尚未支持营地帮工。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
+  if (m.kind === 'game-bank-kit-state') {
+    if (bankKit.apply(m)) render();
+    return;
+  }
+  if (m.kind === 'game-stand-state') {
+    if (stand.apply(m)) { castInput.reconcile(); fightInput.reconcile(); renderCast(); renderFight(); updateButtons(); }
+    return;
+  }
   if (m.kind === 'game-bottom-shop-state') {
     if (bottomShop.apply(m)) { renderFlight(); renderCast(); updateButtons(); }
     return;
@@ -701,7 +759,7 @@ window.chrome.webview.addEventListener('message', event => {
     const walkReply = bankWalk.reply(m);
     if (['walk-updated','walk-stopped'].includes(m.code)) { if (walkReply) updateButtons(); return; }
     if (campOpening && campOpening.transportId === m.transportId && m.code !== 'menu-updated') campOpening = null;
-    wardrobe.reply(m); bottomShop.reply(m); bottomStrike.reply(m);
+    wardrobe.reply(m); bottomShop.reply(m); bottomStrike.reply(m); bankKit.reply(m); stand.reply(m);
     if (spotRequest && m.transportId === spotRequest.transportId) {
       if (m.code === 'spot-selected' || m.code === 'spot-unchanged') spotRequest.acknowledged = true;
       else { spotRequest = null; spotMenu.reject(codes[m.code]); }
@@ -757,7 +815,8 @@ $('recall').addEventListener('click', () => intent('recall'));
 $('release').addEventListener('click', () => intent('release-current'));
 $('sell').addEventListener('click', () => intent('sell'));
 function toggleMenu(area = 'home') {
-  if (!canControl() || inflight || spotRequest || bottomShop.busy || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
+  if (!canControl() || inflight || spotRequest || gearBusy() || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
+  stand.clearInput();
   bankWalk.stop();
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
@@ -886,6 +945,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) revok
 const typing = target => target instanceof Element && (target.isContentEditable || target.closest('input,textarea,select'));
 document.addEventListener('focusin', event => { if (typing(event.target)) bankWalk.stop(); });
 document.addEventListener('keydown', event => {
+  if (bankKit.selected && stand.key(event,true)) { event.preventDefault(); updateButtons(); return; }
   if (!typing(event.target) && !event.isComposing && !event.defaultPrevented && !event.altKey && !event.ctrlKey && !event.metaKey &&
       bankWalk.key(event,true)) { event.preventDefault(); return; }
   const isEscape = event.key === 'Escape' || event.code === 'Escape', area = campKeys[event.code];
@@ -904,6 +964,7 @@ document.addEventListener('keydown', event => {
   if (event.code === 'Space' && !event.repeat && fightContext().allowed) { event.preventDefault(); fightInput.land(); updateButtons(); }
 });
 document.addEventListener('keyup', event => {
+  stand.key(event,false);
   if (!typing(event.target) && bankWalk.key(event,false)) event.preventDefault();
   if (event.code === 'KeyR') speedKeyHeld = false;
 });
@@ -919,6 +980,7 @@ window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authorit
   biteState: biteView.state(), biteRevision: biteView.revision, strikeInputState: strikeInput.state(),
   bottomState:bottomView.state(), bottomRevision:bottomView.revision, bottomLineEnd:bottomLineEnd && { ...bottomLineEnd },
   bottomShopState:bottomShop.state(), bottomShopPending:bottomShop.pending,
+  bankKitState:bankKit.state(), bankKitPending:bankKit.pending, standState:stand.state(), standRevision:stand.revision, standPending:stand.pending,
   fightState: fightView.state(), fightRevision: fightView.revision, fightInputState: fightInput.state(),
   shopState: shopView.state(), shopRevision: shopView.revision, shopInputState: shopInput.state(),
   equipmentState: equipmentView.state(), equipmentRevision: equipmentView.revision, equipmentInputState: equipmentInput.state(),

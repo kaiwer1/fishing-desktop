@@ -28,7 +28,7 @@ namespace FishingDesktop.GameCore
         public readonly ReadOnlyCollection<FloatPageFish> Creel;
         public readonly FloatPageFish PendingFish;
 
-        private FloatPageProjection(FloatOwnerSnapshot snapshot, int offset, int pageSize)
+        private FloatPageProjection(FloatOwnerSnapshot snapshot, int offset, int pageSize, FloatSession held)
         {
             HasConfirmedState = !snapshot.Faulted && snapshot.State != null;
             Faulted = snapshot.Faulted; HostPaused = snapshot.HostPaused || !HasConfirmedState;
@@ -46,10 +46,11 @@ namespace FishingDesktop.GameCore
                 RigDefinitionKey = state.Rig.DefinitionKey; BaitDefinitionKey = state.BaitDefinitionKey;
                 Stamina = state.Stamina; BaitCount = state.BaitCount;
                 CreelCount = state.Creel.Count; CreelCapacity = state.Rules.CreelCapacity; CreelOffset = offset;
-                SessionId = state.Session == null ? null : state.Session.Id.ToString("D");
-                PendingResult = state.Session != null && state.Session.CapacityBlocked;
-                SessionStatus = state.Session == null ? "idle" : PendingResult ? "pending" : "active";
-                if (PendingResult) PendingFish = new FloatPageFish(state.Session.PendingFish);
+                var session=held??state.Session;
+                SessionId = session == null ? null : session.Id.ToString("D");
+                PendingResult = session != null && session.CapacityBlocked;
+                SessionStatus = session == null ? "idle" : PendingResult ? "pending" : "active";
+                if (PendingResult) PendingFish = new FloatPageFish(session.PendingFish);
                 int count = Math.Min(pageSize, CreelCount - offset);
                 for (int index = 0; index < count; index++) rows.Add(new FloatPageFish(state.Creel[offset + index]));
             }
@@ -59,13 +60,14 @@ namespace FishingDesktop.GameCore
         // The host supplies a current snapshot and an explicit bounded page.
         // Clamp a remembered UI offset after mutations before calling this;
         // accepting an invalid offset silently would conceal adapter mistakes.
-        public static FloatPageProjection Create(FloatOwnerSnapshot snapshot, int offset, int pageSize)
+        public static FloatPageProjection Create(FloatOwnerSnapshot snapshot, int offset, int pageSize, FloatSession held=null)
         {
             if (snapshot == null) throw new ArgumentNullException("snapshot");
             if (pageSize < 1 || pageSize > 50) throw new ArgumentOutOfRangeException("pageSize");
             int count = !snapshot.Faulted && snapshot.State != null ? snapshot.State.Creel.Count : 0;
             if (offset < 0 || offset > count) throw new ArgumentOutOfRangeException("offset");
-            return new FloatPageProjection(snapshot, offset, pageSize);
+            if(held!=null&&(snapshot.State==null||!Object.ReferenceEquals(snapshot.State.BankSessionFor(held.BankRigId),held)))throw new ArgumentException("Selected bank session is not current.");
+            return new FloatPageProjection(snapshot, offset, pageSize,held);
         }
     }
 }

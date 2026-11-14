@@ -33,27 +33,42 @@ namespace FishingDesktop.GameCore
     {
         internal const int LegacyCastFrameBytes=188,EquipmentCastFrameBytes=212,BottomCastFrameBytes=260;
         internal const int MaximumEndingBytes=482,ReleaseFrameBytes=188;
+        // Each type 27 adds the 16-byte rig identity and 1-byte ending code.
+        internal const int BankReleaseFrameBytes=ReleaseFrameBytes+17,MaximumBankEndingBytes=MaximumEndingBytes+34;
+        internal readonly bool CanStartBankCast;
         public readonly bool CanStartCast;
         public readonly string Code;
         public readonly long RemainingTransactions,RemainingBytes;
         public readonly int RequiredCastTransactions=3,RequiredCastBytes;
         internal bool CanStartBottomCast {get{return RemainingTransactions>=RequiredCastTransactions && RemainingBytes>=BottomCastFrameBytes+MaximumEndingBytes;}}
-        internal FloatSaveBudget(int schema,long sequence,long length)
+        internal FloatSaveBudget(int schema,long sequence,long length,System.Collections.Generic.IEnumerable<FloatSession> bankSessions=null)
         {
             if((schema!=1&&schema!=2&&schema!=3)||sequence<0||sequence>FloatGameStore.MaximumTransactions||length<0||length>FloatGameStore.MaximumFileBytes)
                 throw new ArgumentOutOfRangeException("save budget");
             RemainingTransactions=FloatGameStore.MaximumTransactions-sequence;
             RemainingBytes=FloatGameStore.MaximumFileBytes-length;
+            int bankTransactions,bankBytes;
+            BankReserve(bankSessions,out bankTransactions,out bankBytes);
+            CanStartBankCast=RemainingTransactions>=bankTransactions+3 && RemainingBytes>=bankBytes+BottomCastFrameBytes+MaximumBankEndingBytes;
             RequiredCastBytes=(schema==3?EquipmentCastFrameBytes:LegacyCastFrameBytes)+MaximumEndingBytes;
             CanStartCast=RemainingTransactions>=RequiredCastTransactions&&RemainingBytes>=RequiredCastBytes;
             Code=CanStartCast?null:"save-settlement-reserve";
         }
         // Called for every NEW candidate, not replay. A legacy upgrade can
         // leave an active cast too, and must not spend its reserved ending.
-        internal static bool PreservesEnding(long sequence,long length,long frameBytes,FloatSession candidateSession)
+        static void BankReserve(System.Collections.Generic.IEnumerable<FloatSession> sessions,out int transactions,out int bytes)
         {
-            int transactions=candidateSession==null?0:candidateSession.CapacityBlocked?1:2;
-            int bytes=candidateSession==null?0:candidateSession.CapacityBlocked?ReleaseFrameBytes:MaximumEndingBytes;
+            transactions=0;bytes=0;if(sessions==null)return;
+            foreach(var session in sessions){
+                transactions+=session.CapacityBlocked?1:2;
+                bytes+=session.CapacityBlocked?BankReleaseFrameBytes:MaximumBankEndingBytes;
+            }
+        }
+        internal static bool PreservesEnding(long sequence,long length,long frameBytes,FloatSession candidateSession,System.Collections.Generic.IEnumerable<FloatSession> bankSessions=null)
+        {
+            int transactions,bytes;BankReserve(bankSessions,out transactions,out bytes);
+            transactions+=candidateSession==null?0:candidateSession.CapacityBlocked?1:2;
+            bytes+=candidateSession==null?0:candidateSession.CapacityBlocked?ReleaseFrameBytes:MaximumEndingBytes;
             return sequence<=FloatGameStore.MaximumTransactions-1-transactions&&
                 length<=FloatGameStore.MaximumFileBytes-frameBytes-bytes;
         }
@@ -102,7 +117,7 @@ namespace FishingDesktop.GameCore
         }
         public FloatSaveBudget SaveBudget
         {
-            get { lock (_gate) { CheckAvailable();return new FloatSaveBudget(_state.SchemaVersion,_state.Sequence,_length); } }
+            get { lock (_gate) { CheckAvailable();return new FloatSaveBudget(_state.SchemaVersion,_state.Sequence,_length,_state.BankSessions); } }
         }
 
         public static FloatGameStore CreateNew(string path, FloatGameState genesis)
@@ -171,7 +186,7 @@ namespace FishingDesktop.GameCore
                     // Old receipts remain queryable at the capacity boundary.
                     if (_state.Sequence >= MaximumTransactions || _length > MaximumFileBytes - frameSize)
                         return new FloatCommitResult("save-capacity", _state, null, false, false, false);
-                    if(!FloatSaveBudget.PreservesEnding(_state.Sequence,_length,frameSize,result.Candidate.Session))
+                    if(!FloatSaveBudget.PreservesEnding(_state.Sequence,_length,frameSize,result.Candidate.Session,result.Candidate.BankSessions))
                         return new FloatCommitResult("save-settlement-reserve",_state,null,false,false,false);
                     var upgrade=command as UpgradeFloatProfile;
                     if(upgrade!=null&&!UpgradeMatchesPrefix(upgrade,_file,_length,_lastHash))

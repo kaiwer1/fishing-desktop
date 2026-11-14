@@ -10,7 +10,7 @@ sealed partial class DualWindowContext
     FloatLineBreakRules gameLineBreakRules;
     double gameFightMillisecondRemainder;
     GameCastInput gameReelInput;
-    HostFloatFish gameLandingCommand;
+    FloatCommand gameLandingCommand;
     FloatLandingTicket gameLandingTicket;
     bool gameLandingRetry;
     int gameNaturalLandings;
@@ -72,7 +72,8 @@ sealed partial class DualWindowContext
         var fight=gameFight.Snapshot;var state=game.Snapshot;
         if(fight.Phase==FloatFightPhase.Ended || fight.Phase==FloatFightPhase.Landed || fight.Phase==FloatFightPhase.Escaped)return false;
         if(state.Faulted){ClearGameFightInput();return false;}
-        if(state.State!=null && state.State.Session!=null && state.State.Session.Id==fight.SessionId){
+        var active=GameBankMode?GameHeldBankSession:(state.State==null?null:state.State.Session);
+        if(active!=null && active.Id==fight.SessionId){
             if(!state.CanSimulate || !GameReelCurrent())ClearGameFightInput();
             return false;
         }
@@ -81,6 +82,7 @@ sealed partial class DualWindowContext
     }
     void AdvanceGameFight(double activeSeconds)
     {
+        if(GameBankMode)return;
         if(gameFight==null)return;
         if(ReconcileGameFight()){BroadcastGameFight();return;}
         var before=gameFight.Snapshot;
@@ -127,24 +129,34 @@ sealed partial class DualWindowContext
     void BroadcastGameFight(){foreach(var pane in windows.Values)SendGameFight(pane);}
     void ReceiveGameFight(ProbeWindow pane,GameBinding binding,Dictionary<string,object> message,string transport)
     {
+        if(!BankWireHand(pane,transport,message))return;
         string action;long sequence;Guid session,encounter;object sessionRaw,encounterRaw,rawValue;int level=0;
         if(!StringField(message,"action",out action) || !GameInputSequence(message,out sequence) || !message.TryGetValue("sessionId",out sessionRaw) ||
             !message.TryGetValue("encounterId",out encounterRaw) || !GameGuid(sessionRaw,false,out session) || !GameGuid(encounterRaw,false,out encounter)){
             GameReply(pane,transport,"invalid-intent");return;
         }
         bool hasLevel=action=="drag" || action=="speed";
-        if(message.Count!=(hasLevel?9:8) || (hasLevel?(!message.TryGetValue("value",out rawValue) || !(rawValue is int) || (level=(int)rawValue)<0 || level>10):
+        if(message.Count!=(hasLevel?9:8)+(GameBankMode?1:0) || (hasLevel?(!message.TryGetValue("value",out rawValue) || !(rawValue is int) || (level=(int)rawValue)<0 || level>10):
             (action!="reel-start" && action!="reel-stop" && action!="land" && action!="retry-land" && action!="retry-escape"))){GameReply(pane,transport,"invalid-intent");return;}
         if(sequence<=binding.FightHighWater){GameReply(pane,transport,"stale-input");return;}
         binding.FightHighWater=sequence;AdvanceActivity();
         if(!game.CanControl(binding.View,binding.Document,binding.Lease) || !game.Snapshot.CanSimulate){GameReply(pane,transport,"domain-paused");return;}
         if(gameFight==null || gameFight.Snapshot.SessionId!=session || gameFight.Snapshot.EncounterId!=encounter){GameReply(pane,transport,"fight-not-current");return;}
+        if(GameBankMode&&!BankCanOperate(session)){GameReply(pane,transport,"stand-hand-stale");return;}
         FloatFightResult result;
         if(action=="retry-escape"){
             if(!gameFailureRetry){GameReply(pane,transport,"failure-retry-unavailable");return;}
             result=gameFight.RetryFailure(gameFailureTicket);
             if(result.ShouldCommitFailure){CommitGameFailure(result,pane,transport);return;}
         }else if(action=="reel-start" || action=="reel-stop"){
+            if(GameBankMode){
+                string why=gameBankScheduler.ReelHeld(gameBankStand.Held,session,encounter,gameBankStand.ControlEpoch,
+                    gameBankStand.HandGeneration,checked(++bankRodControlSequence),action=="reel-start");
+                if(why!=null){GameReply(pane,transport,why);return;}
+                gameReelInput=action=="reel-stop"?null:new GameCastInput{Pane=pane,Binding=binding,Document=binding.Document,Lease=binding.Lease,
+                    WireLease=binding.WireLease,DocumentId=pane.Ticket.DocumentId,Navigation=pane.NavigationGeneration,Sequence=sequence};
+                GameReply(pane,transport,action=="reel-start"?"reel-held":"reel-released");BroadcastGameFight();return;
+            }
             result=gameFight.SetReeling(session,encounter,action=="reel-start");
             if(result.Accepted){
                 gameReelInput=action=="reel-stop"?null:new GameCastInput{Pane=pane,Binding=binding,Document=binding.Document,Lease=binding.Lease,
@@ -159,8 +171,9 @@ sealed partial class DualWindowContext
                 var state=game.Snapshot.State;var target=result.Snapshot.Target;
                 gameLandingTicket=result.LandingTicket;
                 Guid fishId=Guid.NewGuid();
-                gameLandingCommand=new HostFloatFish(state.ProfileId,state.BranchId,Guid.NewGuid(),result.LandingTicket.LandingId,session,fishId,encounter,
-                    target.SpeciesId,target.MassMg,state.Sequence,state.Rig.Revision,state.RulesVersion);
+                if(GameBankMode)gameLandingCommand=SettleBankBottomRod.Land(state,gameBankStand.Held,session,fishId,encounter,target.SpeciesId,target.MassMg,result.LandingTicket.LandingId);
+                else gameLandingCommand=new HostFloatFish(state.ProfileId,state.BranchId,Guid.NewGuid(),result.LandingTicket.LandingId,session,fishId,
+                    encounter,target.SpeciesId,target.MassMg,state.Sequence,state.Rig.Revision,state.RulesVersion);
             }
             CommitGameLanding(pane,transport,result);return;
         }

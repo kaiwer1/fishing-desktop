@@ -12,7 +12,7 @@ namespace FishingDesktop.GameCore
         {
             if(state==null)return "camp-state-unavailable";
             if(state.SchemaVersion!=3)return "camp-schema-required";
-            if(state.Session!=null)return "session-busy";
+            if(state.Session!=null||state.BankSessions.Count>0)return "session-busy";
             if(state.Creel.Count!=0)return "camp-creel-not-empty";
             if(state.WalletMinor>=EligibleWalletBelow)return "camp-wallet-ineligible";
             // Subtraction avoids overflow and preserves the configured cap.

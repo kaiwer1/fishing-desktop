@@ -61,7 +61,7 @@ async function pageFixture() {
   };
   const grant = lease => emit({ kind: 'lease', revision: ++leaseRevision, cancellationEpoch: 0, lease });
   emit({ kind: 'role', role: '交互' }); emit({ kind: 'game-snapshot', revision: ++snapshotRevision, snapshot: { ...snapshot } }); grant('first'); broadcast();
-  return { nodes, messages, snapshot, shop, equipment, spares, camp, probe, broadcast, grant, emit, windowEvents,
+  return { nodes, messages, snapshot, shop, equipment, spares, camp, probe, broadcast, grant, emit, windowEvents, documentEvents,
     click: (id, event, force) => nodes.get(id).dispatch('click', event, force),
     select(id, value) { nodes.get(id).value = value; nodes.get(id).dispatch('change'); },
     reply(code, transportId = messages.at(-1).transportId) { emit({ kind: 'game-reply', transportId, code }); },
@@ -152,6 +152,65 @@ function spotWater(f, revision, geometryVersion, waterId) {
     bounds: { minXmm: -12000, maxXmm: 12000, minZmm: 12000, maxZmm: 40000 }, surfaceYmm: 0, floatDepthMm: 200, clearanceMm: 100,
     bed: [{ zMm: 3000, depthMm: 1000 }, { zMm: 80000, depthMm: 3500 }], target: null, prediction: null, landing: null } });
 }
+
+const bankKitState = (f,revision,extra={}) => f.emit({kind:'game-bank-kit-state',revision,state:{
+  available:true, allowed:true, selected:false, standOwned:false, kitCount:1, extraPriceMinor:4800, standPriceMinor:1600, ...extra }});
+
+test('the tackle counter confirms individual stand and kit purchases against real ownership before enabling the bank mode',async()=>{
+  const f=await pageFixture();
+  bankKitState(f,1);
+  assert.equal(f.nodes.get('bank-select').disabled,true);
+  assert.equal(f.nodes.get('bank-buy-3').hidden,true);
+  f.click('bank-buy-stand');f.click('quote-food',{},true);
+  assert.equal(f.messages.length,0);assert.match(f.nodes.get('bank-status').textContent,/16\.00/);
+  f.click('bank-confirm');f.click('bank-confirm',{},true);
+  assert.equal(f.messages.length,1);
+  assert.deepEqual(Object.keys(f.messages[0]).sort(),['action','documentId','expectedSequence','kind','lease','transportId']);
+  assert.equal(f.messages[0].action,'buy-stand');
+  f.reply('bank-purchased');assert.equal(f.probe.state().bankKitState.standOwned,false);
+  f.advance();f.snapshot.WalletMinor='10400';f.broadcast();bankKitState(f,2,{standOwned:true});
+  assert.equal(f.probe.state().bankKitPending,null);
+  f.click('bank-buy-2');assert.match(f.nodes.get('bank-status').textContent,/48\.00/);
+  f.click('bank-confirm');assert.equal(f.messages[1].expectedSequence,'2');f.reply('bank-purchased');
+  f.advance();f.snapshot.WalletMinor='5600';f.broadcast();bankKitState(f,3,{standOwned:true,kitCount:2});
+  assert.equal(f.nodes.get('bank-buy-3').hidden,false);
+  f.click('bank-select');assert.equal(f.messages[2].action,'select');
+  bankKitState(f,4,{standOwned:true,kitCount:2,selected:true});
+  assert.equal(f.probe.state().bankKitPending,'select');f.reply('bank-mode-selected');
+  assert.equal(f.probe.state().bankKitPending,null);f.click('bank-leave');assert.equal(f.messages[3].action,'leave');
+});
+
+test('bank keys, alarm and mouse actions follow the confirmed held rod and its generation',async()=>{
+  const f=await pageFixture(), water=spots[0].id, makeRod=n=>({rigId:id(n),sessionId:null,label:'底钓竿 '+n,phase:'idle',tipPermille:0,lineEnd:null});
+  spotWater(f,1,1,water);bankKitState(f,1,{standOwned:true,selected:true,kitCount:2});
+  const a=makeRod(10), b=makeRod(11), slot=(n,rig)=>({slot:n,rig,alarm:'none',reachable:true});
+  const state={waterId:water,spotId:'bank-01',standId:id(20),standRevision:'1',controlEpoch:'2',handGeneration:'2',
+    geometryVersion:1,origin:{xMm:0,yMm:0,zMm:1200},aimedSlot:1,pending:false,heldRig:null,slots:[slot(1,a),slot(2,b),slot(3,null)]};
+  let revision=0;const emitStand=()=>f.emit({kind:'game-stand-state',revision:++revision,state:structuredClone(state)});
+  const key=(code,type='keydown')=>f.documentEvents.dispatch(type,{code});
+  emitStand();key('Digit1');assert.equal(f.messages.length,0);
+  f.snapshot.MenuOpen=false;f.broadcast();assert.equal(f.nodes.get('map-stand').hidden,false);
+  f.click('cast',{},true);assert.equal(f.messages.length,0);
+  key('Digit1');assert.equal(f.messages.at(-1).expectedOccupant,a.rigId);
+  f.reply('stand-updated');assert.equal(f.probe.state().standPending,true);
+  Object.assign(state,{heldRig:a,standRevision:'2',handGeneration:'3'});state.slots[0]=slot(1,null);emitStand();key('Digit1','keyup');
+  assert.equal(f.probe.state().standPending,false);
+  f.click('cast');assert.equal(f.messages.at(-1).bankHand,'3');assert.equal(f.messages.at(-1).action,'begin');
+  state.heldRig={...a,phase:'charging'};emitStand();f.click('cast-release');
+  assert.equal(f.messages.at(-1).action,'release');assert.equal(f.messages.at(-1).bankHand,'3');
+  const session=id(80);f.snapshot.SessionId=session;f.broadcast();
+  Object.assign(state,{heldRig:{...a,phase:'waiting',sessionId:session},handGeneration:'3'});emitStand();
+  f.emit({kind:'game-bottom-state',revision:1,state:{sessionId:session,phase:'bite',tipPermille:975}});
+  f.nodes.get('cast-target').dispatch('mousedown',{button:2,buttons:2});assert.equal(f.messages.at(-1).kind,'game-bottom-strike');
+  assert.equal(f.messages.at(-1).bankHand,'3');assert.equal(f.messages.at(-1).sessionId,session);f.reply('bottom-hooked');
+  key('Digit2');assert.equal(f.messages.at(-1).key,'two');
+  state.slots[0]={...slot(1,state.heldRig),alarm:'bite'};state.slots[1]=slot(2,null);
+  Object.assign(state,{heldRig:b,standRevision:'4',handGeneration:'4'});emitStand();f.reply('stand-updated');
+  const count=f.messages.length;f.click('recall',{},true);assert.equal(f.messages.length,count);
+  f.snapshot.SessionId=null;f.broadcast();f.click('cast');assert.equal(f.messages.at(-1).bankHand,'4');
+  state.handGeneration='5';emitStand();f.click('cast-release',{},true);assert.equal(f.messages.length,count+1);
+  f.snapshot.MenuOpen=true;f.broadcast();assert.equal(f.nodes.get('bank-leave').disabled,true);
+});
 
 test('shared spot menu uses only the current geometry version and waits for confirmed location, water and matching reply', async () => {
   const f = await pageFixture(); assert.equal(f.nodes.get('spot-menu').hidden, true);

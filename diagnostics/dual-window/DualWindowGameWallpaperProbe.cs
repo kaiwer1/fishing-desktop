@@ -184,6 +184,15 @@ sealed partial class DualWindowContext
                 "Wallpaper observer acquired player control or spent game resources.");
             checks.Add("the invisible interaction control can be authorized but its grant cannot cast from the read-only wallpaper document");
 
+            // Another WebView in the same player profile changes a display preference.
+            // The desktop child's storage event must resize its own drawing buffer.
+            await pane.View.CoreWebView2.ExecuteScriptAsync("localStorage.setItem('fishing-desktop.shore-quality.v1','low')");
+            var reduced=await Wait(read,v=>Number(SceneProbeRenderer(v),"frameLimit")==18,8000);
+            var low=SceneProbeRenderer(reduced);
+            Require(Number(low,"width")*Number(low,"height")<=1280*720 && (string)low["quality"]=="low","Desktop did not apply the low pixel budget.");
+            await pane.View.CoreWebView2.ExecuteScriptAsync("localStorage.setItem('fishing-desktop.shore-quality.v1','medium')");
+            await Wait(read,v=>Number(SceneProbeRenderer(v),"frameLimit")==30 &&
+                Number(SceneProbeRenderer(v),"width")==Number(startSample,"width"),8000);
             await GameMenu(pane,lease,true);
             await SceneProbeButton(pane,"spot-select-river-bend");var river=FloatFishingAtlas.Find("river-bend");
             await Wait(read,v=>AtlasProbeProjected(v,river.Id),10000);await GameMenu(pane,lease,false);
@@ -218,7 +227,8 @@ sealed partial class DualWindowContext
                 renderedFrames=sampledFrames,renderSampleMs=Math.Round(sampleMilliseconds,1),
                 renderFramesPerSecond=Math.Round(sampledFrames*1000.0/sampleMilliseconds,2),twoSecondRenderRates=intervalRates.ToArray(),
                 renderWidth=Number(startSample,"width"),renderHeight=Number(startSample,"height"),
-                sampleColors=colors,ownWebViewCapture=true,desktopCompositionCaptured=false,nativeInputTested=false,desktopIconInteractionTested=false,
+                sampleColors=colors,qualitySynced=true,economyWidth=Number(low,"width"),economyHeight=Number(low,"height"),
+                ownWebViewCapture=true,desktopCompositionCaptured=false,nativeInputTested=false,desktopIconInteractionTested=false,
                 systemWallpaperPreferenceChanged=false,personalSaveRead=false,attachments=desktopAttachments,detachments=desktopDetachments,
                 remainingLeases=desktopLeases.Count,presentationChecks,sequence=s.Sequence,value=s.WalletMinor,speciesCount=s.Rules.Species.Count,
                 baitCount=s.BaitCount,stamina=s.Stamina,gameFlightEmissions,shutdown=gameShutdownCode}),Encoding.UTF8);

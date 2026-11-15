@@ -4,11 +4,18 @@ export class ScenePresentation {
   #canvas; #load; #projection; #canRender; #cancelHeld; #changed;
   #renderer = null; #enabled = false; #preferScene = true; #loading = false;
   #fault = null; #generation = 0; #active = null; #closed = false;
+  #quality = 'medium';
   constructor({ canvas, load, projection, canRender, cancelHeld, changed }) {
     this.#canvas = canvas; this.#load = load; this.#projection = projection;
     this.#canRender = canRender; this.#cancelHeld = cancelHeld; this.#changed = changed;
   }
   get visible() { return Boolean(this.#enabled && this.#preferScene && this.#renderer && !this.#fault); }
+  setQuality(value) {
+    if (!['low','medium','high'].includes(value) || this.#closed) return;
+    this.#quality = value;
+    try { this.#renderer?.setQuality(value); }
+    catch { this.#fail('webgl-render-failed'); }
+  }
   state() { return { mode: this.visible ? 'scene' : 'map', enabled: this.#enabled, loading: this.#loading,
     fault: this.#fault, renderer: this.#renderer?.state() ?? null }; }
   configure(enabled) {
@@ -31,7 +38,7 @@ export class ScenePresentation {
     try {
       const { createGameScene } = await this.#load();
       if (generation !== this.#generation || this.#closed) return;
-      const renderer = createGameScene(this.#canvas, { onFault: reason => {
+      const renderer = createGameScene(this.#canvas, { quality:this.#quality, onFault: reason => {
         if (generation === this.#generation) this.#fail(reason);
       } });
       if (generation !== this.#generation) { renderer.dispose(); return; }

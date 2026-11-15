@@ -243,6 +243,26 @@ const scene = new ScenePresentation({ canvas: $('scene-canvas'), load: () => imp
     !visualPaused && snapshot?.HasConfirmedState && !snapshot.HostPaused && !snapshot.ShutdownConfirmed &&
     !snapshot.Faulted && !saveFaulted && (readOnly || !snapshot.MenuOpen),
   cancelHeld: () => { bankWalk.stop(); castInput.cancel(); lureInput.reset(); fightInput.cancel(); speedKeyHeld = false; }, changed: renderSceneShell });
+const qualityKey = 'fishing-desktop.shore-quality.v1';
+function applyQuality(value) {
+  const quality = ['low','medium','high'].includes(value) ? value : 'medium';
+  $('scene-quality').value = quality;
+  scene.setQuality(quality);
+}
+try { applyQuality(window.localStorage?.getItem(qualityKey)); } catch { applyQuality('medium'); }
+window.addEventListener('storage', event => {
+  if (event.key === qualityKey || event.key === null) {
+    try { applyQuality(window.localStorage?.getItem(qualityKey)); } catch { /* Keep the active setting. */ }
+  }
+});
+$('scene-quality').addEventListener('change', () => {
+  if (!canUseSceneHelp() || $('scene-help-sheet').hidden) return;
+  applyQuality($('scene-quality').value);
+  try { window.localStorage?.setItem(qualityKey,$('scene-quality').value); } catch { /* Applies for this session. */ }
+});
+for (const name of ['keydown','keyup']) $('scene-quality').addEventListener(name,event=>{
+  if (event.key !== 'Escape' && event.code !== 'F1') event.stopPropagation();
+});
 const bankWalk = new BankWalk({ documentId, post:send, newTransportId:() => crypto.randomUUID(), readContext:() => {
   const water = waterView.state();
   return { lease:authority.state().lease, waterId:water?.waterId, geometryVersion:water?.geometryVersion,
@@ -289,9 +309,12 @@ function showShoreMessage(code) {
   element.textContent = text; element.hidden = false;
   shoreMessageTimer = setTimeout(() => { element.hidden = true; }, 3600);
 }
+function canUseSceneHelp() {
+  return scene.visible && canControl() && !snapshot.MenuOpen && !document.hidden && !visualPaused && document.hasFocus();
+}
 function renderSceneHud() {
   document.body.dataset.sceneMenu = !readOnly && snapshot?.MenuOpen ? 'open' : 'closed';
-  const helpAvailable = scene.visible && canControl() && !snapshot.MenuOpen && !document.hidden && !visualPaused && document.hasFocus();
+  const helpAvailable = canUseSceneHelp();
   $('scene-help-toggle').disabled = !helpAvailable;
   if (!helpAvailable) { setSceneHelp(false); $('scene-message').hidden = true; }
   if (readOnly || !scene.visible) return;
@@ -1160,19 +1183,23 @@ for (const type of ['mouseup','mousemove']) window.addEventListener(type, event 
   markMouseButtons(event.buttons);
 });
 window.addEventListener('blur', () => revoke('blur'));
+window.addEventListener('focus', () => { if (scene.visible) renderSceneHud(); });
 window.addEventListener('pagehide', () => { revoke('pagehide'); scene.dispose(); specimen?.dispose(); });
 window.addEventListener('resize', () => { if (!landscape()) revoke('portrait'); render(); scene.resize(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) revoke('hidden'); else scene.refresh(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) revoke('hidden');
+  else { scene.refresh(); if(scene.visible)renderSceneHud(); }
+});
 const typing = target => target instanceof Element && (target.isContentEditable || target.closest('input,textarea,select'));
 document.addEventListener('focusin', event => { if (typing(event.target)) bankWalk.stop(); });
 document.addEventListener('keydown', event => {
   if (!$('scene-help-toggle').disabled && scene.visible && !snapshot?.MenuOpen &&
-      !typing(event.target) && !event.isComposing && !event.defaultPrevented && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+      (!typing(event.target) || event.target === $('scene-quality')) && !event.isComposing && !event.defaultPrevented && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
       (event.code === 'F1' || event.key === 'Escape' && !$('scene-help-sheet').hidden)) {
     event.preventDefault();
     const open = event.code === 'F1' && $('scene-help-sheet').hidden;
     setSceneHelp(open);
-    if (!open && document.activeElement === $('scene-help-toggle')) $('scene-canvas').focus();
+    if (!open && (document.activeElement === $('scene-help-toggle') || event.target === $('scene-quality'))) $('scene-canvas').focus();
     return;
   }
   if (bankKit.selected && stand.key(event,true)) { event.preventDefault(); updateButtons(); return; }

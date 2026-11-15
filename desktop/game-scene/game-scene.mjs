@@ -12,7 +12,9 @@ const viewNames=['water','cast','flight','bite','fight','bottom','sleeveColor','
 
 // All inputs are read-only page projections. The renderer neither advances a
 // fishing clock nor posts input. Projection helpers use live CSS client pixels.
-export function createGameScene(canvas,{onFault}={}) {
+const frameLimits = {low:18,medium:30,high:60};
+export function createGameScene(canvas,{onFault,quality='medium'}={}) {
+  if(!Object.hasOwn(frameLimits,quality))quality='medium';
   const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:false,powerPreference:'low-power'});
   renderer.outputColorSpace=THREE.SRGBColorSpace;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;
@@ -60,13 +62,13 @@ export function createGameScene(canvas,{onFault}={}) {
   }
   function lost(event){event.preventDefault();fault('webgl-context-lost');}
   function sync(){
-    if(!disposed&&!error&&active&&lake&&width&&height&&canvas.ownerDocument?.visibilityState!=='hidden')scheduler.wake(30);
+    if(!disposed&&!error&&active&&lake&&width&&height&&canvas.ownerDocument?.visibilityState!=='hidden')scheduler.wake(frameLimits[quality]);
     else {hideAim();scheduler.stop();}
   }
   function resize(){
     if(disposed||error)return;
     const r=canvas.getBoundingClientRect();
-    const size=renderSize(r.width,r.height,globalThis.devicePixelRatio||1);
+    const size=renderSize(r.width,r.height,globalThis.devicePixelRatio||1,{quality});
     const w=r.width>0&&r.height>0?size.width:0,h=w?size.height:0;
     if(w!==width||h!==height){width=w;height=h;if(w&&h)renderer.setSize(w,h,false);}
     if(lake&&r.width>0&&r.height>0&&aspect!==r.width/r.height){
@@ -122,7 +124,7 @@ export function createGameScene(canvas,{onFault}={}) {
     }catch{fault('webgl-render-failed');}
   }
   function state(){
-    return {ready:Boolean(lake&&!disposed&&!error),active,running:scheduler.getState().running,frames,width,height,
+    return {ready:Boolean(lake&&!disposed&&!error),active,running:scheduler.getState().running,frames,width,height,quality,frameLimit:frameLimits[quality],
       triangles:renderer.info.render.triangles,calls:renderer.info.render.calls,geometryVersion:water?.geometryVersion??null,rodPhase,
       weather:lighting.state(),shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
       sceneBuilds,mirrorUpdates:lake?.mirrorUpdates()??0,loadedMaterials:lake?.loadedMaterials()??0,cameraXmm:lake&&aspect>0?Math.round(camera.position.x*1000):null,
@@ -140,6 +142,7 @@ export function createGameScene(canvas,{onFault}={}) {
   doc?.addEventListener('visibilitychange',sync);
   doc?.defaultView?.addEventListener('blur',hideAim);
   return {update,resize,state,
+    setQuality(value){if(!disposed&&!error&&Object.hasOwn(frameLimits,value)&&value!==quality){quality=value;resize();}},
     setActive(value){if(disposed||error)return;active=value===true;if(!active)hideAim();resize();},
     pickAim(x,y){if(!water||disposed||error||!width||!height)return null;return pickAim(camera,water,canvas.getBoundingClientRect(),x,y);},
     projectAim(u,v){if(!water||disposed||error||!width||!height)return null;return projectAim(camera,water,canvas.getBoundingClientRect(),u,v);},

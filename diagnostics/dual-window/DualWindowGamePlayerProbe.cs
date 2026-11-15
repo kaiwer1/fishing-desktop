@@ -97,6 +97,40 @@ sealed partial class DualWindowContext
         return changed>=a.Length/12;
     }
 
+    async Task PlayerQualityKey(ProbeWindow pane,string key,int keyCode)
+    {
+        foreach(bool down in new[]{true,false})
+            await pane.View.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",json.Serialize(new {
+                type=down?"keyDown":"keyUp",key=key,code=key,windowsVirtualKeyCode=keyCode,nativeVirtualKeyCode=keyCode}));
+    }
+    async Task<List<object>> PlayerProbeQuality(ProbeWindow pane)
+    {
+        string journal=GameShopJournalDigest();
+        var gate=await SceneProbeScript(pane,@"(()=>{
+            const s=dualProbe.state();return {focus:document.hasFocus(),hidden:document.hidden,role:document.body.dataset.role,
+              lease:!!s.lease,menu:s.snapshot.MenuOpen,paused:s.snapshot.HostPaused,canRun:s.hostPolicy?.canRun,
+              mode:s.sceneState.mode,helpDisabled:document.getElementById('scene-help-toggle').disabled};})()");
+        Require((bool)gate["focus"]&&!(bool)gate["hidden"]&&!(bool)gate["helpDisabled"],"Shore help focus gate: "+json.Serialize(gate));
+        await PlayerQualityKey(pane,"F1",112);
+        Require(await pane.View.CoreWebView2.ExecuteScriptAsync("!document.getElementById('scene-help-sheet').hidden")=="true","F1 did not open the shore controls.");
+        await pane.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('scene-quality').focus()");
+        var results=new List<object>();
+        string[] keys={"Home","ArrowDown","End"},bands={"low","medium","high"};int[] keyCodes={36,40,35},fps={18,30,60},pixelBudget={1280*720,1920*1080,2560*1440};
+        for(int i=0;i<keys.Length;i++){
+            await PlayerQualityKey(pane,keys[i],keyCodes[i]);
+            var page=await Wait(pane,s=>Number(SceneProbeRenderer(s),"frameLimit")==fps[i],8000);
+            var renderer=SceneProbeRenderer(page);long width=Number(renderer,"width"),height=Number(renderer,"height");
+            Require(width>0&&height>0&&width*height<=pixelBudget[i]&&(string)renderer["quality"]==bands[i]&&
+                await pane.View.CoreWebView2.ExecuteScriptAsync("localStorage.getItem('fishing-desktop.shore-quality.v1')")==
+                    json.Serialize(bands[i]),"Selected shore quality was not retained.");
+            results.Add(new {quality=bands[i],width,height,frameLimit=fps[i]});
+        }
+        await WardrobeProbePhoto(pane,"shore-quality.png");
+        await PlayerQualityKey(pane,"F1",112);
+        Require(await pane.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('scene-help-sheet').hidden")=="true"&&
+            GameShopJournalDigest()==journal&&!game.Snapshot.MenuOpen,"Changing quality reached the camp or wrote a game transaction.");
+        return results;
+    }
     async void RunGamePlayerProbe()
     {
         try{
@@ -110,9 +144,13 @@ sealed partial class DualWindowContext
                 "Single player did not start from its new private nine-species profile.");
             // The hidden diagnostic window uses a fixed landscape preview size.
             pane.ClientSize=new Size(1440,900);
+            // Use a focused WebView document before the normal grant and HUD projection.
+            // The private automation window itself is non-activating and click-through.
+            await pane.View.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled","{\"enabled\":true}");
             string lease=await Activate(pane);
             await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
-            checks.Add("the standalone player starts at the lake in a single hidden interaction pane with all seven sale rules");
+            checks.Add("the standalone player starts at the lake in a single hidden interaction pane with all nine sale rules");
+            var qualityModes=await PlayerProbeQuality(pane);
 
             await SceneProbeButton(pane,"scene-menu");
             await Wait(pane,s=>Field(s,"snapshot")!=null&&(bool)Field(s,"snapshot")["MenuOpen"]);
@@ -169,7 +207,7 @@ sealed partial class DualWindowContext
             string oldDocument=pane.Ticket.DocumentId, journal=GameShopJournalDigest();
             Reload(pane);
             var reopened=await Wait(pane,s=>(string)s["documentId"]!=oldDocument && s["lease"]==null && PlayerProbeDrawn(s,coast),30000);
-            Require(AtlasProbeProjected(reopened,coast.Id) && gameFishingWater==coast && gameWater==coast.Geometry &&
+            Require(Number(SceneProbeRenderer(reopened),"frameLimit")==60 && AtlasProbeProjected(reopened,coast.Id) && gameFishingWater==coast && gameWater==coast.Geometry &&
                 GameShopJournalDigest()==journal && windows.Count==1 && !windows.ContainsKey(false),"Reload reset the current station or game resources.");
             checks.Add("reloading the player page keeps the same coast inside the running host and requires a fresh interaction grant");
 
@@ -182,7 +220,7 @@ sealed partial class DualWindowContext
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new {
                 passed=true,checks=checks.ToArray(),gameLoaded=true,playerWindowConnected=true,singleInteractionWindow=true,
                 observerOpened=false,desktopLayer=false,personalSaveRead=false,playerPreviewCount=3,distinctScenery=true,loadedMaterials=materials,
-                mapCount=3,speciesCount=final.Rules.Species.Count,coastalCast=true,reloadRetainedStation=true,
+                mapCount=3,speciesCount=final.Rules.Species.Count,coastalCast=true,reloadRetainedStation=true,qualityRetained=true,qualityModes,
                 devToolsMouseInput=true,nativePhysicalMouse=false,controlledCharge=false,realHostFlight=true,
                 schemaVersion=final.SchemaVersion,sequence=final.Sequence,value=final.WalletMinor,baitCount=final.BaitCount,stamina=final.Stamina,
                 equipmentInstances=final.Equipment.Instances.Count,remainingLineMm=final.Equipment.RemainingLineMm,lostLineMm=final.Equipment.LostLineMm,

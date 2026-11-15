@@ -13,7 +13,7 @@ sealed partial class DualWindowContext
     internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest||GameEcologySelfTest; } }
     internal bool PlayerMode { get { return gameMode=="player-window"||gameMode=="player-wallpaper"; } }
     bool GamePlayerSelfTest { get { return gameMode=="player-self-test"; } }
-    bool GameCatchSelfTest { get { return gameMode=="catch-self-test"||GameSpecimenSelfTest; } }
+    bool GameCatchSelfTest { get { return gameMode=="catch-self-test"||GameSpecimenSelfTest||GameAnglerLogSelfTest; } }
     bool GameAtlasSelfTest { get { return gameMode=="atlas-self-test"; } }
     bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest||GameEcologySelfTest||PlayerMode; } }
     internal bool GameMode { get { return gameMode != null; } }
@@ -38,7 +38,7 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket ConditionsDocument;
         internal string ConditionsWater;
         internal long ConditionsMinute;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, ConditionsRevision, WardrobeRevision, WalkRevision, BottomRevision, BottomShopRevision, BankStandRevision, BankKitRevision, LureShopRevision, LureRevision;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, AnglerLogRevision, ConditionsRevision, WardrobeRevision, WalkRevision, BottomRevision, BottomShopRevision, BankStandRevision, BankKitRevision, LureShopRevision, LureRevision;
         internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater, WalkHighWater, BottomStrikeHighWater, LureHighWater;
         internal GameShopPending Shop;
         internal GameEquipmentPending Equipment;
@@ -51,7 +51,7 @@ sealed partial class DualWindowContext
     {
         if (!GameMode) return;
         string path = Path.Combine(root, "game.fltj");
-        if (gameMode == "open" || gameMode=="line-break-open" || (PlayerMode&&File.Exists(path))) {
+        if (gameMode == "open" || gameMode=="line-break-open" || (PlayerMode&&File.Exists(path)) || (GameAnglerLogSelfTest&&gameLogReopening)) {
             var inspection=FloatJournalArchive.Inspect(path);
             if(inspection.State.SchemaVersion!=2&&inspection.State.SchemaVersion!=3)throw new InvalidOperationException("This legacy profile requires an explicit backed-up candidate upgrade; opening did not change it.");
             if(GameLineBreakMode)ValidateGameLineBreakCatalog(inspection.State);
@@ -199,7 +199,7 @@ sealed partial class DualWindowContext
         if (b.Offset>count) b.Offset=0;
         var projected=FloatPageProjection.Create(snapshot,b.Offset,50,GameHeldBankSession);
         Send(pane,new {kind="game-snapshot",documentId=pane.Ticket.DocumentId,revision=checked(++b.Revision),snapshot=projected});
-        SendGameSpots(pane);SendGameConditions(pane);SendGameWardrobe(pane);SendBottomShop(pane);SendBankKit(pane);SendBankStand(pane);SendGameLureShop(pane);SendGameLure(pane);
+        SendGameSpots(pane);SendGameConditions(pane);if(projected.MenuOpen&&projected.HasConfirmedState)SendGameAnglerLog(pane);SendGameWardrobe(pane);SendBottomShop(pane);SendBankKit(pane);SendBankStand(pane);SendGameLureShop(pane);SendGameLure(pane);
         SendGameCast(pane);
         SendGameWalk(pane);SendGameFlight(pane);
         SendGameBite(pane);SendGameBottom(pane);

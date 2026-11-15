@@ -128,6 +128,10 @@ sealed partial class DualWindowContext
             await SceneProbeButton(pane,"scene-menu");
             await Wait(pane,s=>Field(s,"snapshot")!=null && (bool)Field(s,"snapshot")["MenuOpen"] && Number(Field(s,"snapshot"),"CreelCount")==1);
             object specimen=GameSpecimenSelfTest?await SpecimenProbeInspect(pane,fish,name):null;
+            if(GameAnglerLogSelfTest){
+                await AnglerProbeRead(pane,fish,name,false,false);
+                checks.Add("before sale the visible player log shows one float cast, the actual landed mass and catch experience with no sales");
+            }
             var row=await SceneProbeScript(pane,@"(()=>{
                 const entries=document.querySelectorAll('#creel .fish');if(entries.length!==1)return null;
                 const entry=entries[0], input=entry.querySelector('input[type=checkbox]');
@@ -159,10 +163,11 @@ sealed partial class DualWindowContext
             if(GameSpecimenSelfTest)Require(await pane.View.CoreWebView2.ExecuteScriptAsync(
                 "!document.querySelector('#creel [data-specimen-id]')&&!document.querySelector('#specimen-dialog[open]')&&!dualProbe.state().specimenState.open")=="true",
                 "The sold specimen remained available for viewing.");
+            object anglerLog=GameAnglerLogSelfTest?await AnglerProbeReopen(pane,fish,name):null;
             PrepareGameShutdown();Require(gameShutdownCode=="no-active-session" && ExitCode==0,"The completed sale left an unpaid session.");
             checks.Add("one real sale click credits the saved price exactly once and leaves an empty creel, the equipped net and no active session");
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new {
-                passed=true,checks=checks.ToArray(),gameLoaded=true,catchSaleConnected=true,specimenInspectionVerified=GameSpecimenSelfTest,specimen,actual3dCast=true,naturalBite=true,
+                passed=true,checks=checks.ToArray(),gameLoaded=true,catchSaleConnected=true,specimenInspectionVerified=GameSpecimenSelfTest,specimen,anglerLog,actual3dCast=true,naturalBite=true,
                 realMouseStrike=true,manualReel=true,netPurchased=true,ownedNetEquipped=true,catchCardVerified=true,creelPreviewVerified=true,
                 saleVerified=true,devToolsMouseInput=true,devToolsKeyboardInput=true,nativePhysicalMouse=false,rawGameCommandInjected=false,
                 privateModelSeeds=true,controlledFishFacts=false,controlledFightTime=false,personalSaveRead=false,desktopLayer=false,observerOpened=false,

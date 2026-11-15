@@ -1,6 +1,7 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog)
 $ErrorActionPreference='Stop'
-if($GameSpecimen){$GameCatch=$true}
+if($GameSpecimen -and $GameAnglerLog){throw 'Run the separate creel and angler log checks individually.'}
+if($GameSpecimen -or $GameAnglerLog){$GameCatch=$true}
 if($GameLineBreak -and ($GameSpares -or $GameCamp)){throw 'Run line-break integration separately.'}
 if($GameWater -and ($GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run water integration separately.'}
 if($GameScene -and ($GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run scene integration separately.'}
@@ -117,6 +118,7 @@ try{
   if($GameWallpaper){$taskMode=if($GameWallpaperPrepare){'--game-wallpaper-prepare-self-test'}else{'--game-wallpaper-self-test'}}
   if($GameCatch){$taskMode='--game-catch-self-test'}
   if($GameSpecimen){$taskMode='--game-specimen-self-test'}
+  if($GameAnglerLog){$taskMode='--game-angler-log-self-test'}
   if($GameWardrobe){$taskMode='--game-wardrobe-self-test'}
   if($GamePlayer){$taskMode='--game-player-self-test'}
   if($GameAtlas){$taskMode='--game-atlas-self-test'}
@@ -186,7 +188,12 @@ try{
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Wallpaper shutdown was not confirmed.'}
   }elseif($GameCatch){
-    $taskCatchChecks=if($GameSpecimen){11}else{8}
+    $taskCatchChecks=if($GameSpecimen -or $GameAnglerLog){11}else{8}
+    if($GameAnglerLog){
+      $taskLog=$taskReport.anglerLog
+      $taskExpectedXp=10+[Math]::Round(([decimal]$taskReport.massMg*6)/1000000,0,[MidpointRounding]::AwayFromZero)
+      if(-not $taskLog.profileReopened -or -not $taskLog.newDocument -or -not $taskLog.savedJournalUnchanged -or $taskLog.casts -ne 1 -or $taskLog.caught -ne 1 -or $taskLog.sold -ne 1 -or $taskLog.experience -ne $taskExpectedXp -or $taskLog.saleMinor -ne $taskReport.saleValueMinor -or $taskLog.speciesId -ne $taskReport.speciesId -or $taskLog.maximumMassMg -ne $taskReport.massMg -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'angler-log.png') -PathType Leaf)){throw 'The sold catch and reopened angler log do not match.'}
+    }
     if($GameSpecimen -and (-not $taskReport.specimenInspectionVerified -or $taskReport.specimen.speciesId -ne $taskReport.speciesId -or $taskReport.specimen.massMg -ne $taskReport.massMg -or $taskReport.specimen.triangles -le 0 -or $taskReport.specimen.changedPixels -lt 12 -or -not $taskReport.specimen.readOnlyJournalVerified -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'creel-specimen.png') -PathType Leaf))){throw 'Real creel specimen was not verified.'}
     if(-not $taskReport.passed -or $taskReport.checks.Count -ne $taskCatchChecks -or -not $taskReport.catchSaleConnected -or -not $taskReport.actual3dCast -or -not $taskReport.realMouseStrike -or -not $taskReport.manualReel -or -not $taskReport.ownedNetEquipped -or -not $taskReport.catchCardVerified -or -not $taskReport.creelPreviewVerified -or -not $taskReport.saleVerified -or $taskReport.rawGameCommandInjected -or $taskReport.controlledFightTime){throw 'Catch and sale input scope mismatch.'}
     if($taskReport.sequence -ne 6 -or $taskReport.saleValueMinor -le 0 -or $taskReport.value -ne (9600+$taskReport.saleValueMinor) -or $taskReport.gameNaturalLandings -ne 1 -or $taskReport.creelCount -ne 0 -or $taskReport.gameFlightEmissions -ne 1 -or $taskReport.gameHookedEmissions -ne 1 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.remainingLineMm -ne 50000 -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'game-catch.png') -PathType Leaf)){throw 'Catch sale accounting mismatch.'}

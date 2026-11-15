@@ -2,7 +2,7 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 试玩包 0.4.0-preview.7](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.7)**。选择 `FishingDesktop-0.4.0-preview.7-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 试玩包 0.4.0-preview.8](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.8)**。选择 `FishingDesktop-0.4.0-preview.8-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
 ![静水湾正午的水面与岸边](docs/preview-0.4/ecology-day.png)
 
@@ -53,6 +53,8 @@
 | 海湾 | 黑鲷、花鲈、黄鳍鲷 |
 
 ### 试玩版本与素材
+
+- **0.4.0-preview.8** 在岸边按 **O** 打开钓手日志，可以查每种钓法的抛竿次数、入护次数和经验，也能查到已售渔获的个人最大重量和累计收入。[日志实机画面](docs/preview-0.4/angler-log.png) · [第七版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.7)
 
 - **0.4.0-preview.7** 鱼护新增七种原创三维模型与近看操作，使用所选渔获的真实种类、重量，无需联网。[第六版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.6)
 

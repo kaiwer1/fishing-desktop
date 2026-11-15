@@ -274,6 +274,10 @@ namespace FishingDesktop.GameCore
         internal readonly OwnedLureKit LurePurchase;
         internal readonly Guid LureRigId;
         internal readonly Guid BankRigId;
+        // Transient facts derived again from the validated journal command on
+        // replay. They introduce no new payload or writable experience field.
+        internal readonly string CastMethod,LandedSpecies;
+        internal readonly long LandedMassMg;
         internal readonly string Fingerprint;
         internal bool Terminal{get{return Outcome==FloatOutcome.Recalled||Outcome==FloatOutcome.Landed||Outcome==FloatOutcome.Released||Outcome==FloatOutcome.Recovered||Outcome==FloatOutcome.Unhooked||Outcome==FloatOutcome.TerminalLost;}}
         internal FloatReceipt(FloatCommand command,long sequence,long rulesVersion,FloatOutcome outcome,Guid encounterId,long walletBefore,long walletAfter,int staminaBefore,int staminaAfter,int baitBefore,int baitAfter,IEnumerable<Guid> fishIds,int foodBefore=0,int foodAfter=0,Guid ownedNetBefore=default(Guid),Guid ownedNetAfter=default(Guid),Guid equippedNetBefore=default(Guid),Guid equippedNetAfter=default(Guid),FloatEquipmentLossSummary equipmentLoss=null,FloatEquipmentArchiveSummary equipmentArchive=null)
@@ -281,6 +285,18 @@ namespace FishingDesktop.GameCore
             RequestId=command.RequestId;EventId=command.EventId;SessionId=command.SessionId;EncounterId=encounterId;Sequence=sequence;RulesVersion=rulesVersion;Outcome=outcome;Fingerprint=command.Fingerprint;
             var recovery=command as RecoverFloatSession;RecoveryReason=recovery==null?(FloatRecoveryReason?)null:recovery.Reason;
             var bankCast=command as CastBankBottomRod;var bankEnd=command as SettleBankBottomRod;
+            if(outcome==FloatOutcome.CastCommitted){
+                if(command is CastLureWithEquipment)CastMethod="lure";
+                else if(command is CastBottomKitWithEquipment)CastMethod="bottom";
+                else if(command is CastFloat||command is CastFloatWithEquipment)CastMethod="float";
+                else throw new ArgumentException("Missing cast method on a confirmed release.");
+            }
+            if(outcome==FloatOutcome.Landed){
+                var landed=command as HostFloatFish;
+                if(landed!=null){LandedSpecies=landed.SpeciesKey;LandedMassMg=landed.MassMg;}
+                else if(bankEnd!=null&&bankEnd.Ending==BankRodEnding.Land){LandedSpecies=bankEnd.Species;LandedMassMg=bankEnd.MassMg;}
+                else throw new ArgumentException("Missing fish on a confirmed landing.");
+            }
             if(bankCast!=null)BankRigId=bankCast.KitRigId;
             if(bankEnd!=null){
                 BankRigId=bankEnd.RigId;

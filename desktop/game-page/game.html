@@ -46,6 +46,18 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 .wardrobe-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));gap:12px}.wardrobe-list article,.wardrobe-check{background:#30392f;border:1px solid #69765b;padding:14px 16px}.wardrobe-list h3{margin:0}.wardrobe-check{margin-top:12px}.wardrobe-check[hidden]{display:none}
 .spot-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(235px,100%),1fr));gap:12px}.spot-list article{display:flex;flex-direction:column;align-items:flex-start;background:#30392f;border:1px solid #69765b;padding:14px 16px}.spot-list h3{margin:0;font-size:19px}.spot-list small{color:#c4cdb9}.spot-list p{margin:6px 0}.spot-list button{margin:auto 0 0}.spot-list button[aria-current=location]{color:#d6e08f;border-color:#9aa868;opacity:1}
 @media(orientation:portrait){#scene-stage,body[data-scene-mode=scene] main{display:none}}
+#angler-log-dialog{box-sizing:border-box;width:min(850px,92vw);max-height:90vh;overflow:auto;border:1px solid #687263;border-radius:4px;padding:0;color:#e6ecd9;background:#222923;box-shadow:0 14px 60px #060d0bb3}
+#angler-log-dialog::backdrop{background:#0c1511b5}
+#angler-log-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 22px;background:#263028;border-bottom:1px solid #515e4e}
+#angler-log-head h2,#angler-log-close{margin:0}
+#angler-log-body{padding:14px 22px 20px;font-variant-numeric:tabular-nums}
+#angler-log-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:8px 12px;margin:0}
+#angler-log-summary div{padding:4px 8px;border-left:2px solid #a6b67e}
+#angler-log-summary dt{font-size:13px;color:#c1cbb6}#angler-log-summary dd{margin:0;font-size:19px;overflow-wrap:anywhere}
+#angler-log-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:10px 24px}
+#angler-log-columns h3{font-size:16px;margin:18px 0 7px}#angler-log-columns table{width:100%;border-collapse:collapse}
+#angler-log-columns th,#angler-log-columns td{padding:5px 6px;text-align:right;border-bottom:1px solid #495343;overflow-wrap:anywhere}
+#angler-log-columns th:first-child{text-align:left}#angler-log-columns thead{font-size:13px;color:#bdc7af}#angler-log-columns tbody th{font-weight:500}
 </style></head>
 <body><svg id="fish-symbol-bank" aria-hidden="true" focusable="false"></svg><div id="portrait">请横屏游玩</div>
 <aside id="catch-card" role="status" aria-live="polite" hidden><small>渔获已入护</small><div id="catch-art"></div><strong id="catch-name"></strong><span id="catch-mass"></span></aside>
@@ -138,6 +150,7 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <nav id="camp-destinations" aria-label="营地分区">
 <button id="camp-go-map" type="button"><strong>钓点</strong><kbd>M</kbd><small>水域与当地鱼种</small></button>
 <button id="camp-go-creel" type="button"><strong>鱼护</strong><kbd>C</kbd><small>查看鱼体、出售渔获</small></button>
+<button id="camp-go-log" type="button" aria-haspopup="dialog"><strong>钓手日志</strong><kbd>O</kbd><small>钓法成绩与个人纪录</small></button>
 <button id="camp-go-gear" type="button"><strong>钓组与背包</strong><kbd>I</kbd><small>装配渔具和鱼线</small></button>
 <button id="camp-go-tackle" type="button"><strong>渔具店</strong><small>抄网、鱼饵与备件</small></button>
 <button id="camp-go-food" type="button"><strong>食品补给</strong><kbd>T</kbd><small>面包与体力</small></button>
@@ -190,4 +203,12 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <div id="equipment-retry-controls" hidden><button id="equipment-retry" class="interactive" disabled>重试原装备操作</button><button id="equipment-cancel" class="interactive" disabled>取消未写入操作</button></div></section>
 <section id="creel-section"><h2>鱼护 <span id="capacity"></span></h2><ul id="creel"></ul><div class="interactive"><button id="sell" disabled>出售选中的鱼</button></div><button id="previous" disabled>上一页</button><button id="next" disabled>下一页</button></section>
 <p class="muted">从窗口顶部开启交互。收回不退还已经使用的鱼饵；切出窗口后需重新开启交互。</p>
-</main><script type="module" src="page.mjs"></script></body></html>
+</main>
+<dialog id="angler-log-dialog" aria-labelledby="angler-log-title">
+<div id="angler-log-head"><h2 id="angler-log-title">钓手日志</h2><button type="button" id="angler-log-close">返回营地 · Esc</button></div>
+<div id="angler-log-body"><dl id="angler-log-summary"></dl>
+<div id="angler-log-columns"><div><h3>各钓法成绩</h3><table aria-label="各钓法成绩"><thead><tr><th>钓法</th><th>抛竿</th><th>入护</th><th>经验</th></tr></thead><tbody id="angler-log-methods"></tbody></table></div>
+<div><h3>个人鱼种纪录</h3><p id="angler-log-empty" class="muted">还没有入护的鱼。用抄网把第一条鱼收入鱼护后，这里会记录它的种类和重量。</p>
+<table id="angler-log-records" aria-label="个人鱼种纪录" hidden><thead><tr><th>鱼种</th><th>入护</th><th>最大重量</th></tr></thead><tbody id="angler-log-species"></tbody></table></div></div>
+<p class="muted">渔获入护后计入经验。售出后，钓法成绩和鱼种纪录仍会保留。</p></div></dialog>
+<script type="module" src="page.mjs"></script></body></html>

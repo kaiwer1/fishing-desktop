@@ -17,6 +17,7 @@ import { SpotMenu } from './spot-menu.mjs';
 import { Wardrobe, wardrobeMessages } from './wardrobe.mjs';
 import { fishName, fishFigure, installFishIllustrations, newCreelCatch } from './fish-illustration.mjs';
 import { createSpecimenView } from './specimen-view.mjs';
+import { AnglerLog, createAnglerLogPanel } from './angler-log.mjs';
 import { BankWalk } from './bank-walk.mjs';
 import { BottomView, bottomPrompt, createBottomTipPanel } from './bottom-view.mjs';
 import { BottomShop, BottomStrike, confirmedLineEnd } from './bottom-controls.mjs';
@@ -47,6 +48,7 @@ const sparesView = new SparesView(documentId);
 const campView = new CampView(documentId);
 const waterView = new WaterView(documentId);
 const conditionsView=new WaterConditions(documentId);
+const anglerLog = new AnglerLog(documentId);
 let selectedAim = null;
 let saveFaulted = false;
 let speedKeyHeld = false;
@@ -515,6 +517,7 @@ function renderShop() {
 }
 function updateButtons() {
   specimen?.reconcile();
+  logPanel.reconcile();
   bankWalk.reconcile();
   if (catchTimer !== null && (!canControl() || hostPolicy?.canRun === false || snapshot.MenuOpen || snapshot.SessionId || castInput.state() || document.hidden)) hideCatch();
   reconcileSpot();
@@ -623,14 +626,17 @@ function renderStand() {
     if (!container.hidden) panel.render(stand);
   }
 }
-const campAreas = { map: 'spot-menu', creel: 'creel-section', gear: 'equipment', tackle: 'shop-net',
+const campAreas = { map: 'spot-menu', creel: 'creel-section', log:'angler-log-dialog', gear: 'equipment', tackle: 'shop-net',
   food: 'shop-food', clothes: 'wardrobe', work: 'camp' };
-const campKeys = { KeyM: 'map', KeyC: 'creel', KeyI: 'gear', KeyT: 'food' };
+const campKeys = { KeyM: 'map', KeyC: 'creel', KeyO:'log', KeyI: 'gear', KeyT: 'food' };
 const playerCamp = () => !readOnly && spotMenu.revision > 0 && scene.state().enabled;
+const logPanel = createAnglerLogPanel(document,anglerLog,() => playerCamp() && canControl() &&
+  snapshot.MenuOpen && !document.hidden && !visualPaused && hostPolicy?.canRun !== false);
 function areaAvailable(area) {
   switch (area) {
     case 'map': return Boolean(spotMenu.activeId);
     case 'creel': return Boolean(snapshot?.HasConfirmedState);
+    case 'log': return !snapshot?.MenuOpen || (anglerLog.sequence !== null && String(anglerLog.sequence) === snapshot.Sequence);
     case 'gear': return equipmentView.state()?.schemaVersion >= 3;
     case 'tackle':
     case 'food': return shopView.state()?.schemaVersion >= 2;
@@ -641,6 +647,8 @@ function areaAvailable(area) {
 }
 function visitCampArea(area) {
   if (!playerCamp() || !canControl() || !snapshot.MenuOpen || !areaAvailable(area)) return false;
+  if (campOpening?.area === 'log' && area !== 'log') { campOpening = null; campOpenShown = true; }
+  if (area === 'log') return logPanel.open();
   const node = $(area === 'home' ? 'camp-home' : campAreas[area]);
   if (!node || node.hidden) return false;
   node.scrollIntoView?.({ block: 'start', inline: 'nearest', behavior: 'instant' });
@@ -657,6 +665,8 @@ function renderCampNavigation() {
   for (const area of Object.keys(campAreas)) $('camp-go-' + area).disabled = !canControl() || !areaAvailable(area);
   $('camp-overview').disabled = !canControl();
   if (!campOpenShown) {
+    // Opening from shore can deliver the menu before its first journal projection.
+    if (campOpening?.area === 'log' && !areaAvailable('log')) return;
     campOpenShown = true;
     const destination = campOpening?.area ?? 'home';
     campOpening = null;
@@ -747,6 +757,10 @@ window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
   if(m.kind==='game-conditions-state'){
     if(conditionsView.apply(m)){renderConditions();scene.refresh();}
+    return;
+  }
+  if (m.kind === 'game-angler-log') {
+    if (anglerLog.apply(m)) { logPanel.reconcile(); renderCampNavigation(); }
     return;
   }
   if(m.kind==='game-lure-shop-state'){if(lureShop.apply(m))render();return;}
@@ -1121,12 +1135,13 @@ $('scene-to-water').addEventListener('click', () => scene.showScene(true));
 for (const key of ['menu','recall','release','land','retry-land','retry-escape']) {
   $(`scene-${key}`).addEventListener('click', event => { if (event.detail <= 1 && !$(key).disabled) $(key).click(); });
 }
-function pauseVisual(value) { visualPaused = value; if (value) bankWalk.stop();specimen?.reconcile();renderConditions();scene.refresh(); }
+function pauseVisual(value) { visualPaused = value; if (value) bankWalk.stop();specimen?.reconcile();logPanel.reconcile();renderConditions();scene.refresh(); }
 const visual = { start: () => pauseVisual(false), stop: () => pauseVisual(true), pause: () => pauseVisual(true), resume: () => pauseVisual(false),
   state: () => scene.state().renderer ?? { running: false, frames: 0, kind: 'host-flight-projection' } };
 window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision,
   biteState: biteView.state(), biteRevision: biteView.revision, strikeInputState: strikeInput.state(),
   specimenState: specimen?.state() ?? { open:false, loading:false, error:null, fish:null, viewer:null },
+  anglerLogState: anglerLog.state(), anglerLogOpen: logPanel.shown,
   bottomState:bottomView.state(), bottomRevision:bottomView.revision, bottomLineEnd:bottomLineEnd && { ...bottomLineEnd },
   bottomShopState:bottomShop.state(), bottomShopPending:bottomShop.pending,
   lureShopState:lureShop.state(),lureShopPending:lureShop.pending,lureState:lureView.state(),lureRevision:lureView.revision,lureInputState:lureInput.state(),lureCanRetryRetrieve:lureView.canRetryRetrieve,

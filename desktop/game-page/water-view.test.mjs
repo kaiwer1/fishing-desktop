@@ -68,6 +68,9 @@ async function pageFixture(sceneModule) {
     get options() { return this.children; }
     get valueAsNumber() { return Number(this.value); }
     setAttribute(key, value) { this.attributes[key] = String(value); }
+    focus() { document.activeElement=this; }
+    showModal() { this.open=true; }
+    close() { this.open=false; }
     append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); if (child.id) nodes.set(child.id, child); } }
     replaceChildren(...children) { this.children = []; this.append(...children); }
     addEventListener(type, callback) { if (!this.listeners.has(type)) this.listeners.set(type, []); this.listeners.get(type).push(callback); }
@@ -188,6 +191,30 @@ test('player camp ignores editable targets, repeats, modifiers, portrait and rev
   f.emit({kind:'lease',revision:2,cancellationEpoch:0,lease:null}); f.key('Escape'); f.key('KeyM'); assert.equal(f.messages.length,0);
   const legacy=await pageFixture(); legacy.water(1); legacy.key('KeyC'); assert.equal(legacy.messages.length,0); legacy.key('Escape');
   assert.equal(legacy.messages.at(-1).kind,'revoke'); assert.equal(legacy.messages.at(-1).reason,'escape');
+});
+
+test('O from the bank waits for the current log, opens a read-only journal and returns to camp while keeping sold records',async()=>{
+  const f=await pageFixture(fakeScene()); await enableScene(f); enableCampCatalog(f);
+  f.key('KeyO'); assert.equal(f.messages[0].kind,'game-menu'); assert.equal(f.probe.state().anglerLogOpen,false);
+  f.emit({kind:'game-reply',transportId:f.messages[0].transportId,code:'menu-updated'});
+  const menu={...f.snapshot,MenuOpen:true};
+  f.emit({kind:'game-snapshot',revision:2,snapshot:menu});
+  const log={rulesVersion:1,sequence:0,totalCasts:0,totalCaught:0,totalSold:0,saleMinor:'0',totalXp:'0',
+    methods:['float','bottom','lure'].map(id=>({id,casts:0,caught:0,xp:'0'})),species:[]};
+  const emit=(revision,state)=>f.emit({kind:'game-angler-log',revision,state});
+  emit(1,log); assert.equal(f.probe.state().anglerLogOpen,false);
+  emit(2,{...log,sequence:1}); assert.equal(f.probe.state().anglerLogOpen,true);
+  assert.equal(f.nodes.get('angler-log-empty').hidden,false);
+  f.nodes.get('angler-log-dialog').dispatch('keydown',{key:'Escape',stopPropagation(){}});
+  assert.equal(f.probe.state().anglerLogOpen,false); assert.equal(f.messages.length,1);
+  f.emit({kind:'game-snapshot',revision:3,snapshot:{...menu,Sequence:'5'}});
+  const sold={...log,sequence:5,totalCasts:1,totalCaught:1,totalSold:1,saleMinor:'1234',totalXp:'25',
+    methods:[{id:'float',casts:1,caught:1,xp:'25'},...log.methods.slice(1)],species:[{id:'carp',caught:1,maxMassMg:'1651000'}]};
+  emit(3,sold);f.click('camp-go-log');assert.equal(f.probe.state().anglerLogOpen,true);
+  assert.equal(f.nodes.get('angler-log-species').children[0].children[2].textContent,'1.651 千克');
+  assert.equal(f.nodes.get('angler-log-summary').children[3].children[1].textContent,'12.34');
+  f.emit({kind:'lease',revision:2,cancellationEpoch:0,lease:null});assert.equal(f.probe.state().anglerLogOpen,false);
+  assert.equal(f.messages.length,1);
 });
 
 const bankState = (extra = {}) => ({ enabled:true, waterId:'development-still-water', geometryVersion:1,

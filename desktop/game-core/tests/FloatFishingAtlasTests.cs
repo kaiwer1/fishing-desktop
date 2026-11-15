@@ -67,11 +67,26 @@ static class FloatFishingAtlasTests
                 new[]{still.Kind,river.Kind,coast.Kind}.SequenceEqual(new[]{"freshwater","freshwater","marine"}) &&
                 FloatFishingAtlas.Find("COASTAL-BAY")==null && FloatFishingAtlas.Find(null)==null,"Invalid directory identity.");
         });
-        Test("the first station retains its original bed while other maps reject its geometry version",()=>{
+        Test("the lake retains its centre bed and all surveyed maps reject legacy aim, casts and contact",()=>{
             var original=FloatStillWaterGeometry.CreateDevelopment();
             foreach(var k in original.BedKnots)Need(still.Geometry.Sample(0,k.Zmm,still.Geometry.Version).Sample.DepthMm==k.DepthMm,"Centre survey changed.");
-            Need(still.Geometry.Version==4 && river.Geometry.Version==5 && coast.Geometry.Version==6 &&
-                !river.Geometry.ResolveAim(5000,5000,1).Accepted && !coast.Geometry.ResolveAim(5000,5000,2).Accepted,"A stale map aim was accepted.");
+            Need(still.Geometry.Version==4 && river.Geometry.Version==5 && coast.Geometry.Version==6,"Survey identities changed.");
+            foreach(var water in FloatFishingAtlas.Waters){
+                var g=water.Geometry;
+                foreach(long stale in new[]{1L,2L,3L}){
+                    Need(g.ResolveAim(5000,5000,stale).Code=="geometry-version-mismatch" &&
+                        g.Sample(0,19000,stale).Code=="geometry-version-mismatch" &&
+                        FloatCastLaunchPlanner.Plan(g,5000,5000,stale,1000).Code=="geometry-version-mismatch",
+                        water.Id+" accepted legacy survey "+stale+".");
+                }
+                // At the centre the old bed matches exactly. Only the survey version distinguishes this contact.
+                var legacy=new FloatStillWaterGeometry(g.WaterId,g.SpotId,g.Version-3,g.AnchorXmm,g.AnchorYmm,g.AnchorZmm,g.SurfaceYmm,
+                    g.MinimumXmm,g.MaximumXmm,g.MinimumZmm,g.MaximumZmm,g.AimMinimumXmm,g.AimMaximumXmm,g.AimMinimumZmm,g.AimMaximumZmm,g.BedKnots);
+                var oldContact=legacy.Sample(0,19000,legacy.Version).Sample;
+                var current=g.Sample(0,19000,g.Version).Sample;
+                Need(current.DepthMm==oldContact.DepthMm && water.CreatePool(current,rules)!=null &&
+                    water.CreatePool(oldContact,rules)==null,water.Id+" failed to isolate the old contact.");
+            }
         });
         Test("station manifests expose the nine species with matching reference IDs",()=>{
             Need(still.SpeciesFor(rules).Select(x=>x.Id).SequenceEqual(new[]{"carp","crucian"}) &&
@@ -148,9 +163,10 @@ static class FloatFishingAtlasTests
             Need(edge.DepthMm==still.DeepThresholdMm && still.CreatePool(edge,rules).Id=="deep" &&
                 near.DepthMm==still.DeepThresholdMm-1 && still.CreatePool(near,rules).Id=="shallow","Depth boundary classified inconsistently.");
         });
-        Test("real seeded bite draws in each pool use legal species, masses and reproducible values",()=>{
-            foreach(var water in FloatFishingAtlas.Waters)foreach(int power in new[]{0,1000}){
-                var env=water.CreatePool(Land(water,power),rules).Environment;
+        Test("real casts at all six named stations encounter every local candidate and all nine fish collectively",()=>{
+            var allSeen=new HashSet<string>();
+            foreach(var water in FloatFishingAtlas.Waters)foreach(var station in water.ShoreStations){
+                var env=water.CreatePool(Land(water,1000,station),rules).Environment;
                 var seen=new HashSet<string>();
                 for(uint seed=1;seed<=128;seed++){
                     var t=Draw(env,seed);var c=env.Candidates.Single(x=>x.SpeciesId==t.SpeciesId);
@@ -158,8 +174,10 @@ static class FloatFishingAtlasTests
                     if(seed==1){var again=Draw(env,seed);Need(again.SpeciesId==t.SpeciesId && again.MassMg==t.MassMg,"Seed changed the draw.");}
                     seen.Add(t.SpeciesId);
                 }
-                Need(seen.Count==env.Candidates.Count,"Some enabled species never appeared in the fixed seed cohort.");
+                Need(seen.SetEquals(env.Candidates.Select(x=>x.SpeciesId)),station.Name+" has an unreachable species.");
+                allSeen.UnionWith(seen);
             }
+            Need(allSeen.SetEquals(rules.Species.Select(x=>x.SpeciesKey)),"A catalogued species cannot be drawn from any named station.");
         });
         Test("all nine sale rules permit host landing and a normal sale at the saved price",()=>{
             var rig=new FixedFloatRig(G(),1,"float-starter",G(),G(),G(),50000,G(),G(),G());

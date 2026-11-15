@@ -105,6 +105,22 @@ internal static class BottomRigSimulationTests
             var s=Start(4000,Patch(water));var state=Until(s,BottomPhase.Stabilizing);
             Require(state.SinkerYmm==-210&&state.BaitYmm==-202,"distinct sounded heights");
         });
+        Test("settled sinker and trailing bait follow both reed-lake stations and the shelf between them",delegate{
+            var water=FloatStillWaterGeometry.CreateDevelopment(true);
+            var patch=Patch(water);
+            int nearBed=water.Sample(-6000,19000,water.Version).Sample.BottomYmm;
+            int farBed=water.Sample(6000,19000,water.Version).Sample.BottomYmm;
+            Require(nearBed-farBed==450,"reed-lake lateral sounding");
+            foreach(int x in new[]{-6000,3500,6000}){
+                BottomRigSimulation sim;
+                string error=BottomRigSimulation.AtWaterContact(Session,Rig(),patch,water.Version,x,19000,7,Fish(),out sim);
+                Require(error==null,error);
+                var settled=Until(sim,BottomPhase.Stabilizing);
+                var sinker=water.Sample(x,19000,water.Version).Sample;
+                var hook=water.Sample(x,settled.Contact.BaitZmm,water.Version).Sample;
+                Require(settled.SinkerYmm==sinker.BottomYmm&&settled.BaitYmm==hook.BottomYmm,"off-bed rig at "+x);
+            }
+        });
         Test("strict integer mainline budget includes anchor offset and full-depth slack",delegate{
             var water=Bed(new FloatWaterBedKnot(3000,1000),new FloatWaterBedKnot(80000,1000));
             var patch=Patch(water);BottomContact c;

@@ -17,7 +17,7 @@ $exitCode=$LASTEXITCODE
 $output | Set-Content -LiteralPath (Join-Path $run 'test-output.txt') -Encoding utf8
 $passed=@($output | Where-Object {$_ -like 'PASS *'})
 $failed=@($output | Where-Object {$_ -like 'FAIL *'})
-$report=[pscustomobject]@{passed=($exitCode -eq 0 -and $passed.Count -eq 20 -and $failed.Count -eq 0);
+$report=[pscustomobject]@{passed=($exitCode -eq 0 -and $passed.Count -eq 21 -and $failed.Count -eq 0);
     passedCount=$passed.Count;checks=$passed;failures=$failed;outputDirectory=$run}
 $report | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $run 'summary.json') -Encoding utf8
 if(-not $report.passed){$output | Out-Host;throw 'Bottom rig checks failed.'}

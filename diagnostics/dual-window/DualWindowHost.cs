@@ -408,6 +408,7 @@ sealed partial class DualWindowContext : ApplicationContext
             gameMode="specimen-self-test";catalogSpecies=args[1];
         }
         if(args.Length==1 && args[0]=="--game-angler-log-self-test")gameMode="angler-log-self-test";
+        if(args.Length==1 && args[0]=="--game-float-skill-self-test")gameMode="float-skill-self-test";
         if(args.Length==1 && args[0]=="--game-wardrobe-self-test")gameMode="wardrobe-self-test";
         if(args.Length==1 && args[0]=="--game-player-self-test")gameMode="player-self-test";
         if(args.Length==1 && args[0]=="--game-atlas-self-test")gameMode="atlas-self-test";
@@ -417,8 +418,7 @@ sealed partial class DualWindowContext : ApplicationContext
             if(args[1]!="known-close" && args[1]!="after-flush" && args[1]!="after-prefix")return 5;
             gameMode=(args[0]=="--game-line-break-failure-self-test"?"line-break-failure-":"failure-")+args[1];
         }
-        bool gameUser=gameMode=="player-window" || gameMode=="player-wallpaper" || gameMode=="new" || gameMode=="open" || gameMode=="line-break-new" || gameMode=="line-break-open",gameSelfTest=gameMode=="self-test" || gameMode=="spares-self-test" || gameMode=="camp-self-test" || gameMode=="line-break-self-test" || gameMode=="water-self-test" || gameMode=="scene-self-test" || gameMode=="atlas-self-test" || gameMode=="player-self-test" || gameMode=="wardrobe-self-test" || gameMode=="catch-self-test" || gameMode=="bread-bait-self-test" || gameMode=="specimen-self-test" || gameMode=="angler-log-self-test" || gameMode=="wallpaper-self-test" || gameMode=="wallpaper-prepare-self-test" || gameMode=="walk-self-test" || gameMode=="ecology-self-test" || gameMode=="lure-self-test" || gameMode=="multi-rod-self-test" || gameMode=="bottom-self-test" || (gameMode!=null && (gameMode.StartsWith("failure-",StringComparison.Ordinal)||gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)));
-        gameSelfTest=gameSelfTest||gameMode=="shore-stations-self-test";
+        bool gameUser=gameMode=="player-window" || gameMode=="player-wallpaper" || gameMode=="new" || gameMode=="open" || gameMode=="line-break-new" || gameMode=="line-break-open",gameSelfTest=gameMode=="self-test" || gameMode=="spares-self-test" || gameMode=="camp-self-test" || gameMode=="line-break-self-test" || gameMode=="water-self-test" || gameMode=="scene-self-test" || gameMode=="atlas-self-test" || gameMode=="player-self-test" || gameMode=="wardrobe-self-test" || gameMode=="catch-self-test" || gameMode=="bread-bait-self-test" || gameMode=="specimen-self-test" || gameMode=="angler-log-self-test" || gameMode=="shore-stations-self-test"||gameMode=="float-skill-self-test" || gameMode=="wallpaper-self-test" || gameMode=="wallpaper-prepare-self-test" || gameMode=="walk-self-test" || gameMode=="ecology-self-test" || gameMode=="lure-self-test" || gameMode=="multi-rod-self-test" || gameMode=="bottom-self-test" || (gameMode!=null && (gameMode.StartsWith("failure-",StringComparison.Ordinal)||gameMode.StartsWith("line-break-failure-",StringComparison.Ordinal)));
         int manualSeconds=0;bool manualUnattended=args.Length>0 && args[0]=="--manual-desktop-timeout-probe";
         bool manual=manualUnattended || (args.Length>0 && args[0]=="--manual-desktop-probe");
         if(manual && (args.Length!=2 || !Int32.TryParse(args[1],out manualSeconds) || manualSeconds<60 || manualSeconds>600))return 5;
@@ -450,8 +450,8 @@ sealed partial class DualWindowContext : ApplicationContext
         try{
             // These automated tests own a temporary journal and a single
             // hidden player pane. They never attach a desktop layer.
-            bool privatePlayerTest=gameSelfTest&&!desktop&&!nativePolicy&&(gameMode=="ecology-self-test"||gameMode=="lure-self-test"||gameMode=="multi-rod-self-test"||gameMode=="bottom-self-test"||gameMode=="catch-self-test"||gameMode=="bread-bait-self-test"||gameMode=="specimen-self-test"||gameMode=="angler-log-self-test"||gameMode=="walk-self-test"||gameMode=="player-self-test"||gameMode=="wardrobe-self-test");
-            using(var guard=new HostInstanceGuard(privatePlayerTest||gameMode=="shore-stations-self-test")){
+            bool privatePlayerTest=gameSelfTest&&!desktop&&!nativePolicy&&(gameMode=="ecology-self-test"||gameMode=="lure-self-test"||gameMode=="multi-rod-self-test"||gameMode=="bottom-self-test"||gameMode=="catch-self-test"||gameMode=="bread-bait-self-test"||gameMode=="specimen-self-test"||gameMode=="angler-log-self-test"||gameMode=="shore-stations-self-test"||gameMode=="float-skill-self-test"||gameMode=="walk-self-test"||gameMode=="player-self-test"||gameMode=="wardrobe-self-test");
+            using(var guard=new HostInstanceGuard(privatePlayerTest)){
                 if(!guard.IsOwner){if(gameMode=="player-window"||gameMode=="player-wallpaper")MessageBox.Show("钓鱼桌面已经在运行。请先从托盘打开交互窗口，或退出后切换模式。","钓鱼桌面");return 2;}
                 if(restartCheck)return DualWindowContext.VerifySceneFaultRestart();
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);

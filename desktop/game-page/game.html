@@ -73,6 +73,8 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 #angler-log-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 22px;background:#263028;border-bottom:1px solid #515e4e}
 #angler-log-head h2,#angler-log-close{margin:0}
 #angler-log-body{padding:14px 22px 20px;font-variant-numeric:tabular-nums}
+#steady-strike{border-top:1px solid #59634f;padding:12px 0 0;margin-top:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 15px}
+#steady-strike[hidden]{display:none}#steady-strike h3{font-size:16px;margin:0}#steady-strike p{margin:3px 0}#steady-strike button{margin:0}#steady-strike-status{color:#dce79b;font-size:14px}
 #angler-log-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:8px 12px;margin:0}
 #angler-log-summary div{padding:4px 8px;border-left:2px solid #a6b67e}
 #angler-log-summary dt{font-size:13px;color:#c1cbb6}#angler-log-summary dd{margin:0;font-size:19px;overflow-wrap:anywhere}
@@ -253,6 +255,9 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <dialog id="angler-log-dialog" aria-labelledby="angler-log-title">
 <div id="angler-log-head"><h2 id="angler-log-title">钓手日志</h2><button type="button" id="angler-log-close">返回营地 · Esc</button></div>
 <div id="angler-log-body"><dl id="angler-log-summary"></dl>
+<section id="steady-strike" hidden aria-labelledby="steady-strike-title"><div><h3 id="steady-strike-title">稳手提竿 · 一级</h3>
+<p id="steady-strike-effect"></p><p id="steady-strike-status" role="status"></p></div>
+<button id="learn-steady-strike" type="button" aria-describedby="steady-strike-effect steady-strike-status" disabled>学习技能</button></section>
 <div id="angler-log-columns"><div><h3>各钓法成绩</h3><table aria-label="各钓法成绩"><thead><tr><th>钓法</th><th>抛竿</th><th>入护</th><th>经验</th></tr></thead><tbody id="angler-log-methods"></tbody></table></div>
 <div><h3>个人鱼种纪录</h3><p id="angler-log-empty" class="muted">还没有入护的鱼。用抄网把第一条鱼收入鱼护后，这里会记录它的种类和重量。</p>
 <table id="angler-log-records" aria-label="个人鱼种纪录" hidden><thead><tr><th>鱼种</th><th>入护</th><th>最大重量</th></tr></thead><tbody id="angler-log-species"></tbody></table></div></div>

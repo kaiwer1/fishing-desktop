@@ -33,6 +33,7 @@ const authority = new LeaseSession(documentId);
 let snapshot = null, revision = 0, hostPolicy = null, lastReply = null;
 let lastActivation = null, lastActivationReply = null, lastRevoke = null;
 let inflight = null, readOnly = true;
+let studyRequest = null;
 let spotRequest = null;
 let campOpening = null, campOpenShown = false;
 let castState = null, castRevision = 0;
@@ -701,8 +702,15 @@ const campAreas = { map: 'spot-menu', creel: 'creel-section', log:'angler-log-di
 const campKeys = { KeyM: 'map', KeyC: 'creel', KeyO:'log', KeyI: 'gear', KeyT: 'food' };
 const campTitles = {home:'岸边营地',map:'选择水域',creel:'鱼护',gear:'钓组与背包',tackle:'渔具店',food:'食品补给',clothes:'服装商店',work:'营地帮工'};
 const playerCamp = () => !readOnly && spotMenu.revision > 0 && scene.state().enabled;
+function studyState() {
+  if (studyRequest) return 'pending';
+  if (!canControl() || !snapshot.MenuOpen || snapshot.SessionId || String(anglerLog.sequence)!==snapshot.Sequence || inflight ||
+      !canUseShop() || !canUseCamp() || shopInput.state().quote || sparesInput.state().quote ||
+      document.hidden || !document.hasFocus() || visualPaused || hostPolicy?.canRun===false) return 'busy';
+  return lastReply?.code==='skill-not-written' ? 'retry' : 'ready';
+}
 const logPanel = createAnglerLogPanel(document,anglerLog,() => playerCamp() && canControl() &&
-  snapshot.MenuOpen && !document.hidden && !visualPaused && hostPolicy?.canRun !== false);
+  snapshot.MenuOpen && !document.hidden && !visualPaused && hostPolicy?.canRun !== false,studyState,()=>intent('learn-steady-strike'));
 function areaAvailable(area) {
   switch (area) {
     case 'map': return Boolean(spotMenu.activeId);
@@ -771,13 +779,16 @@ function revoke(reason) {
 }
 function intent(action) {
   if (!canControl() || inflight || spotRequest || gearBusy() || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
-  if (bankKit.selected && (action === 'sell' ? occupiedBank() : !handReady() || !heldSession())) return;
+  const learn=action==='learn-steady-strike';
+  if (learn && (!logPanel.shown || !['ready','retry'].includes(studyState()))) return;
+  if (bankKit.selected && (action === 'sell' || learn ? occupiedBank() : !handReady() || !heldSession())) return;
   if(action==='recall' && !canRecallLure())return;
   lureInput.reset();
   fightInput.cancel();
-  const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : heldSession(),
+  const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' || learn ? '' : heldSession(),
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
   const transportId = crypto.randomUUID();
+  if (learn) studyRequest = {transportId};
   if (action === 'sell') {
     if (!snapshot.MenuOpen || snapshot.SessionId || document.hidden || !document.hasFocus()) return;
     command.fishIds = creel.begin(transportId,snapshot.Sequence);
@@ -789,6 +800,7 @@ function intent(action) {
 }
 const codes = { 'cast-candidate': '这一竿已保存，已使用一份鱼饵。', 'recall-candidate': '已收回，扣饵保持。', 'released-candidate': '当前鱼已放流。', 'sale-candidate': '出售已确认。', 'menu-updated': '菜单状态已更新。', 'control-required': '请重新开启交互。', 'invalid-intent': '请求未识别。', 'version-conflict': '进度已更新，请重新操作。', 'bait-empty': '鱼饵已用完。', 'stamina-insufficient': '体力不足。', 'session-busy': '请先结束当前一竿。' };
 Object.assign(codes, { 'bread-bait-prepared': '已用 1 份面包揉成 3 份面饵。', 'float-bait-selected': '已更换浮漂钩饵。', 'float-bait-unchanged': '当前已挂这种饵。', 'bread-recipe-unavailable': '这份存档尚未开放面饵制作。' });
+Object.assign(codes,{'steady-strike-learned':'已学会稳手提竿。','steady-strike-known':'已经学过稳手提竿。','float-xp-required':'浮漂经验不足，请先把渔获收入鱼护。','skill-menu-busy':'请先完成或取消当前柜台操作。','skill-not-written':'技能还未保存，请再次点击学习。'});
 Object.assign(codes, { 'bottom-kit-purchased':'底钓套装购买已确认。', 'bottom-method-selected':'钓法已切换。',
   'bottom-hooked':'底钓已中鱼，请手动收线。', 'bottom-shop-busy':'请先结束当前一竿或菜单操作。', 'bottom-shop-stale':'存档进度已变化，请重新选择。',
   'bottom-unavailable':'当前未开放底钓。', 'bottom-kit-not-owned':'请先购买底钓套装。', 'bottom-kit-owned':'已经拥有底钓套装。',
@@ -852,7 +864,10 @@ window.chrome.webview.addEventListener('message', event => {
     return;
   }
   if (m.kind === 'game-angler-log') {
-    if (anglerLog.apply(m)) { logPanel.reconcile(); renderCampNavigation(); }
+    if (anglerLog.apply(m)) {
+      if(anglerLog.state().steadyStrike?.learned)studyRequest=null;
+      logPanel.reconcile(); renderCampNavigation();
+    }
     return;
   }
   if(m.kind==='game-lure-shop-state'){if(lureShop.apply(m))render();return;}
@@ -971,6 +986,7 @@ window.chrome.webview.addEventListener('message', event => {
     const caught = newCreelCatch(snapshot, m.snapshot); snapshot = m.snapshot; revision = m.revision; showCatch(caught);
   }
   if (m.kind === 'game-reply') {
+    if(studyRequest?.transportId===m.transportId && m.code!=='steady-strike-learned')studyRequest=null;
     creel.reply(m);
     const walkReply = bankWalk.reply(m);
     if (['walk-updated','walk-stopped'].includes(m.code)) { if (walkReply) updateButtons(); return; }

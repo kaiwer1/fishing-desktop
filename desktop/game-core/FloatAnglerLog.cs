@@ -45,8 +45,7 @@ namespace FishingDesktop.GameCore
         // with nonnegative integer arithmetic so milligram ties round up.
         internal static long CatchXp(long massMg)
         {
-            if(massMg<=0)throw new ArgumentOutOfRangeException("massMg");
-            return checked(10+(massMg/1000000)*6+((massMg%1000000)*6+500000)/1000000);
+            return FloatFishingExperience.CatchXp(massMg);
         }
         internal static FloatAnglerLog Build(FloatGameState state)
         {
@@ -65,7 +64,7 @@ namespace FishingDesktop.GameCore
                         int method;
                         if(!active.TryGetValue(receipt.SessionId,out method))
                             throw new InvalidOperationException("Confirmed landing has no matching cast.");
-                        caught[method]++;xp[method]+=CatchXp(receipt.LandedMassMg);
+                        caught[method]++;if(method!=0)xp[method]+=CatchXp(receipt.LandedMassMg);
                         FloatAnglerSpeciesLog prior;species.TryGetValue(receipt.LandedSpecies,out prior);
                         species[receipt.LandedSpecies]=new FloatAnglerSpeciesLog(receipt.LandedSpecies,prior==null?1:prior.Caught+1,
                             Math.Max(receipt.LandedMassMg,prior==null?0:prior.MaxMassMg));
@@ -75,6 +74,7 @@ namespace FishingDesktop.GameCore
                     if(receipt.Terminal)active.Remove(receipt.SessionId);
                 }
             }
+            xp[0]=state.FloatXp;
             return new FloatAnglerLog(state.Sequence,sale,sold,casts,caught,xp,species);
         }
     }

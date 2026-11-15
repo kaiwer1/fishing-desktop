@@ -256,7 +256,7 @@ test('player camp ignores editable targets, repeats, modifiers, portrait and rev
   assert.equal(legacy.messages.at(-1).kind,'revoke'); assert.equal(legacy.messages.at(-1).reason,'escape');
 });
 
-test('O from the bank waits for the current log, opens a read-only journal and returns to camp while keeping sold records',async()=>{
+test('O from the bank waits for the current log, preserves sold records and reading does not write progress',async()=>{
   const f=await pageFixture(fakeScene()); await enableScene(f); enableCampCatalog(f);
   f.key('KeyO'); assert.equal(f.messages[0].kind,'game-menu'); assert.equal(f.probe.state().anglerLogOpen,false);
   f.emit({kind:'game-reply',transportId:f.messages[0].transportId,code:'menu-updated'});
@@ -278,6 +278,34 @@ test('O from the bank waits for the current log, opens a read-only journal and r
   assert.equal(f.nodes.get('angler-log-summary').children[3].children[1].textContent,'12.34');
   f.emit({kind:'lease',revision:2,cancellationEpoch:0,lease:null});assert.equal(f.probe.state().anglerLogOpen,false);
   assert.equal(f.messages.length,1);
+});
+
+test('the log learns only from qualified float XP and the current page, handles retry and waits for the saved result',async()=>{
+  const f=await pageFixture(fakeScene());await enableScene(f);enableCampCatalog(f);
+  const snapshot={...f.snapshot,MenuOpen:true,Sequence:'5'};
+  f.emit({kind:'game-snapshot',revision:2,snapshot});
+  const skill={learned:false,requiredXp:10,baseMs:4000,bonusMs:750};
+  const state={rulesVersion:1,sequence:5,totalCasts:2,totalCaught:2,totalSold:0,saleMinor:'0',totalXp:'26',
+    methods:[{id:'float',casts:0,caught:0,xp:'0'},{id:'bottom',casts:2,caught:2,xp:'26'},{id:'lure',casts:0,caught:0,xp:'0'}],
+    species:[{id:'carp',caught:2,maxMassMg:'500000'}],steadyStrike:skill};
+  let rev=0;const log=s=>f.emit({kind:'game-angler-log',revision:++rev,state:s});
+  const read=id=>f.nodes.get(id);
+  log(state);f.click('camp-go-log');assert(f.probe.state().anglerLogOpen);
+  f.click('learn-steady-strike');assert.equal(f.messages.length,0);
+  assert.match(read('steady-strike-status').textContent,/未解锁.*0 \/ 10/);
+  state.methods=[{id:'float',casts:1,caught:1,xp:'13'},{id:'bottom',casts:1,caught:1,xp:'13'},state.methods[2]];
+  log(state);assert.match(read('steady-strike-status').textContent,/可学习.*13 \/ 10/);
+  assert.match(read('steady-strike-effect').textContent,/4 秒.*4\.75 秒/);
+  f.click('learn-steady-strike');f.click('learn-steady-strike');assert.equal(f.messages.length,1);
+  assert.equal(f.messages[0].intent.action,'learn-steady-strike');assert.equal(f.messages[0].intent.sessionId,'');
+  f.emit({kind:'game-reply',transportId:f.messages[0].transportId,code:'skill-not-written'});
+  assert.match(read('steady-strike-status').textContent,/上次未保存/);f.click('learn-steady-strike');
+  assert.equal(f.messages.length,2);f.emit({kind:'game-reply',transportId:f.messages[1].transportId,code:'steady-strike-learned'});
+  f.click('learn-steady-strike');assert.equal(f.messages.length,2);
+  f.emit({kind:'game-snapshot',revision:3,snapshot:{...snapshot,Sequence:'6'}});
+  log({...state,sequence:6,steadyStrike:{...skill,learned:true}});
+  assert.match(read('steady-strike-status').textContent,/已学会.*13 \/ 10/);
+  assert(read('learn-steady-strike').hidden);f.click('learn-steady-strike');assert.equal(f.messages.length,2);
 });
 
 const bankState = (extra = {}) => ({ enabled:true, waterId:'development-still-water', geometryVersion:1,

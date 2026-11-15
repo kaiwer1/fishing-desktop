@@ -1,6 +1,10 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait,[ValidateSet('yellow-catfish','black-rockfish')][string]$GameSpecies,[uint32]$GameSampleSeed,[switch]$GameShoreStations)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait,[ValidateSet('yellow-catfish','black-rockfish')][string]$GameSpecies,[uint32]$GameSampleSeed,[switch]$GameFloatSkill,[switch]$GameShoreStations)
 $ErrorActionPreference='Stop'
 if($GameShoreStations){$GameWalk=$true}
+if($GameFloatSkill){
+  if($GameBreadBait -or $GameSpecies -or $GameSpecimen){throw 'Run the float skill check on a separate profile.'}
+  $GameAnglerLog=$true
+}
 if($GameSpecimen -and $GameAnglerLog){throw 'Run the separate creel and angler log checks individually.'}
 if($GameBreadBait -and ($GameSpecimen -or $GameAnglerLog -or $GameSpecies)){throw 'Run bread bait on its own private save.'}
 if($PSBoundParameters.ContainsKey('GameSampleSeed') -and -not $GameSpecies){throw 'A sample seed requires a catalog fish.'}
@@ -139,6 +143,7 @@ try{
   if($GameCatch){$taskMode='--game-catch-self-test'}
   if($GameSpecimen){$taskMode='--game-specimen-self-test'}
   if($GameAnglerLog){$taskMode='--game-angler-log-self-test'}
+  if($GameFloatSkill){$taskMode='--game-float-skill-self-test'}
   if($GameBreadBait){$taskMode='--game-bread-bait-self-test'}
   if($GameSpecies){$taskMode="--game-species-self-test $GameSpecies $GameSampleSeed"}
   if($GameWardrobe){$taskMode='--game-wardrobe-self-test'}
@@ -221,6 +226,9 @@ try{
     if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne 1 -or $taskDesktopReport.detachments -ne 1 -or $taskDesktopReport.remainingLeases -ne 0 -or $taskReport.sequence -ne 1 -or $taskReport.value -ne 12000 -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'game-wallpaper.png') -PathType Leaf)){throw 'Desktop layer or clean wallpaper exit mismatch.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Wallpaper shutdown was not confirmed.'}
+  }elseif($GameFloatSkill){
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskReport.passed -or -not $taskReport.skillLearned -or -not $taskReport.anglerLog.profileReopened -or $taskReport.sequence -ne 9 -or $taskReport.experience -lt 10 -or $taskReport.lateStrikeMs -lt 4100 -or $taskReport.lateStrikeMs -ge 4750 -or $taskReport.controlledBiteTime -or -not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session'){throw 'Skill learning, retention or live late strike failed.'}
   }elseif($GameBreadBait){
     if(-not $taskReport.passed -or $taskReport.sequence -ne 6 -or $taskReport.value -ne 11980 -or $taskReport.breadBaitCount -ne 2 -or $taskReport.baitCount -ne 12 -or -not $taskReport.reopened -or -not $taskReport.naturalBite){throw 'Bread bait cast or journal verification failed.'}
   }elseif($GameCatch){

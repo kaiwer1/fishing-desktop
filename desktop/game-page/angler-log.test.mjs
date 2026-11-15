@@ -31,3 +31,11 @@ test('corrupt totals, duplicate methods or species and malformed decimal strings
   const legacy=packet(2); legacy.state.species[0].id='legacy_bream';
   assert.equal(view.apply(legacy),true); assert.equal(view.state().species[0].id,'legacy_bream');
 });
+
+test('skill projection discards surplus data and rejects invalid durations or a learned rank without float XP',()=>{
+  const view=new AnglerLog('page-a'), p=packet(), base={learned:false,requiredXp:10,baseMs:4000,bonusMs:750};
+  p.state.steadyStrike={...base,extra:1};assert(view.apply(p));assert.deepEqual(view.state().steadyStrike,base);
+  for(const changes of [{bonusMs:-750},{baseMs:0},{learned:1},{requiredXp:'10'},{learned:true}]){
+    const next=packet(2);next.state.steadyStrike={...base,...changes};assert.equal(view.apply(next),false);
+  }
+});

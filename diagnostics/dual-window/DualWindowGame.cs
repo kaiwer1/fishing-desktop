@@ -277,6 +277,7 @@ sealed partial class DualWindowContext
         if (command is CastFloat) { GameReply(pane,transport,"cast-preparation-required"); return; }
         AdvanceActivity();
         if(GameFailureUnconfirmed){GameReply(pane,transport,"failure-result-required");Broadcast();return;}
+        if(command is LearnSteadyStrike){LearnGameSteadyStrike(pane,b,transport,command);return;}
         var reply=game.ExecuteUser(b.View,b.Document,b.Lease,command);
         GameReply(pane,transport,reply.Code,reply); Broadcast();
     }

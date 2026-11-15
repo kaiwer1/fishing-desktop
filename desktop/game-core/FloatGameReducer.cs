@@ -19,6 +19,11 @@ namespace FishingDesktop.GameCore
         internal virtual string Detail{get{return "";}}
         internal string Fingerprint{get{return Kind+"|"+ProfileId.ToString("N")+"|"+BranchId.ToString("N")+"|"+EventId.ToString("N")+"|"+SessionId.ToString("N")+"|"+FloatGuard.Number(ExpectedSequence)+"|"+FloatGuard.Number(ExpectedRigRevision)+"|"+FloatGuard.Number(ExpectedRulesVersion)+"|"+Detail;}}
     }
+    internal sealed class LearnSteadyStrike : FloatCommand
+    {
+        internal LearnSteadyStrike(Guid profile,Guid branch,Guid request,Guid businessEvent,long sequence,long rig,long rules)
+            :base("learn-steady-strike-v1",profile,branch,request,businessEvent,Guid.Empty,sequence,rig,rules){}
+    }
     internal sealed class ExpandDomesticSpecies : FloatCommand
     {
         internal ExpandDomesticSpecies(Guid profile,Guid branch,Guid request,Guid businessEvent,long sequence,long rigRevision,long rulesVersion)
@@ -418,6 +423,7 @@ namespace FishingDesktop.GameCore
         static string Code(FloatOutcome outcome)
         {switch(outcome){
             case FloatOutcome.BreadBaitPrepared:return "bread-bait-prepared";
+            case FloatOutcome.SteadyStrikeLearned:return "steady-strike-learned";
             case FloatOutcome.FloatBaitSelected:return "float-bait-selected";
             case FloatOutcome.BottomKitPurchased:return "bottom-kit-purchase-candidate";
             case FloatOutcome.LureKitPurchased:return "lure-kit-purchase-candidate";
@@ -477,6 +483,11 @@ namespace FishingDesktop.GameCore
                     if(command.RequestId==command.EventId||KnownPurchaseIdentity(state,command.RequestId)||KnownPurchaseIdentity(state,command.EventId))
                         return Reject("species-catalog-identity-invalid");
                     rules=FloatDomesticSpeciesCatalog.Nine;outcome=FloatOutcome.SpeciesCatalogExpanded;
+                }else if(command is LearnSteadyStrike){
+                    if(session!=null)return Reject("session-busy");
+                    if(state.SteadyStrikeLearned)return Reject("steady-strike-known");
+                    if(state.FloatXp<FloatFishingExperience.SteadyStrikeRequiredXp)return Reject("float-xp-required");
+                    outcome=FloatOutcome.SteadyStrikeLearned;
                 }else if(command is ManageFloatBait){
                     if(!state.BreadRecipeAvailable)return Reject("bread-recipe-unavailable");
                     if(session!=null)return Reject("session-busy");

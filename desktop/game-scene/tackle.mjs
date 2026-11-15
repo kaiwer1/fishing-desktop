@@ -15,12 +15,12 @@ function bottomLineEnd(point, water) {
   return toWorld(point);
 }
 
-export function rodPose({water,cast,flight,bite,fight,bottom}, time=0, viewYaw=0) {
+export function rodPose({water,cast,flight,bite,fight,bottom,lureSelected,lure}, time=0, viewYaw=0) {
   const f = flight?.sessionId ? flight : null;
   const hooked = f && fight?.sessionId === f.sessionId ? fight : null;
   const b = f && bite?.sessionId === f.sessionId ? bite : null;
   const pose = {phase:'idle', pitch:.115, yaw:.16, roll:-.1, flex:.04,
-    shiftX:0, shiftY:0, reeling:false, reelLevel:0, end:null, float:false, bottomTipPermille:null};
+    shiftX:0, shiftY:0, reeling:false, reelLevel:0, end:null, float:false, spoon:false, bottomTipPermille:null};
   if (cast?.phase === 'charging' || cast?.phase === 'prepared') {
     const load = smooth((cast.powerPermille || 0) / 1000);
     pose.phase='charging'; pose.pitch=.31+load*1.02; pose.yaw=.12-load*.48;
@@ -35,7 +35,9 @@ export function rodPose({water,cast,flight,bite,fight,bottom}, time=0, viewYaw=0
     pose.bottomTipPermille=bottom.tipPermille;
     if (bottom.phase==='retrieved') return pose;
   }
-  if (hooked && fightPhases.has(hooked.phase) && (!bottomHere || bottom.phase==='hooked')) {
+  const isLure=lureSelected===true, currentLure=isLure&&lure?.sessionId===f.sessionId?lure:null;
+  if (hooked && fightPhases.has(hooked.phase) && (!bottomHere || bottom.phase==='hooked') &&
+      (!isLure || currentLure?.phase==='hooked')) {
     pose.phase='fighting'; pose.pitch=.42+Math.min(.32,hooked.tensionMilliN/43000);
     const a=water?.anchor;
     const bearing=-Math.atan2(hooked.xMm-(a?.xMm??0),hooked.zMm-(a?.zMm??0));
@@ -55,7 +57,19 @@ export function rodPose({water,cast,flight,bite,fight,bottom}, time=0, viewYaw=0
     pose.phase='casting';pose.pitch=1.28-(1.26*sweep)+recoil*.17;
     pose.yaw=-.32+sweep*.49;pose.roll=-.37+.32*sweep;
     pose.flex=-.28+Math.sin(sweep*Math.PI)*.87+recoil*.22;
-    pose.shiftY=.09*(1-sweep)-.03*sweep;pose.end=toWorld(f);pose.float=true;return pose;
+    pose.shiftY=.09*(1-sweep)-.03*sweep;
+    if([f.xMm,f.yMm,f.zMm].every(Number.isFinite)){pose.end=toWorld(f);pose.spoon=isLure;pose.float=!isLure;}
+    return pose;
+  }
+  if(isLure){
+    if(f.phase!=='waiting'||!currentLure||!['in-water','following','strikeable','bottom-recovery','retrieve-pending'].includes(currentLure.phase))return pose;
+    pose.end=bottomLineEnd(currentLure.position,water);
+    if(!pose.end)return pose;
+    pose.spoon=true;pose.reeling=currentLure.reeling===true;
+    pose.phase=pose.reeling?'lure-retrieving':'lure-sinking';
+    pose.pitch=pose.reeling?.19:.11;pose.flex=pose.reeling?.09:.025;
+    pose.reelLevel=Number.isInteger(currentLure.speedLevel)?clamp(currentLure.speedLevel,0,4)*2:0;
+    return pose;
   }
   if (f.phase==='waiting' && b?.phase!=='ended') {
     pose.phase='waiting';pose.pitch=.079;pose.end=toWorld(f);
@@ -164,6 +178,11 @@ export function createTackle() {
   rounded(float,finish(0x925d24),0,-.022,0,.02,.059,.02);
   part(float,new THREE.CylinderGeometry(.005,.008,.118,10),finish(0xff5521,0,.65),0,.07,0);
   part(float,new THREE.CylinderGeometry(.0055,.0055,.022,10),finish(0xffe6a2),0,.095,0);
+  const spoon=new THREE.Group();spoon.name='coast-spoon-12g';spoon.visible=false;group.add(spoon);
+  const nickel=finish(0xc9d0ca,.58,.26);
+  rounded(spoon,nickel,0,0,0,.011,.0035,.032);
+  rounded(spoon,finish(0xaa6c3e,.44,.38),.004,.002,.007,.003,.0015,.017);
+  wire(spoon,steel,[[0,0,-.034],[0,-.006,-.043],[.006,-.008,-.047],[.009,-.003,-.043]],.0014,7);
   const positions=new THREE.BufferAttribute(new Float32Array(23*3),3).setUsage(THREE.DynamicDrawUsage);
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',positions);
   const line=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xc4d0be,transparent:true,opacity:.66,depthWrite:false}));
@@ -174,7 +193,7 @@ export function createTackle() {
   // Each flexible tip section contributes a share of the observed 0–46 mm
   // displacement, increasing towards the tip. No wave or local bite clock.
   const tipShares=[.12,.33,.55];
-  return {group, root, float, line, tip,
+  return {group, root, float, spoon, line, tip,
     animate(views, time, dt, viewYaw=0) {
       const pose=rodPose(views,time,viewYaw);
       const isBottom=pose.bottomTipPermille!==null;
@@ -213,9 +232,14 @@ export function createTackle() {
       }
       if(pose.reeling){const spin=dt*(2.5+.88*pose.reelLevel);reel.crank.rotation.x+=spin;reel.rotor.rotation.z+=spin*3.8;}
       previousPhase=pose.phase;
-      line.visible=Boolean(pose.end);float.visible=Boolean(pose.float);
+      line.visible=Boolean(pose.end);float.visible=Boolean(pose.float);spoon.visible=pose.spoon;
       if(pose.end){
         if(pose.float)float.position.copy(pose.end);
+        if(pose.spoon){
+          spoon.position.copy(pose.end);
+          spoon.rotation.y=Math.atan2(a.xMm/1000-pose.end.x,-a.zMm/1000-pose.end.z);
+          spoon.rotation.z=pose.reeling?.6*Math.sin(time*(8+pose.reelLevel)):.16*Math.sin(time*3);
+        }
         tip.getWorldPosition(tipWorld);
         const slack=pose.phase==='fighting'?Math.min(.45,(views.fight?.slackMm||0)/1000*.15):pose.phase==='casting'?.09:.2;
         for(let i=0;i<positions.count;i++){

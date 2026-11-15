@@ -21,6 +21,8 @@ import { BottomView, bottomPrompt, createBottomTipPanel } from './bottom-view.mj
 import { BottomShop, BottomStrike, confirmedLineEnd } from './bottom-controls.mjs';
 import { StandView, createStandPanel } from './stand-view.mjs';
 import { BankKit, bindBankShop } from './bank-kit.mjs';
+import { LureView, createLurePanel, lureMetrics, lurePrompt } from './lure-view.mjs';
+import { LureShop, LureInput } from './lure-controls.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -34,6 +36,7 @@ const flightNotices = new FlightNotices();
 const flightView = new FlightView(documentId);
 const biteView = new BiteView(documentId);
 const bottomView = new BottomView(documentId);
+const lureView = new LureView(documentId);
 let bottomLineEnd = null, bottomPanel = null;
 const fightView = new FightView(documentId);
 const shopView = new ShopView(documentId);
@@ -54,6 +57,7 @@ const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(aut
 const freeAtBank = () => canControl() && !inflight && !spotRequest && !gearBusy() && !wardrobe.busy && currentSpotWater() && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.MenuOpen;
 const canPrepare = () => {
   if (!freeAtBank() || heldSession()) return false;
+  if (lureMethod()) return waterView.state()?.waterId==='coastal-bay' && !bankKit.selected && !bottomMethod();
   if (!bankKit.selected) return true;
   const hand = stand.state()?.heldRig;
   return handReady() && (hand.phase === 'idle' || (hand.phase === 'charging' && Boolean(castInput.state())));
@@ -71,7 +75,7 @@ function buttonAim() {
 }
 function strikeContext() {
   const bite = biteView.state();
-  return { lease: authority.state().lease, allowed: !bottomMethod() && canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
+  return { lease: authority.state().lease, allowed: !lureMethod() && !bottomMethod() && canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
     Boolean(bite?.sessionId) && bite.sessionId === snapshot.SessionId && !castInput.state(),
     sessionId: bite?.sessionId, encounterId: bite?.encounterId, phase: bite?.phase };
 }
@@ -88,6 +92,19 @@ function handReady(){
 }
 function currentBottom() { return bottomView.forSession(heldSession()); }
 function bottomMethod() { return bankKit.selected || bottomShop.state()?.method === 'bottom' || Boolean(currentBottom()); }
+function lureMethod() { return lureShop.state()?.selected===true; }
+function currentLure() { return lureMethod() ? lureView.forSession(heldSession()) : null; }
+function canRecallLure() {
+  const lure=currentLure();
+  return !lure || lure.phase==='hooked' || (lure.phase==='retrieve-pending' && lureView.canRetryRetrieve);
+}
+function lureContext() {
+  const sessionId=heldSession(), lure=currentLure();
+  return {lease:authority.state().lease,sessionId,lure,allowed:canControl() && !inflight && !snapshot.MenuOpen &&
+    !snapshot.PendingResult && !document.hidden && document.hasFocus() && !visualPaused && hostPolicy?.canRun!==false &&
+    !bottomMethod() && waterView.state()?.waterId==='coastal-bay' && !castInput.state()};
+}
+const lureInput=new LureInput({documentId,readContext:lureContext,post:send,newTransportId:()=>crypto.randomUUID()});
 function fightContext() {
   const fight = fightView.state();
   return { lease: authority.state().lease, bankHand:handGeneration(), allowed: handReady() && canControl() && !inflight && !snapshot.MenuOpen && !snapshot.PendingResult &&
@@ -138,9 +155,12 @@ const spotMenu = new SpotMenu({ documentId, container: $('spot-menu'), canSelect
 const wardrobe = new Wardrobe({ documentId, container: $('wardrobe'), readContext: () => tradeContext(!gearBusy()), post: send,
   newTransportId: () => crypto.randomUUID(), changed: updateButtons });
 const bottomShop = new BottomShop({ documentId, post:send, newTransportId:() => crypto.randomUUID(),
-  readContext:() => tradeContext(!wardrobe.busy && !bankKit.busy && !bankKit.selected) });
+  readContext:() => tradeContext(!wardrobe.busy && !bankKit.busy && !bankKit.selected && !lureShop.busy && !lureMethod()) });
 const bankKit = new BankKit({ documentId, post:send, newTransportId:() => crypto.randomUUID(),
-  readContext:() => tradeContext(!wardrobe.busy && !bottomShop.busy) });
+  readContext:() => tradeContext(!wardrobe.busy && !bottomShop.busy && !lureShop.busy && !lureMethod()) });
+const lureShop=new LureShop({documentId,post:send,newTransportId:()=>crypto.randomUUID(),
+  readContext:()=>tradeContext(!wardrobe.busy && !bankKit.busy && !bankKit.selected && !bottomShop.busy)});
+const lurePanel=createLurePanel(document);$('lure-instruments').append(lurePanel.element);
 const renderBankShop = bindBankShop(bankKit,$,updateButtons);
 const stand = new StandView({documentId,post:send,newTransportId:()=>crypto.randomUUID(),readContext:()=>{
   const w=waterView.state();
@@ -152,7 +172,7 @@ const standPanels=['map-stand','scene-stand'].map(id=>{
   const panel=createStandPanel(document), container=$(id);
   container.append(panel.element);return {panel,container};
 });
-function gearBusy(){return bottomShop.busy || bankKit.busy;}
+function gearBusy(){return bottomShop.busy || bankKit.busy || lureShop.busy;}
 function occupiedBank(){return bankKit.selected && stand.state()?.slots.some(row=>row.rig?.sessionId);}
 function tradeContext(otherShopFree) {
   const shop = shopInput.state(), equipment = equipmentInput.state(), spares = sparesInput.state();
@@ -202,7 +222,7 @@ const scene = new ScenePresentation({ canvas: $('scene-canvas'), load: () => imp
   projection: sceneProjection, canRender: () => landscape() && !document.hidden && hostPolicy?.canRun === true &&
     !visualPaused && snapshot?.HasConfirmedState && !snapshot.HostPaused && !snapshot.ShutdownConfirmed &&
     !snapshot.Faulted && !saveFaulted && (readOnly || !snapshot.MenuOpen),
-  cancelHeld: () => { bankWalk.stop(); castInput.cancel(); fightInput.cancel(); speedKeyHeld = false; }, changed: renderSceneShell });
+  cancelHeld: () => { bankWalk.stop(); castInput.cancel(); lureInput.reset(); fightInput.cancel(); speedKeyHeld = false; }, changed: renderSceneShell });
 const bankWalk = new BankWalk({ documentId, post:send, newTransportId:() => crypto.randomUUID(), readContext:() => {
   const water = waterView.state();
   return { lease:authority.state().lease, waterId:water?.waterId, geometryVersion:water?.geometryVersion,
@@ -218,7 +238,7 @@ function sceneProjection() {
   const canAim = canPrepare() && bankWalk.canCast(water) && !castInput.state() && !document.hidden && !visualPaused && hostPolicy?.canRun === true;
   return { water, cast, flight: current(flightView.state()), bite: current(biteView.state()), fight: current(fightView.state()),
     bottom:bottom ? { ...bottom, lineEnd:bottomLineEnd && { ...bottomLineEnd } } : null,
-    canAim, stand:bankKit.selected ? stand.state() : null, bank:bankWalk.forWater(water), sleeveColor: wardrobe.sleeveColor };
+    lureSelected:lureMethod(),lure:currentLure(),canAim,stand:bankKit.selected ? stand.state() : null,bank:bankWalk.forWater(water),sleeveColor:wardrobe.sleeveColor };
 }
 function renderSceneShell() {
   const state = scene.state();
@@ -255,23 +275,30 @@ function renderSceneHud() {
   else if (session && fight?.sessionId === session && fight.phase !== 'idle') {
     action = $('fight-status').textContent;
     hint = ['fighting','landing-eligible'].includes(fight.phase) ? `张力 ${(fight.tensionMilliN / 1000).toFixed(1)} N · 泄力 ${fight.dragLevel}/10 · 按住左键收线，滚轮调泄力` : $('fight-detail').textContent;
+  } else if (session && currentLure()) {
+    [action,hint] = lurePrompt(currentLure().phase);
   } else if (session && currentBottom()) {
     [action,hint] = bottomPrompt(currentBottom().phase);
-  } else if (session && !bottomMethod() && bite?.sessionId === session && bite.phase !== 'idle') {
+  } else if (session && !lureMethod() && !bottomMethod() && bite?.sessionId === session && bite.phase !== 'idle') {
     action = $('bite-status').textContent; hint = bite.phase === 'strikeable' ? '现在按鼠标右键提竿。' : '留意漂尾，浮漂明显下沉时按右键提竿。';
   } else if (session) {
     action = flight?.sessionId === session ? $('flight-status').textContent : '钓组已出手';
     hint = flight?.phase === 'invalid' ? '收回这一竿后可重新选择水面落点。' : '等待钓组落水。';
   } else if (charging) { action = `蓄力 ${(castState.powerPermille / 10).toFixed(0)}%`; hint = '松开左键出手，右键取消。'; }
-  $('scene-action').textContent = bottomMethod() && !session && canControl() ? '底钓 · ' + action : action; $('scene-hint').textContent = hint;
+  const method=lureMethod()?'亮片路亚':bottomMethod()?'底钓':'';
+  $('scene-action').textContent = method && !session && canControl() ? method + ' · ' + action : action; $('scene-hint').textContent = hint;
+  const lure=currentLure(), showLure=lure && !['hooked','ended'].includes(lure.phase) && !snapshot.PendingResult;
+  $('scene-lure-readout').hidden=!showLure;
+  if(showLure)$('scene-lure-readout').textContent=lureMetrics(lure);
   $('scene-power').hidden = !charging; $('scene-power').value = charging ? castState.powerPermille : 0;
   const message = lastReply && ['escaped','landed'].includes(fight?.phase) ? $('fight-status').textContent :
-    lastReply && !['charging','prepared','cast-candidate','reel-held','reel-released','menu-updated'].includes(lastReply.code) ? codes[lastReply.code] : '';
+    lastReply && !['charging','prepared','cast-candidate','reel-held','reel-released','menu-updated','lure-reeling','lure-stopped','lure-speed'].includes(lastReply.code) ? replyText(lastReply.code) : '';
   $('scene-message').textContent = message || ''; $('scene-message').hidden = !message;
   $('scene-menu').disabled = $('menu').disabled;
   for (const key of ['recall','release','land','retry-land','retry-escape']) {
     const source = $(key), proxy = $(`scene-${key}`);
     proxy.disabled = source.disabled; proxy.hidden = source.disabled;
+    if(key==='recall')proxy.textContent=source.textContent;
   }
 }
 const names = { worm: '蚯蚓' };
@@ -310,7 +337,7 @@ function render() {
       `银币 ${decimal(snapshot.WalletMinor)}`, `体力 ${snapshot.Stamina}`, `${names[snapshot.BaitDefinitionKey] ?? snapshot.BaitDefinitionKey} ${snapshot.BaitCount} 份`,
     ].map(text => { const span = document.createElement('span'); span.textContent = text; return span; }));
     const pending = snapshot.PendingFish;
-    $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${fishName(pending.SpeciesKey) ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : heldSession() ? (bottomMethod() ? '底钓钓组已出手，请观察竿尖。' : '这一竿已出手，请观察轨迹与浮漂。') : bankKit.selected && !stand.state()?.heldRig ? '请先从竿架取竿。' : '可以出手';
+    $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${fishName(pending.SpeciesKey) ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : heldSession() ? (lureMethod() ? '亮片已出手，入水后按住左键匀收。' : bottomMethod() ? '底钓钓组已出手，请观察竿尖。' : '这一竿已出手，请观察轨迹与浮漂。') : bankKit.selected && !stand.state()?.heldRig ? '请先从竿架取竿。' : '可以出手';
     $('capacity').textContent = `${snapshot.CreelCount} / ${snapshot.CreelCapacity}`;
     const rows = snapshot.Creel ?? [];
     for (const id of selected) if (!rows.some(f => f.Id === id)) selected.delete(id);
@@ -333,7 +360,7 @@ function renderCast() {
   $('cast-status').textContent = labels[phase] ?? '等待宿主确认';
   const power = ['charging', 'prepared', 'committed'].includes(phase) ? castState.powerPermille : 0;
   $('cast-power').value = power; $('cast-percent').textContent = `${(power / 10).toFixed(1)}%`;
-  $('cast-target').setAttribute('aria-disabled', String(!canPrepare() && !strikeContext().allowed && !bottomStrike.available && !fightContext().allowed));
+  $('cast-target').setAttribute('aria-disabled', String(!canPrepare() && !strikeContext().allowed && !bottomStrike.available && !(currentLure() && lureContext().allowed) && !fightContext().allowed));
   renderWater();
 }
 function renderWater() {
@@ -365,7 +392,7 @@ function renderWater() {
 }
 function renderFlight() {
   const graph = flightView.diagram(), state = flightView.state();
-  const labels = { idle: '等待确认出手', flying: '钓组飞行中', waiting: bottomMethod() ? '底钓钓组已落水，观察竿尖' : '已落水，观察下方浮漂', invalid: '本次未进入有效水面', ended: '这一竿已结束' };
+  const labels = { idle: '等待确认出手', flying: '钓组飞行中', waiting: lureMethod() ? '亮片已入水，可以开始收饵' : bottomMethod() ? '底钓钓组已落水，观察竿尖' : '已落水，观察下方浮漂', invalid: '本次未进入有效水面', ended: '这一竿已结束' };
   const reasons = { flying: '飞行中', 'water-contact': '已接触水面', 'outside-water': '落在水域外', 'line-limit': '所需线长已达可用上限', 'flight-timeout': '飞行超时', ended: '已结束' };
   const redundant = { flying: 'flying', waiting: 'water-contact', ended: 'ended' };
   const reason = state?.reason && state.reason !== redundant[state.phase] ? reasons[state.reason] ?? '未能继续本次轨迹' : '';
@@ -414,6 +441,7 @@ function renderFight() {
   $('fight-status').textContent = labels[state?.phase ?? 'idle'];
   $('fight-detail').textContent = state && ['faulted', 'landing-pending', 'failure-pending'].includes(state.phase) ? reasons[state.reason] ?? '等待宿主确认，当前结果尚未保存。' :
     lineBroken ? '本次没有鱼入护；断线损失已确认，已使用的鱼饵和体力不退还。请打开菜单检查并补齐钓组，再抛竿。' :
+    state?.phase === 'escaped' && lureMethod() ? '本次渔获已脱钩，结束这一竿后可再次抛出亮片。' :
     state?.phase === 'escaped' ? state.reason === 'slack-unhooked' ? '本次没有鱼入护；已使用的鱼饵和体力不退还，装备没有损失。可重新抛竿。' : '本次没有鱼入护；已使用的鱼饵和体力不退还，请检查当前钓组。' :
     state && ['fighting', 'landing-eligible'].includes(state.phase) ? `${state.reeling ? '正在主动收线' : '尚未主动收线'} · ${reasons[state.landingReason] ?? '观察鱼的位置与线张力'}` : '左键按住收线；松开停止绞入，鱼仍可能向外拉线。';
   $('fight-marks').setAttribute('visibility', graph ? 'visible' : 'hidden');
@@ -463,6 +491,7 @@ function updateButtons() {
   reconcileSpot();
   wardrobe.reconcile();
   bankKit.reconcile(); stand.reconcile(); bottomShop.reconcile(); bottomStrike.reconcile(); renderBottom();
+  lureShop.reconcile(); lureInput.reconcile(); renderLure();
   renderBankShop(snapshot?.MenuOpen); renderStand();
   const active = canControl() && !inflight && !spotRequest && !gearBusy() && !wardrobe.busy && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
   const input = castInput.state();
@@ -481,7 +510,8 @@ function updateButtons() {
   const failureRetryPending = fightInput.state().pending.some(p => p.action === 'retry-escape' && p.sessionId === fight.sessionId && p.encounterId === fight.encounterId && p.lease === fight.lease);
   $('retry-escape').hidden = fight.phase !== 'failure-pending' || !fight.canRetryFailure;
   $('retry-escape').disabled = !fight.allowed || fight.phase !== 'failure-pending' || !fight.canRetryFailure || failureRetryPending;
-  $('recall').disabled = !active || !handReady() || !heldSession() || snapshot.PendingResult || failurePending();
+  $('recall').disabled = !active || !handReady() || !heldSession() || snapshot.PendingResult || failurePending() || !canRecallLure();
+  $('recall').textContent=currentLure()?.phase==='retrieve-pending' && lureView.canRetryRetrieve ? '重试收回亮片' : '收回这一竿';
   $('release').disabled = !active || !handReady() || !snapshot.PendingResult;
   $('menu').disabled = !active;
   $('menu').textContent = snapshot?.MenuOpen ? '返回钓位' : spotMenu.revision ? '打开钓点、鱼护与商店' : '打开鱼护与商店';
@@ -529,13 +559,32 @@ function renderBottom() {
     $('select-float').disabled = !bottomShop.can('select-float');
   }
   const bottom = currentBottom();
-  $('bite').hidden = bottomMethod();
+  $('bite').hidden = bottomMethod() || lureMethod();
   $('bottom-observation').hidden = !bottom || Boolean(snapshot?.MenuOpen);
   if (bottom && !bottomPanel) {
     bottomPanel = createBottomTipPanel(document); $('bottom-diagram').append(bottomPanel.element);
   }
   bottomPanel?.render(bottomView,heldSession());
   $('bottom-strike').disabled = !bottomStrike.available;
+}
+function renderLure(){
+  const s=lureShop.state(), menu=Boolean(snapshot?.MenuOpen);
+  $('lure-shop').hidden=!s || !menu;
+  if(s && menu){
+    $('lure-shop-status').textContent=lureShop.pending?'正在确认操作…':lureShop.confirming?'支付 56.00 银币购买亮片、路亚竿和纺车轮？':
+      s.selected?'已装备亮片路亚':!s.available?'此存档暂未开放亮片路亚。':s.owned?
+      (s.allowed?'已拥有，可在此钓场使用。':'已拥有，在海湾岩岸可以使用。'):'56.00 银币 / 套';
+    $('lure-buy').hidden=s.owned || lureShop.confirming;
+    $('lure-buy').disabled=!lureShop.can('buy');
+    $('lure-confirm').hidden=$('lure-cancel').hidden=!lureShop.confirming;
+    $('lure-confirm').disabled=!lureShop.confirming;
+    $('lure-select').hidden=!s.owned || s.selected;
+    $('lure-select').disabled=!lureShop.can('select');
+    $('lure-leave').hidden=!s.selected;$('lure-leave').disabled=!lureShop.can('leave');
+  }
+  const lure=currentLure();
+  $('lure-observation').hidden=!lure || menu || scene.visible || lure.phase==='hooked';
+  if(!$('lure-observation').hidden)lurePanel.render(lureView,heldSession());
 }
 function renderStand() {
   const visible = bankKit.selected && landscape() && !snapshot?.MenuOpen && Boolean(stand.state());
@@ -586,6 +635,7 @@ function renderCampNavigation() {
 }
 function revoke(reason) {
   stand.clearInput();
+  lureInput.reset();
   bankWalk.stop();
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
@@ -596,6 +646,8 @@ function revoke(reason) {
 function intent(action) {
   if (!canControl() || inflight || spotRequest || gearBusy() || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
   if (bankKit.selected && (action === 'sell' ? occupiedBank() : !handReady() || !heldSession())) return;
+  if(action==='recall' && !canRecallLure())return;
+  lureInput.reset();
   fightInput.cancel();
   const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : heldSession(),
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
@@ -611,6 +663,15 @@ Object.assign(codes, { 'bottom-kit-purchased':'底钓套装购买已确认。', 
   'bottom-spot-unavailable':'请前往静水湾的底钓区。', 'bottom-strike-missed':'已经错过这次鱼口。',
   'outside-bottom-patch':'落点离开底钓区，请收回并重新瞄准。', 'bed-too-steep':'落点底坡过陡，请换个落点。' });
 Object.assign(codes, { 'save-settlement-reserve': '存档空间不足以安全保存下一竿，已取消操作，未扣除鱼饵或体力。请保留当前存档。' });
+Object.assign(codes, {'lure-kit-purchased':'亮片套装已购入。','lure-method-selected':'钓法已切换。','lure-hooked':'已中鱼，请重新按左键收线。',
+  'lure-unavailable':'暂时不能使用路亚套装。','lure-spot-unavailable':'亮片路亚请前往海湾岩岸。','lure-not-current':'这次收饵已结束。',
+  'lure-shop-stale':'存档进度已变化，请重新选择。','lure-shop-busy':'请先收回钓组或完成当前菜单操作。','lure-kit-owned':'已拥有亮片套装。',
+  'lure-kit-not-owned':'请先在渔具店购买亮片套装。','lure-not-written':'购买尚未写入，可在柜台重新确认。',
+  'lure-retrieved':'亮片已收回，可以重新抛投。','lure-retrieval-not-written':'进度尚未写入，请点「重试收回亮片」。','lure-retrieve-required':'请按住左键把亮片收回岸边。',
+  'lure-not-active':'亮片已不在收饵状态。','lure-reeling':'正在匀收亮片。','lure-stopped':'已停止收饵。','lure-speed':'收线速度档已更新。'});
+const lureReplies={'cast-candidate':'亮片已出手，消耗 2 点体力。','recall-candidate':'已收回亮片。','empty-strike':'本次未能中鱼，可以继续收饵。',
+  'encounter-not-current':'这次攻击已经结束，继续观察亮片。','slack-unhooked':'已确认脱钩，本竿结束。','unhooked-candidate':'脱钩结果已保存。'};
+function replyText(code){return (lureMethod() && lureReplies[code]) || codes[code];}
 Object.assign(codes, { 'bank-purchased':'竿架装备购买已确认。', 'bank-mode-selected':'钓竿模式已切换。', 'bank-busy':'请先收回各竿，完成当前操作。',
   'bank-stale':'装备或进度已变化，请重新选择。', 'bank-unavailable':'当前无法使用竿架。','bank-kit-required':'请先购买底竿和竿架。',
   'bank-leave-first':'请先退出竿架模式。','stand-updated':'取放已确认。','slot-unreachable':'请走到竿架附近。',
@@ -654,6 +715,20 @@ Object.assign(codes, { 'camp-work-started': '帮工已开始，请保持当前�
   'camp-creel-not-empty': '可以先出售鱼护里的渔获。', 'camp-schema-required': '此存档尚未支持营地帮工。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
+  if(m.kind==='game-lure-shop-state'){if(lureShop.apply(m))render();return;}
+  if(m.kind==='game-lure-state'){
+    const previous=lureView.state(),retry=lureView.canRetryRetrieve;
+    if(lureView.apply(m)){
+      lureInput.reconcile();
+      if(previous?.phase!==m.state.phase || previous?.sessionId!==m.state.sessionId || retry!==lureView.canRetryRetrieve){
+        renderCast();updateButtons();
+      }else if(m.state.sessionId && currentLure()){
+        if(scene.visible)renderSceneHud();else if(!$('lure-observation').hidden)lurePanel.render(lureView,heldSession());
+        scene.refresh();
+      }
+    }
+    return;
+  }
   if (m.kind === 'game-bank-kit-state') {
     if (bankKit.apply(m)) render();
     return;
@@ -759,7 +834,7 @@ window.chrome.webview.addEventListener('message', event => {
     const walkReply = bankWalk.reply(m);
     if (['walk-updated','walk-stopped'].includes(m.code)) { if (walkReply) updateButtons(); return; }
     if (campOpening && campOpening.transportId === m.transportId && m.code !== 'menu-updated') campOpening = null;
-    wardrobe.reply(m); bottomShop.reply(m); bottomStrike.reply(m); bankKit.reply(m); stand.reply(m);
+    wardrobe.reply(m); bottomShop.reply(m); bottomStrike.reply(m); bankKit.reply(m); stand.reply(m); lureShop.reply(m); lureInput.reply(m);
     if (spotRequest && m.transportId === spotRequest.transportId) {
       if (m.code === 'spot-selected' || m.code === 'spot-unchanged') spotRequest.acknowledged = true;
       else { spotRequest = null; spotMenu.reject(codes[m.code]); }
@@ -767,7 +842,7 @@ window.chrome.webview.addEventListener('message', event => {
     lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m); equipmentInput.reply(m); sparesInput.reply(m); campInput.reply(m);
     if (['save-outcome-unknown', 'failure-save-unknown', 'landing-save-unknown', 'camp-work-save-unknown'].includes(m.code)) saveFaulted = true;
     if (inflight === m.transportId) inflight = null;
-    $('notice').textContent = m.code === 'wardrobe-updated' || (m.code === 'menu-updated' && playerCamp()) ? '' : codes[m.code] ?? `操作未完成：${m.code}`;
+    $('notice').textContent = m.code === 'wardrobe-updated' || (m.code === 'menu-updated' && playerCamp()) ? '' : replyText(m.code) ?? `操作未完成：${m.code}`;
   }
   if (m.kind === 'game-cast-state' && Number.isSafeInteger(m.revision) && m.revision > castRevision &&
       ['idle', 'charging', 'prepared', 'committed', 'cancelled', 'rejected', 'unknown'].includes(m.phase) &&
@@ -776,7 +851,7 @@ window.chrome.webview.addEventListener('message', event => {
     castState = m; castRevision = m.revision; castInput.hostState(m);
   }
   if (m.kind === 'game-flight' && flightNotices.apply(m)) {
-    $('notice').textContent = '已确认出手并保存消耗。下方显示固定平面的飞行与落水状态。';
+    $('notice').textContent = lureMethod() ? '亮片已出手，消耗 2 点体力。' : '已确认出手并保存消耗。下方显示固定平面的飞行与落水状态。';
   }
   if (m.kind === 'activation-reply') lastActivationReply = m;
   if (m.kind === 'revoke-reply') lastRevoke = m;
@@ -795,6 +870,8 @@ for (const [id, act] of [
   ['bottom-buy', () => bottomShop.offer()], ['bottom-confirm', () => bottomShop.submit('buy')],
   ['bottom-cancel', () => bottomShop.cancel()], ['select-bottom', () => bottomShop.submit('select-bottom')],
   ['select-float', () => bottomShop.submit('select-float')], ['bottom-strike', () => bottomStrike.strike()],
+  ['lure-buy',()=>lureShop.offer()],['lure-confirm',()=>lureShop.submit('buy')],['lure-cancel',()=>lureShop.cancel()],
+  ['lure-select',()=>lureShop.submit('select')],['lure-leave',()=>lureShop.submit('leave')],
 ]) {
   $(id).addEventListener('click', e => { if (e.detail<=1 && !$(id).disabled) { act(); updateButtons(); } });
   $(id).addEventListener('keydown', e => { if (e.repeat && ['Space','Enter'].includes(e.code)) e.preventDefault(); });
@@ -817,6 +894,7 @@ $('sell').addEventListener('click', () => intent('sell'));
 function toggleMenu(area = 'home') {
   if (!canControl() || inflight || spotRequest || gearBusy() || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
   stand.clearInput();
+  lureInput.reset();
   bankWalk.stop();
   castInput.cancel();
   fightInput.cancel(); speedKeyHeld = false;
@@ -850,12 +928,44 @@ const target = $('cast-target');
 const canvas = $('scene-canvas');
 const reelPointers = new Map(), reelKeys = new Map();
 const surfaceAvailable = surface => surface === canvas ? scene.visible && !snapshot?.MenuOpen : !scene.visible;
+function markMouseButtons(buttons){
+  strikeInput.mouseButtons(buttons);bottomStrike.buttons(buttons);lureInput.buttons(buttons);
+}
+function rightPress(event,surface){
+  if(event.button!==2 || !(event.buttons&2) || !surfaceAvailable(surface))return false;
+  event.preventDefault();
+  if(castInput.state()){castInput.cancel();markMouseButtons(event.buttons);render();return true;}
+  if(lureMethod()){
+    strikeInput.mouseButtons(event.buttons);bottomStrike.buttons(event.buttons);
+    if(lureInput.press(event.buttons))updateButtons();
+  }else if(bottomMethod()){
+    strikeInput.mouseButtons(event.buttons);
+    if(bottomStrike.press(event.buttons))updateButtons();
+  }else{
+    bottomStrike.buttons(event.buttons);
+    if(strikeInput.mouseDown(event.button,event.buttons))updateButtons();
+  }
+  return true;
+}
 function bindCastSurface(surface) {
 surface.addEventListener('pointerdown', event => {
   if (!surfaceAvailable(surface) || event.pointerType !== 'mouse') return;
+  if(rightPress(event,surface))return;
   if (surface === canvas && event.button === 0) bankWalk.stop();
-  if (event.button === 0 && ['fighting', 'landing-eligible'].includes(fightContext().phase)) {
+  const fight=fightContext();
+  if (event.button === 0 && fight.allowed && ['fighting', 'landing-eligible'].includes(fight.phase)) {
     beginReelPointer(event, surface); return;
+  }
+  if(event.button===0 && currentLure()){
+    const source=`pointer:${event.pointerId}`;
+    if((event.buttons&1) && lureInput.begin(source)){
+      const held=lureInput.state().held;
+      reelPointers.set(event.pointerId,{element:surface,at:event.timeStamp,startTransportId:held.transportId,lure:true});
+      event.preventDefault();
+      try{surface.setPointerCapture(event.pointerId);}catch{lureInput.stop(source,held.transportId);reelPointers.delete(event.pointerId);}
+      updateButtons();
+    }
+    return;
   }
   const water = waterView.state();
   const aiming = water?.enabled && event.button === 0 && !(event.buttons & 2);
@@ -872,7 +982,15 @@ surface.addEventListener('pointerdown', event => {
     render();
   }
 });
-surface.addEventListener('pointermove', event => { if (!(event.buttons & 1)) endReelPointer(event); if (surfaceAvailable(surface) && event.pointerType === 'mouse' && castInput.pointer(event.pointerId, event.buttons)) render(); });
+surface.addEventListener('pointermove', event => {
+  if (!(event.buttons & 1)) endReelPointer(event);
+  if(event.pointerType!=='mouse' || !surfaceAvailable(surface))return;
+  // A second physical button on an active pointer arrives as a move.
+  // Normal motion has button=-1 and cannot turn a held press into a strike.
+  if(rightPress(event,surface))return;
+  if(!(event.buttons&2))markMouseButtons(event.buttons);
+  if(castInput.pointer(event.pointerId,event.buttons))render();
+});
 surface.addEventListener('pointerup', event => { endReelPointer(event); if (surfaceAvailable(surface) && event.pointerType === 'mouse' && castInput.pointer(event.pointerId, event.buttons)) render(); });
 surface.addEventListener('pointercancel', event => { endReelPointer(event); if (surfaceAvailable(surface) && castInput.pointerCancelled(event.pointerId)) render(); });
 surface.addEventListener('lostpointercapture', event => { endReelPointer(event); if (surfaceAvailable(surface) && castInput.pointerLost(event.pointerId)) render(); });
@@ -880,21 +998,7 @@ surface.addEventListener('contextmenu', event => { event.preventDefault(); if (s
 }
 bindCastSurface(target); bindCastSurface(canvas);
 for (const element of [target, canvas, $('bite-diagram'), $('bottom-diagram')]) {
-  // mousedown fires for each newly pressed button, including a right-button
-  // chord that Pointer Events reports as pointermove. Preparation cancellation
-  // has priority and this physical press is then marked held, never buffered.
-  element.addEventListener('mousedown', event => {
-    if (event.button !== 2 || !surfaceAvailable(element)) return;
-    event.preventDefault();
-    if (castInput.state()) { castInput.cancel(); strikeInput.mouseButtons(event.buttons); bottomStrike.buttons(event.buttons); render(); return; }
-    if (bottomMethod()) {
-      strikeInput.mouseButtons(event.buttons);
-      if (bottomStrike.press(event.buttons)) updateButtons();
-    } else {
-      bottomStrike.buttons(event.buttons);
-      if (strikeInput.mouseDown(event.button, event.buttons)) updateButtons();
-    }
-  });
+  element.addEventListener('mousedown', event=>rightPress(event,element));
 }
 $('bite-diagram').addEventListener('contextmenu', event => event.preventDefault());
 $('bottom-diagram').addEventListener('contextmenu', event => event.preventDefault());
@@ -909,7 +1013,9 @@ function beginReelPointer(event, element) {
 function endReelPointer(event) {
   const held = reelPointers.get(event.pointerId);
   if (!held || event.timeStamp < held.at || event.type === 'lostpointercapture' && held.element.hasPointerCapture(event.pointerId)) return;
-  fightInput.end(`pointer:${event.pointerId}`, held.startTransportId); reelPointers.delete(event.pointerId);
+  const source=`pointer:${event.pointerId}`;
+  if(held.lure)lureInput.stop(source,held.startTransportId);else fightInput.end(source,held.startTransportId);
+  reelPointers.delete(event.pointerId);
 }
 for (const element of [$('fight-diagram'), $('reel-hold')]) {
   element.addEventListener('pointerdown', event => beginReelPointer(event, element));
@@ -931,12 +1037,16 @@ $('reel-hold').addEventListener('keyup', event => {
 });
 $('reel-hold').addEventListener('blur', () => fightInput.cancel());
 for (const element of [target, canvas, $('fight-diagram')]) element.addEventListener('wheel', event => {
+  if(surfaceAvailable(element) && lureInput.adjustingSpeed && event.deltaY){
+    event.preventDefault();if(lureInput.wheel(event.deltaY))updateButtons();return;
+  }
   if (!surfaceAvailable(element) || !fightContext().allowed || !['fighting', 'landing-eligible'].includes(fightContext().phase) || event.deltaY === 0) return;
   event.preventDefault(); changeFightLevel(speedKeyHeld ? 'speed' : 'drag', event.deltaY < 0 ? 1 : -1);
 }, { passive: false });
-window.addEventListener('pointerup', endReelPointer);
+window.addEventListener('pointerup', event=>{endReelPointer(event);if(event.pointerType==='mouse')markMouseButtons(event.buttons);});
+window.addEventListener('pointercancel', event=>{if(event.pointerType==='mouse')markMouseButtons(0);});
 for (const type of ['mouseup','mousemove']) window.addEventListener(type, event => {
-  strikeInput.mouseButtons(event.buttons); bottomStrike.buttons(event.buttons);
+  markMouseButtons(event.buttons);
 });
 window.addEventListener('blur', () => revoke('blur'));
 window.addEventListener('pagehide', () => { revoke('pagehide'); scene.dispose(); });
@@ -959,14 +1069,18 @@ document.addEventListener('keydown', event => {
     return;
   }
   if (event.key === 'Escape') { revoke('escape'); return; }
-  if (event.target instanceof Element && (event.target.isContentEditable || event.target.closest('input,textarea,select,button'))) return;
-  if (event.code === 'KeyR' && !event.repeat && fightContext().allowed) speedKeyHeld = true;
+  if (typing(event.target)) return;
+  if (event.code === 'KeyR' && !event.repeat && !event.isComposing && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    if(lureInput.speedKey(true))event.preventDefault();
+    else if(fightContext().allowed)speedKeyHeld=true;
+  }
+  if (event.target instanceof Element && event.target.closest('button')) return;
   if (event.code === 'Space' && !event.repeat && fightContext().allowed) { event.preventDefault(); fightInput.land(); updateButtons(); }
 });
 document.addEventListener('keyup', event => {
   stand.key(event,false);
   if (!typing(event.target) && bankWalk.key(event,false)) event.preventDefault();
-  if (event.code === 'KeyR') speedKeyHeld = false;
+  if (event.code === 'KeyR') { speedKeyHeld=false;lureInput.speedKey(false); }
 });
 $('scene-to-map').addEventListener('click', () => scene.showScene(false));
 $('scene-to-water').addEventListener('click', () => scene.showScene(true));
@@ -980,6 +1094,7 @@ window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authorit
   biteState: biteView.state(), biteRevision: biteView.revision, strikeInputState: strikeInput.state(),
   bottomState:bottomView.state(), bottomRevision:bottomView.revision, bottomLineEnd:bottomLineEnd && { ...bottomLineEnd },
   bottomShopState:bottomShop.state(), bottomShopPending:bottomShop.pending,
+  lureShopState:lureShop.state(),lureShopPending:lureShop.pending,lureState:lureView.state(),lureRevision:lureView.revision,lureInputState:lureInput.state(),lureCanRetryRetrieve:lureView.canRetryRetrieve,
   bankKitState:bankKit.state(), bankKitPending:bankKit.pending, standState:stand.state(), standRevision:stand.revision, standPending:stand.pending,
   fightState: fightView.state(), fightRevision: fightView.revision, fightInputState: fightInput.state(),
   shopState: shopView.state(), shopRevision: shopView.revision, shopInputState: shopInput.state(),

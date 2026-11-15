@@ -13,6 +13,7 @@ namespace FishingDesktop.GameCore
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
         const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17,EquipmentUpgrade=18,ArchiveEquipment=19,CampReward=20,Clothing=21,BottomKit=22,BottomCast=23,AdditionalBottomKit=24,BankStand=25,BankCast=26,BankEnding=27;
+        const byte LureKit=28,LureCast=29;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -128,6 +129,8 @@ namespace FishingDesktop.GameCore
         {
             if(command is CastFloat)return Cast;if(command is RecallFloat)return Recall;if(command is ReleaseCurrentFloatFish)return Release;
             if(command is BuyBottomKit)return BottomKit;
+            if(command is BuyLureKit)return LureKit;
+            if(command is CastLureWithEquipment)return LureCast;
             if(command is BuyAdditionalBottomKit)return AdditionalBottomKit;
             if(command is BuyBankRodStand)return BankStand;
             if(command is CastBankBottomRod)return BankCast;
@@ -189,6 +192,12 @@ namespace FishingDesktop.GameCore
                     writer.I64(cast.KitRigRevision);writer.I64(cast.LineRevision);writer.I64(cast.RequiredLineMm);
                 }else if(type==BottomKit){
                     foreach(var id in ((BuyBottomKit)command).Kit.Ids)writer.Guid(id);
+                }else if(type==LureKit){
+                    foreach(var id in ((BuyLureKit)command).Kit.Ids)writer.Guid(id);
+                }else if(type==LureCast){
+                    var cast=(CastLureWithEquipment)command;
+                    writer.Guid(cast.RigId);writer.Guid(cast.LineId);writer.Guid(cast.LureId);writer.Guid(cast.HookId);
+                    writer.I64(cast.KitRigRevision);writer.I64(cast.LineRevision);writer.I64(cast.LureRevision);writer.I64(cast.RequiredLineMm);
                 }else if(type==AdditionalBottomKit){
                     var additional=(BuyAdditionalBottomKit)command;
                     writer.Byte((byte)additional.KitNumber);
@@ -225,9 +234,16 @@ namespace FishingDesktop.GameCore
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,(reader,schema)=>{
-                byte type=reader.Byte();if(type<Cast||type>BankEnding||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(type<Cast||type>LureCast||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
+                if(type==LureKit){
+                    if(session!=Guid.Empty)throw Invalid("Lure kit purchase contains a session.");
+                    var kit=new OwnedLureKit(reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid());
+                    return new BuyLureKit(profile,branch,request,businessEvent,kit,sequence,rig,rules);
+                }
+                if(type==LureCast)return new CastLureWithEquipment(profile,branch,request,businessEvent,session,reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid(),
+                    reader.I64(),reader.I64(),reader.I64(),reader.I64(),sequence,rig,rules);
                 if(type==BankCast)return new CastBankBottomRod(profile,branch,request,businessEvent,session,
                     reader.Guid(),reader.Guid(),reader.Guid(),reader.I64(),reader.I64(),reader.I64(),sequence,rig,rules);
                 if(type==BankEnding){

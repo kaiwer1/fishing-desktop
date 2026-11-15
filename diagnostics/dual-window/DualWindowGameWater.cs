@@ -50,7 +50,8 @@ sealed partial class DualWindowContext
     {
         if(!GameWaterTargetCurrent(cast.Target))return null;
         var result=FloatCastLaunchPlanner.Plan(gameWater,gameWaterPlan.U,gameWaterPlan.V,gameWater.Version,cast.PowerPermille);
-        return result.Accepted&&GameCastReservation(result.Plan)==cast.Target.RequiredLineMm&&GameBottomLandingAllowed(result.Plan,cast.Target.RequiredLineMm)?result.Plan:null;
+        return result.Accepted&&GameCastReservation(result.Plan)==cast.Target.RequiredLineMm&&GameBottomLandingAllowed(result.Plan,cast.Target.RequiredLineMm)&&
+            (!gameLureSelected||CheckGameLurePlan(result.Plan)==null)?result.Plan:null;
     }
     void UpdateGameWaterLanding()
     {

@@ -136,9 +136,9 @@ namespace FishingDesktop.GameCore
         static bool UserType(FloatCommand command)
         { var bankEnd=command as SettleBankBottomRod;
           return (bankEnd!=null && (bankEnd.Ending==BankRodEnding.Recall||bankEnd.Ending==BankRodEnding.Release)) ||
-            command is CastFloat || command is CastFloatWithEquipment || command is CastBottomKitWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is ArchiveLostFloatEquipment || MenuGearCommand(command) || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
+            command is CastFloat || command is CastFloatWithEquipment || command is CastBottomKitWithEquipment || command is CastLureWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is ArchiveLostFloatEquipment || MenuGearCommand(command) || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
         static bool MenuGearCommand(FloatCommand command)
-        { return command is ChangeFloatClothing || command is BuyBottomKit || command is BuyAdditionalBottomKit || command is BuyBankRodStand; }
+        { return command is ChangeFloatClothing || command is BuyBottomKit || command is BuyAdditionalBottomKit || command is BuyBankRodStand || command is BuyLureKit; }
         bool HasRecordedRequest(FloatCommand command)
         {
             if (command == null) return false;
@@ -205,7 +205,7 @@ namespace FishingDesktop.GameCore
             if (!Authorized(view, document, lease)) return Refused("control-required");
             if (!UserType(command)) return Refused("user-command-not-allowed");
             if (MenuGearCommand(command) && !_menu) return Refused("menu-required");
-            if ((command is CastFloat || command is CastFloatWithEquipment || command is CastBottomKitWithEquipment) && (_menu || Current().PendingResult) && !HasRecordedRequest(command)) return Refused("domain-paused");
+            if ((command is CastFloat || command is CastFloatWithEquipment || command is CastBottomKitWithEquipment || command is CastLureWithEquipment) && (_menu || Current().PendingResult) && !HasRecordedRequest(command)) return Refused("domain-paused");
             return Run(() => _store.Execute(command));
         }
         internal FloatCommitResult ExecuteHost(FloatCommand command)

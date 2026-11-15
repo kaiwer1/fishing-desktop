@@ -80,12 +80,12 @@ const waterShader = {
   name: 'StillwaterSurface',
   uniforms: { tDiffuse: { value: null }, color: { value: null }, textureMatrix: { value: null },
     time: { value: 0 }, impact: { value: new THREE.Vector3(0, 0, -99) }, rough: { value: .65 }, body: {value: new THREE.Color(0x36594e)},
-    fishPos:{value:new THREE.Vector3()},fishShape:{value:new THREE.Vector4()} },
+    fishPos:{value:new THREE.Vector3()},fishShape:{value:new THREE.Vector4()},spoon:{value:new THREE.Vector4()} },
   vertexShader: `uniform mat4 textureMatrix;varying vec4 uvMirror;varying vec3 world;
     void main(){uvMirror=textureMatrix*vec4(position,1.);world=(modelMatrix*vec4(position,1.)).xyz;
       gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
   fragmentShader: `uniform sampler2D tDiffuse;uniform float time;uniform float rough;uniform vec3 body;uniform vec3 impact;
-    uniform vec3 fishPos;uniform vec4 fishShape;varying vec4 uvMirror;varying vec3 world;
+    uniform vec3 fishPos;uniform vec4 fishShape;uniform vec4 spoon;varying vec4 uvMirror;varying vec3 world;
     float oval(vec2 p,vec2 radius){float d=length(p/radius);return 1.-smoothstep(.91,1.06,d);}
     void main(){vec2 p=world.xz;vec3 eye=normalize(cameraPosition-world);
       float amp=clamp(eye.y*4.,.32,1.);
@@ -121,6 +121,14 @@ const waterShader = {
         float wake=length(vec2(dot(surfaceDelta,heading)*.8,dot(surfaceDelta,vec2(-heading.y,heading.x))));
         float crest=sin(wake*35.-time*11.)*exp(-wake*5.)*smoothstep(0.,.11,wake);
         water+=vec3(.10,.13,.12)*crest*fishShape.w*(1.-smoothstep(0.,.42,depth));
+      }
+      if(spoon.w>0. && eye.y>.02){
+        float depth=world.y-spoon.y;
+        vec2 delta=world.xz-eye.xz*depth/eye.y-spoon.xz;
+        if(dot(delta,delta)<.003){
+          float flash=oval(delta,vec2(.012,.034))*spoon.w;
+          water=mix(water,vec3(.51,.57,.53),flash*(1.-smoothstep(.0,1.9,depth)));
+        }
       }
       float spark=pow(max(dot(normal,normalize(eye+normalize(vec3(-.47,.23,-1.)))),0.),850.);
       water+=vec3(.98,.77,.41)*spark*.83;
@@ -319,6 +327,11 @@ export function createLake(water,assetUrl=null) {
   return {group,kind, refreshMirror(immediate=false){mirrorDirty=true;forceMirror=forceMirror||immediate;},
     mirrorUpdates(){return mirrorUpdates;},
     loadedMaterials(){return loadedMaterials;},
+    lure(mesh){
+      const v=surface.material.uniforms.spoon.value;
+      if(mesh&&mesh.position.y<=sy)v.set(mesh.position.x,mesh.position.y,mesh.position.z,.42+.22*Math.sin(mesh.rotation.z));
+      else v.w=0;
+    },
     fish(sample){
       const u=surface.material.uniforms;
       if(sample){

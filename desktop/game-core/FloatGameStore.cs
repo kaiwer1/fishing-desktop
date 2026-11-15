@@ -41,6 +41,8 @@ namespace FishingDesktop.GameCore
         public readonly long RemainingTransactions,RemainingBytes;
         public readonly int RequiredCastTransactions=3,RequiredCastBytes;
         internal bool CanStartBottomCast {get{return RemainingTransactions>=RequiredCastTransactions && RemainingBytes>=BottomCastFrameBytes+MaximumEndingBytes;}}
+        internal const int LureCastFrameBytes=284;
+        internal bool CanStartLureCast {get{return RemainingTransactions>=RequiredCastTransactions && RemainingBytes>=LureCastFrameBytes+MaximumEndingBytes;}}
         internal FloatSaveBudget(int schema,long sequence,long length,System.Collections.Generic.IEnumerable<FloatSession> bankSessions=null)
         {
             if((schema!=1&&schema!=2&&schema!=3)||sequence<0||sequence>FloatGameStore.MaximumTransactions||length<0||length>FloatGameStore.MaximumFileBytes)

@@ -31,14 +31,16 @@ sealed partial class DualWindowContext
         if(active==null || active.Id!=cast.SessionId || active.CapacityBlocked)
             throw new InvalidOperationException("Flight requires the newly confirmed active cast.");
         var target=cast.Target;
+        if(active.IsLure)ResetGameLure();
         if(gameWater!=null){
             var plan=GameWaterReleasePlan(cast);
             if(plan==null)throw new InvalidOperationException("The confirmed cast lost its frozen water geometry and launch plan.");
+            if(active.IsLure)gameLurePlan=plan;
             gameFlightOrigin=new FloatFlightPoint(plan.AnchorXmm,plan.AnchorYmm,plan.AnchorZmm);
             gameFlightWater=new FloatFlightWater(gameWater.SurfaceYmm,gameWater.MinimumXmm,gameWater.MaximumXmm,gameWater.MinimumZmm,gameWater.MaximumZmm);
             gameFlightRules=new FloatFlightRules(plan.MinimumSpeedMmPerSecond,plan.FullSpeedMmPerSecond,plan.LaunchAngleDegrees,plan.GravityMmPerSecondSquared,plan.MaximumFlightMilliseconds);
         }
-        long line=GameBankMode?active.BottomKit.Equipment.Spool(active.BottomKit.Equipment.Equipped(FloatEquipmentSlot.Reel).Id).RemainingLineMm:GameInstalledLineMm(state);
+        long line=active.IsLure?active.LureKit.LineLengthMm:GameBankMode?active.BottomKit.Equipment.Spool(active.BottomKit.Equipment.Equipped(FloatEquipmentSlot.Reel).Id).RemainingLineMm:GameInstalledLineMm(state);
         var launch=new FloatFlightLaunch(gameFlightOrigin,new FloatFlightPoint(target.Xmm,target.Ymm,target.Zmm),
             gameFlightWater,gameFlightRules,cast.PowerPermille,line);
         gameFlight=new FloatFlightSimulation(cast.SessionId,launch);

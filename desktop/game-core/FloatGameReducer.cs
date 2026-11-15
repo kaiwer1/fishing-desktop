@@ -19,6 +19,38 @@ namespace FishingDesktop.GameCore
         internal virtual string Detail{get{return "";}}
         internal string Fingerprint{get{return Kind+"|"+ProfileId.ToString("N")+"|"+BranchId.ToString("N")+"|"+EventId.ToString("N")+"|"+SessionId.ToString("N")+"|"+FloatGuard.Number(ExpectedSequence)+"|"+FloatGuard.Number(ExpectedRigRevision)+"|"+FloatGuard.Number(ExpectedRulesVersion)+"|"+Detail;}}
     }
+    internal sealed class BuyLureKit : FloatCommand
+    {
+        internal readonly OwnedLureKit Kit;
+        internal BuyLureKit(Guid profile,Guid branch,Guid request,Guid businessEvent,OwnedLureKit kit,long sequence,long rigRevision,long rulesVersion)
+            :base("buy-lure-kit-v1",profile,branch,request,businessEvent,Guid.Empty,sequence,rigRevision,rulesVersion)
+        {if(kit==null)throw new ArgumentNullException("kit");Kit=kit;}
+        internal override string Detail {get{return String.Join("|",Kit.Ids);}}
+    }
+    internal sealed class CastLureWithEquipment : FloatCommand
+    {
+        internal readonly Guid RigId,LineId,LureId,HookId;
+        internal readonly long KitRigRevision,LineRevision,LureRevision,RequiredLineMm;
+        internal CastLureWithEquipment(Guid profile,Guid branch,Guid request,Guid businessEvent,Guid session,
+            Guid rig,Guid line,Guid lure,Guid hook,long kitRigRevision,long lineRevision,long lureRevision,long requiredLineMm,
+            long sequence,long expectedRigRevision,long rulesVersion)
+            :base("cast-lure-kit-v1",profile,branch,request,businessEvent,session,sequence,expectedRigRevision,rulesVersion)
+        {
+            var ids=new HashSet<Guid>();foreach(var id in new[]{session,rig,line,lure,hook})FloatGuard.Unique(ids,id);
+            if(kitRigRevision<1||lineRevision<1||lureRevision<1||requiredLineMm<1||requiredLineMm>FloatEquipmentGuard.MaximumLineMm)
+                throw new ArgumentOutOfRangeException("lure cast binding");
+            RigId=rig;LineId=line;LureId=lure;HookId=hook;KitRigRevision=kitRigRevision;LineRevision=lineRevision;LureRevision=lureRevision;RequiredLineMm=requiredLineMm;
+        }
+        internal static CastLureWithEquipment Create(FloatGameState state,long requiredLineMm)
+        {
+            var k=state.OwnedLureKit;if(k==null)throw new InvalidOperationException("Lure kit not owned.");
+            return new CastLureWithEquipment(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),
+                k.RigId,k.LineId,k.LureId,k.HookId,k.RigRevision,k.LineRevision,k.LureRevision,requiredLineMm,
+                state.Sequence,state.Rig.Revision,state.RulesVersion);
+        }
+        internal override string Detail {get{return String.Join("|",new[]{RigId,LineId,LureId,HookId})+"|"+FloatGuard.Number(KitRigRevision)+"|"+
+            FloatGuard.Number(LineRevision)+"|"+FloatGuard.Number(LureRevision)+"|"+FloatGuard.Number(RequiredLineMm);}}
+    }
     internal sealed class BuyBottomKit : FloatCommand
     {
         internal readonly BottomOwnedKit Kit;
@@ -367,6 +399,7 @@ namespace FishingDesktop.GameCore
         static string Code(FloatOutcome outcome)
         {switch(outcome){
             case FloatOutcome.BottomKitPurchased:return "bottom-kit-purchase-candidate";
+            case FloatOutcome.LureKitPurchased:return "lure-kit-purchase-candidate";
             case FloatOutcome.AdditionalBottomKitPurchased:return "additional-bottom-kit-purchase-candidate";
             case FloatOutcome.BankRodStandPurchased:return "bank-rod-stand-purchase-candidate";
             case FloatOutcome.ClothingPurchased:return "clothing-purchase-candidate";
@@ -386,7 +419,7 @@ namespace FishingDesktop.GameCore
             if(TerminalIdentityWasUsed(state,command.RequestId))return Reject("request-identity-used");
             foreach(var row in state.Receipts)if(row.EventId==command.EventId)return Reject("event-already-used");
             if(TerminalIdentityWasUsed(state,command.EventId))return Reject("event-identity-used");
-            if((command is CastFloat||command is CastFloatWithEquipment||command is CastBottomKitWithEquipment)&&UsedSession(state,command.SessionId))return Reject("session-already-used");
+            if((command is CastFloat||command is CastFloatWithEquipment||command is CastBottomKitWithEquipment||command is CastLureWithEquipment)&&UsedSession(state,command.SessionId))return Reject("session-already-used");
             if(command.ExpectedSequence!=state.Sequence||command.ExpectedRigRevision!=state.Rig.Revision||command.ExpectedRulesVersion!=state.RulesVersion)return Reject("version-conflict");
             if(rules==null)return Reject("configuration-missing");
             if(rules.Signature!=state.Rules.Signature)return Reject("configuration-mismatch");
@@ -415,7 +448,16 @@ namespace FishingDesktop.GameCore
             var equipment=state.Equipment;var equipmentOffers=state.EquipmentOffers;var equipmentOrigin=state.EquipmentUpgradeOrigin;FloatEquipmentLossSummary equipmentLoss=null;FloatEquipmentArchiveSummary equipmentArchive=null;
             var bankSessions=new List<FloatSession>(state.BankSessions);
             try{
-                if(command is BuyBottomKit){
+                if(command is BuyLureKit){
+                    if(!OwnedLureKit.Enabled(state))return Reject("lure-kit-unavailable");
+                    if(session!=null)return Reject("session-busy");
+                    if(state.OwnedLureKit!=null)return Reject("lure-kit-already-owned");
+                    if(wallet<OwnedLureKit.PriceMinor)return Reject("wallet-insufficient");
+                    if(command.RequestId==command.EventId||KnownPurchaseIdentity(state,command.RequestId)||KnownPurchaseIdentity(state,command.EventId))
+                        return Reject("purchase-identity-invalid");
+                    foreach(var id in ((BuyLureKit)command).Kit.Ids)if(EquipmentPurchaseIdentityUsed(state,command,id))return Reject("asset-identity-used");
+                    wallet-=OwnedLureKit.PriceMinor;outcome=FloatOutcome.LureKitPurchased;
+                }else if(command is BuyBottomKit){
                     if(!BottomOwnedKit.Enabled(state))return Reject("bottom-kit-unavailable");
                     if(session!=null)return Reject("session-busy");
                     if(state.OwnedBottomKit!=null)return Reject("bottom-kit-already-owned");
@@ -587,6 +629,18 @@ namespace FishingDesktop.GameCore
                         encounterId=bankEnd.EncounterId;outcome=FloatOutcome.Unhooked;break;
                     default:outcome=FloatOutcome.Recovered;break;
                     }
+                }else if(command is CastLureWithEquipment){
+                    var c=(CastLureWithEquipment)command;var k=state.OwnedLureKit;
+                    if(!OwnedLureKit.Enabled(state)||k==null)return Reject("lure-kit-not-owned");
+                    if(session!=null)return Reject("session-busy");
+                    if(c.RequestId==c.EventId||KnownPurchaseIdentity(state,c.RequestId)||KnownPurchaseIdentity(state,c.EventId))return Reject("cast-identity-invalid");
+                    if(EquipmentPurchaseIdentityUsed(state,c,c.SessionId))return Reject("session-identity-used");
+                    if(c.RigId!=k.RigId||c.LineId!=k.LineId||c.LureId!=k.LureId||c.HookId!=k.HookId||c.KitRigRevision!=k.RigRevision||
+                        c.LineRevision!=k.LineRevision||c.LureRevision!=k.LureRevision)return Reject("lure-kit-binding-stale");
+                    if(c.RequiredLineMm>k.LineLengthMm)return Reject("line-insufficient");
+                    if(stamina<OwnedLureKit.CastStaminaCost)return Reject("stamina-insufficient");
+                    stamina-=OwnedLureKit.CastStaminaCost;
+                    session=new FloatSession(c.SessionId,c.EventId,k.RigRevision,rules.Version,null,1,1,c.RequiredLineMm,lureKit:k);outcome=FloatOutcome.CastCommitted;
                 }else if(command is CastBottomKitWithEquipment){
                     var cast=(CastBottomKitWithEquipment)command;var kit=bankCast==null?state.OwnedBottomKit:state.BottomKitFor(cast.KitRigId);
                     if(!BottomOwnedKit.Enabled(state) || kit==null)return Reject("bottom-kit-not-owned");
@@ -628,6 +682,7 @@ namespace FishingDesktop.GameCore
                     var loss=(HostFloatTerminalLoss)command;
                     if(session==null||session.Id!=command.SessionId)return Reject("session-not-current");
                     if(session.IsBottom)return Reject("bottom-loss-unsupported");
+                    if(session.IsLure)return Reject("lure-loss-unsupported");
                     if(session.CapacityBlocked)return Reject("pending-fish-already-set");
                     if(command.EventId==command.RequestId||command.EventId==state.ProfileId||command.EventId==state.BranchId||command.EventId==loss.EncounterId||RequestWasUsed(state,command.EventId)||UsedSession(state,command.EventId)||EncounterWasUsed(state,command.EventId)||AssetExists(state,command.EventId)||FishWasCreated(state,command.EventId))return Reject("loss-identity-invalid");
                     if(loss.EncounterId==command.RequestId||loss.EncounterId==state.ProfileId||loss.EncounterId==state.BranchId||RequestWasUsed(state,loss.EncounterId)||UsedSession(state,loss.EncounterId)||EventWasUsed(state,loss.EncounterId)||AssetExists(state,loss.EncounterId)||FishWasCreated(state,loss.EncounterId)||EncounterWasUsed(state,loss.EncounterId))return Reject("encounter-identity-used");
@@ -653,7 +708,7 @@ namespace FishingDesktop.GameCore
                     if(AssetExists(state,host.FishId)||FishWasCreated(state,host.FishId))return Reject("fish-identity-used");
                     if(EncounterWasUsed(state,host.EncounterId))return Reject("encounter-identity-used");
                     var caught=new FloatFish(host.FishId,session.Id,host.EncounterId,host.SpeciesKey,host.MassMg,rule.Value(host.MassMg),rules.Version);affected.Add(caught.Id);encounterId=host.EncounterId;
-                    if(fish.Count>=rules.CreelCapacity){session=new FloatSession(session.Id,session.ReleaseEventId,session.RigRevision,session.RulesVersion,caught,session.EquipmentInventoryRevision,session.EquipmentRulesVersion,session.RequiredLineMm,session.BottomKit);outcome=FloatOutcome.CapacityRejected;}
+                    if(fish.Count>=rules.CreelCapacity){session=new FloatSession(session.Id,session.ReleaseEventId,session.RigRevision,session.RulesVersion,caught,session.EquipmentInventoryRevision,session.EquipmentRulesVersion,session.RequiredLineMm,session.BottomKit,lureKit:session.LureKit);outcome=FloatOutcome.CapacityRejected;}
                     else{fish.Add(caught);session=null;outcome=FloatOutcome.Landed;}
                 }else if(command is SellFloatFish){
                     if(session!=null)return Reject("session-busy");var sale=(SellFloatFish)command;if(sale.FishIds.Count==0)return Reject("fish-selection-invalid");

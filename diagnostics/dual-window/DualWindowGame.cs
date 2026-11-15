@@ -10,14 +10,14 @@ using FishingDesktop.GameCore;
 sealed partial class DualWindowContext
 {
     readonly string gameMode;
-    internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest; } }
+    internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest; } }
     internal bool PlayerMode { get { return gameMode=="player-window"||gameMode=="player-wallpaper"; } }
     bool GamePlayerSelfTest { get { return gameMode=="player-self-test"; } }
     bool GameCatchSelfTest { get { return gameMode=="catch-self-test"; } }
     bool GameAtlasSelfTest { get { return gameMode=="atlas-self-test"; } }
-    bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||PlayerMode; } }
+    bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest||PlayerMode; } }
     internal bool GameMode { get { return gameMode != null; } }
-    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameSceneSelfTest || GameAtlasSelfTest || GamePlayerSelfTest || GameWardrobeSelfTest || GameCatchSelfTest || GameWallpaperSelfTest || GameWalkSelfTest || GameBottomSelfTest || GameMultiRodSelfTest || GameFailureCase!=null; } }
+    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameSceneSelfTest || GameAtlasSelfTest || GamePlayerSelfTest || GameWardrobeSelfTest || GameCatchSelfTest || GameWallpaperSelfTest || GameWalkSelfTest || GameBottomSelfTest || GameMultiRodSelfTest || GameLureSelfTest || GameFailureCase!=null; } }
     bool GameSceneSelfTest { get { return gameMode=="scene-self-test"; } }
     bool GameWaterSelfTest { get { return gameMode=="water-self-test"; } }
     bool GameWaterMode { get { return GameWaterSelfTest||GameAtlasMode||GameSceneSelfTest||gameMode=="new"||gameMode=="open"||gameMode=="line-break-new"||gameMode=="line-break-open"; } }
@@ -35,8 +35,8 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, WardrobeRevision, WalkRevision, BottomRevision, BottomShopRevision, BankStandRevision, BankKitRevision;
-        internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater, WalkHighWater, BottomStrikeHighWater;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, WardrobeRevision, WalkRevision, BottomRevision, BottomShopRevision, BankStandRevision, BankKitRevision, LureShopRevision, LureRevision;
+        internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater, WalkHighWater, BottomStrikeHighWater, LureHighWater;
         internal GameShopPending Shop;
         internal GameEquipmentPending Equipment;
         internal GameSparesPending Spares;
@@ -55,7 +55,7 @@ sealed partial class DualWindowContext
             game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion,GameLineBreakMode?(Action<FloatGameState>)ValidateGameLineBreakCatalog:null);
         }
         else if(GameAtlasMode || gameMode=="new" || GameLineBreakMode || GameWaterSelfTest || GameSceneSelfTest || GameSparesSelfTest || GameCampSelfTest){
-            var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture(wallet:GameMultiRodSelfTest?30000:12000,atlas:GameAtlasMode);
+            var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture(wallet:GameMultiRodSelfTest?30000:12000,bait:GameLureSelfTest?0:12,atlas:GameAtlasMode);
             game=FloatGameOwner.CreateNewWithEquipmentOffers(path,initial,CreateGameSparesCatalog(initial),GameSelfTest?(Action<FloatSaveFaultPoint>)GameShopSaveFault:null);
         }
         else if(GameSelfTest) game=FloatGameOwner.CreateNew(path,CreateGameFixture(),GameShopSaveFault);
@@ -110,6 +110,7 @@ sealed partial class DualWindowContext
     }
     static long GameInstalledLineMm(FloatGameState state)
     {
+        if(state!=null&&state.Session!=null&&state.Session.IsLure)return state.Session.LureKit.LineLengthMm;
         if(state!=null&&state.Session!=null&&state.Session.IsBottom){BottomEquipmentBridge selected;if(BottomOwnedEquipment.Bind(state,out selected)!=null)throw new InvalidOperationException("A bottom session lost its installed line.");return selected.InstalledLine.RemainingLineMm;}
         if(state==null||state.Rig==null||!state.Rig.LineLengthMm.HasValue||state.Rig.LineLengthMm.Value<=0)
             throw new InvalidOperationException("An active simulation requires an actual installed line segment.");
@@ -125,7 +126,7 @@ sealed partial class DualWindowContext
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         ClearGameWalk(pane);CancelGameCast(pane);
-        ClearGameFightInput(pane);
+        ClearGameFightInput(pane);if(pane!=null&&!pane.DesktopReadOnly)ClearGameLureInput();
         ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
         if(b.Lease!=null&&Object.ReferenceEquals(b.Lease,gameBankControl))BankLease(null);
         game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.Document=null;
@@ -145,7 +146,7 @@ sealed partial class DualWindowContext
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         ClearGameWalk(pane);CancelGameCast(pane);
-        ClearGameFightInput(pane);
+        ClearGameFightInput(pane);if(pane!=null&&!pane.DesktopReadOnly)ClearGameLureInput();
         ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
         if(b.Lease!=null&&Object.ReferenceEquals(b.Lease,gameBankControl))BankLease(null);
         game.CloseView(b.View); gameViews.Remove(pane);
@@ -155,10 +156,10 @@ sealed partial class DualWindowContext
         GameBinding b;
         if (game == null || !gameViews.TryGetValue(pane,out b)) return;
         ClearGameWalk(pane);CancelGameCast(pane);
-        ClearGameFightInput(pane);
+        ClearGameFightInput(pane);if(pane!=null&&!pane.DesktopReadOnly)ClearGameLureInput();
         ClearGameShop(pane); ClearGameEquipment(pane); ClearGameSpares(pane); ClearGameCamp(pane);
         if(b.Lease!=null&&Object.ReferenceEquals(b.Lease,gameBankControl))BankLease(null);
-        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0; b.EquipmentHighWater=0; b.CampHighWater=0; b.WalkHighWater=0; b.BottomStrikeHighWater=0;
+        game.RevokeControl(b.Lease); b.Lease=null; b.WireLease=null; b.CastHighWater=0; b.StrikeHighWater=0; b.FightHighWater=0; b.ShopHighWater=0; b.EquipmentHighWater=0; b.CampHighWater=0; b.WalkHighWater=0; b.BottomStrikeHighWater=0;b.LureHighWater=0;
         var state=game.Snapshot;
         if (wireLease == null || b.Document == null || state.Faulted || state.HostPaused || state.ShutdownConfirmed) return;
         b.Lease=game.GrantControl(b.View,b.Document); b.WireLease=wireLease;BankLease(b.Lease);
@@ -169,7 +170,7 @@ sealed partial class DualWindowContext
         var snapshot=game.Snapshot;
         if (!snapshot.Faulted && !snapshot.ShutdownConfirmed) game.SetHostPaused(!owner.ActivityState().CanRun);
         if(game.Snapshot.HostPaused||game.Snapshot.Faulted||game.Snapshot.ShutdownConfirmed){ClearGameShop(); ClearGameEquipment(); ClearGameSpares(); ClearGameCamp();}
-        if (!game.Snapshot.CanSimulate) { ClearGameWalk();CancelGameCast(); ClearGameFightInput(); }
+        if (!game.Snapshot.CanSimulate) { ClearGameWalk();CancelGameCast(); ClearGameFightInput();ClearGameLureInput(); }
     }
     async Task StartGamePresentation()
     {
@@ -195,7 +196,7 @@ sealed partial class DualWindowContext
         if (b.Offset>count) b.Offset=0;
         var projected=FloatPageProjection.Create(snapshot,b.Offset,50,GameHeldBankSession);
         Send(pane,new {kind="game-snapshot",documentId=pane.Ticket.DocumentId,revision=checked(++b.Revision),snapshot=projected});
-        SendGameSpots(pane);SendGameWardrobe(pane);SendBottomShop(pane);SendBankKit(pane);SendBankStand(pane);
+        SendGameSpots(pane);SendGameWardrobe(pane);SendBottomShop(pane);SendBankKit(pane);SendBankStand(pane);SendGameLureShop(pane);SendGameLure(pane);
         SendGameCast(pane);
         SendGameWalk(pane);SendGameFlight(pane);
         SendGameBite(pane);SendGameBottom(pane);
@@ -232,6 +233,8 @@ sealed partial class DualWindowContext
             if(kind=="game-camp")Broadcast();
             return;
         }
+        if(kind=="game-lure-shop"){ReceiveLureShop(pane,b,m,transport);return;}
+        if(kind=="game-lure"){ReceiveGameLure(pane,b,m,transport);return;}
         if(kind=="game-bank-kit"){ReceiveBankKit(pane,b,m,transport);return;}
         if(kind=="game-stand"){ReceiveBankStand(pane,b,m,transport);return;}
         if(GameBankMode&&kind=="game-bottom-shop"){GameReply(pane,transport,"bank-leave-first");return;}
@@ -254,13 +257,14 @@ sealed partial class DualWindowContext
             object open;
             if (m.Count!=5 || !m.TryGetValue("open",out open) || !(open is bool)) { GameReply(pane,transport,"invalid-intent"); return; }
             AdvanceActivity();
-            if ((bool)open) { ClearGameWalk();CancelGameCast(); ClearGameFightInput(); }
+            if ((bool)open) { ClearGameWalk();CancelGameCast(); ClearGameFightInput();ClearGameLureInput(); }
             else ClearGameCamp();
             game.SetMenuOpen((bool)open);
             AdvanceActivity();
             GameReply(pane,transport,"menu-updated"); Broadcast(); return;
         }
         object raw; FloatCommand command;
+        if(gameLureSelected&&kind=="game-intent"&&m.Count==5&&m.TryGetValue("intent",out raw)&&ReceiveLureRecall(pane,b,raw as Dictionary<string,object>,transport))return;
         if(GameBankMode&&kind=="game-intent"&&m.Count==5&&m.TryGetValue("intent",out raw)&&ReceiveBankRodEnd(pane,b,raw as Dictionary<string,object>,transport))return;
         if (kind!="game-intent" || m.Count!=5 || !m.TryGetValue("intent",out raw) ||
             !FloatPageCommands.TryParse(raw as Dictionary<string,object>,game.Snapshot.State,out command)) {
@@ -277,7 +281,7 @@ sealed partial class DualWindowContext
         if (game == null || gameShutdownAttempted) return;
         ClearGameWalk();
         CancelGameCast();
-        ClearGameFightInput();
+        ClearGameFightInput();ClearGameLureInput();
         ClearGameShop(); ClearGameEquipment(); ClearGameSpares(); ClearGameCamp();
         gameShutdownAttempted=true;
         try {

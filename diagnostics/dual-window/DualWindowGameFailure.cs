@@ -31,7 +31,9 @@ sealed partial class DualWindowContext
                     state.Sequence,state.Rig.Revision,state.RulesVersion,state.Equipment.InventoryRevision,state.Equipment.RulesVersion,1);
             }else{
                 if(pending.FailureTicket.Reason!="slack-unhooked")throw new InvalidOperationException("Unknown physical failure reason.");
-                gameFailureCommand=new HostFloatUnhooked(state.ProfileId,state.BranchId,Guid.NewGuid(),pending.FailureTicket.FailureId,
+                if(GameBankMode)gameFailureCommand=SettleBankBottomRod.Unhooked(state,gameBankStand.Held,pending.Snapshot.SessionId,pending.Snapshot.EncounterId,
+                    FloatFightSimulation.ModelVersion,pending.FailureTicket.FailureId);
+                else gameFailureCommand=new HostFloatUnhooked(state.ProfileId,state.BranchId,Guid.NewGuid(),pending.FailureTicket.FailureId,
                     pending.Snapshot.SessionId,pending.Snapshot.EncounterId,state.Sequence,state.Rig.Revision,state.RulesVersion,FloatFightSimulation.ModelVersion);
             }
         }

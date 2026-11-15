@@ -50,7 +50,7 @@ namespace FishingDesktop.GameCore
         readonly FloatGameOwner owner;
         readonly FloatCastPreparationRules rules;
         readonly Func<FloatCastTarget,bool> validateTarget;
-        readonly bool bottomRig;
+        readonly bool bottomRig,lureRig;
         readonly Guid bankRig;
         readonly int thread=Thread.CurrentThread.ManagedThreadId;
         FloatCastGesture gesture;
@@ -64,12 +64,13 @@ namespace FishingDesktop.GameCore
         int elapsed,power;
         bool busy;
 
-        internal FloatCastPreparation(FloatGameOwner owner,FloatCastPreparationRules rules,Func<FloatCastTarget,bool> validateTarget,bool bottomRig=false,Guid bankRig=default(Guid))
+        internal FloatCastPreparation(FloatGameOwner owner,FloatCastPreparationRules rules,Func<FloatCastTarget,bool> validateTarget,bool bottomRig=false,Guid bankRig=default(Guid),bool lureRig=false)
         {
             if(owner==null||rules==null||validateTarget==null)throw new ArgumentNullException("preparation dependency");
+            if(lureRig&&(bottomRig||bankRig!=Guid.Empty))throw new ArgumentException("Choose one fishing method.");
             // Also assert construction on the owner's host thread.
             var initial=owner.Snapshot;
-            this.owner=owner;this.rules=rules;this.validateTarget=validateTarget;this.bottomRig=bottomRig||bankRig!=Guid.Empty;this.bankRig=bankRig;
+            this.owner=owner;this.rules=rules;this.validateTarget=validateTarget;this.bottomRig=bottomRig||bankRig!=Guid.Empty;this.bankRig=bankRig;this.lureRig=lureRig;
         }
         void ThreadCheck(){if(Thread.CurrentThread.ManagedThreadId!=thread)throw new InvalidOperationException("Use the preparation owner's host thread.");}
         FloatCastSnapshot Describe(){return new FloatCastSnapshot(phase,elapsed,power,target,command==null?Guid.Empty:command.SessionId);}
@@ -99,14 +100,18 @@ namespace FishingDesktop.GameCore
             }else{
                 if(!budget.CanStartCast){code=budget.Code;return false;}
                 if(bottomRig&&!budget.CanStartBottomCast){code="save-settlement-reserve";return false;}
+                if(lureRig&&!budget.CanStartLureCast){code="save-settlement-reserve";return false;}
             }
-            if(state.BaitCount<1){code="bait-empty";return false;}
-            if(state.Stamina<state.Rules.CastStaminaCost){code="stamina-insufficient";return false;}
-            if(!bottomRig&&state.Rig.DefinitionKey!=state.Rules.RigDefinitionKey){code="rig-invalid";return false;}
+            if(!lureRig&&state.BaitCount<1){code="bait-empty";return false;}
+            if(state.Stamina<(lureRig?OwnedLureKit.CastStaminaCost:state.Rules.CastStaminaCost)){code="stamina-insufficient";return false;}
+            if(!bottomRig&&!lureRig&&state.Rig.DefinitionKey!=state.Rules.RigDefinitionKey){code="rig-invalid";return false;}
             // This revision is the fixed slice's rule version. Future geometry
             // freshness belongs to the host validator, not a claimed map model.
             if(checkTarget==null||checkTarget.RulesVersion!=state.RulesVersion){code="target-invalid";return false;}
-            if(bottomRig){
+            if(lureRig){
+                if(!OwnedLureKit.Enabled(state)||state.OwnedLureKit==null){code="lure-kit-not-owned";return false;}
+                if(checkTarget.RequiredLineMm>state.OwnedLureKit.LineLengthMm){code="line-insufficient";return false;}
+            }else if(bottomRig){
                 var kit=bankRig==Guid.Empty?state.OwnedBottomKit:state.BottomKitFor(bankRig);
                 if(kit==null || !BottomOwnedKit.Enabled(state)){code="bottom-kit-not-owned";return false;}
                 var kitLine=kit.Equipment.Spool(kit.Equipment.Equipped(FloatEquipmentSlot.Reel).Id);
@@ -119,6 +124,7 @@ namespace FishingDesktop.GameCore
             else if(checkTarget.RequiredLineMm>state.Rig.LineLengthMm.Value){code="line-insufficient";return false;}
             if(expected!=null&&(state.Sequence!=expected.Sequence||state.RulesVersion!=expected.RulesVersion||
                 !Object.ReferenceEquals(state.LegacyRig,expected.LegacyRig)||!Object.ReferenceEquals(state.Equipment,expected.Equipment)||state.Rules.Signature!=expected.Rules.Signature||
+                (lureRig&&state.OwnedLureKit!=expected.OwnedLureKit)||
                 (bottomRig&&(bankRig==Guid.Empty?state.OwnedBottomKit!=expected.OwnedBottomKit:state.BottomKitFor(bankRig)!=expected.BottomKitFor(bankRig)))||state.BaitStackId!=expected.BaitStackId||state.BaitDefinitionKey!=expected.BaitDefinitionKey||
                 state.BaitCount!=expected.BaitCount||state.Stamina!=expected.Stamina)){
                 code="prepared-state-changed";return false;
@@ -144,6 +150,7 @@ namespace FishingDesktop.GameCore
                 if(!Ready(newView,newDocument,newLease,newTarget,before,out code))return Result(false,code);
                 FloatCommand preparedCommand;
                 if(bankRig!=Guid.Empty)preparedCommand=CastBankBottomRod.Create(before,bankRig,newTarget.RequiredLineMm);
+                else if(lureRig)preparedCommand=CastLureWithEquipment.Create(before,newTarget.RequiredLineMm);
                 else if(bottomRig)preparedCommand=CastBottomKitWithEquipment.Create(before,newTarget.RequiredLineMm);
                 else if(before.SchemaVersion==3)preparedCommand=new CastFloatWithEquipment(before.ProfileId,before.BranchId,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),newTarget.RequiredLineMm,before.Sequence,before.Rig.Revision,before.RulesVersion,before.Equipment.InventoryRevision,before.Equipment.RulesVersion);
                 else preparedCommand=new CastFloat(before.ProfileId,before.BranchId,Guid.NewGuid(),Guid.NewGuid(),Guid.NewGuid(),before.Sequence,before.Rig.Revision,before.RulesVersion);

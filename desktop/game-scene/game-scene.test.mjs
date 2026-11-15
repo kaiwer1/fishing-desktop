@@ -18,6 +18,28 @@ const f={sessionId:'this-cast',phase:'waiting',xMm:550,yMm:0,zMm:13000};
 const fight={sessionId:f.sessionId,phase:'fighting',xMm:1250,yMm:-270,zMm:13050,
   tensionMilliN:3000,rodDeflectionMm:280,slackMm:190,reeling:true,reelLevel:6};
 
+test('spinning tackle shows the actual airborne or submerged spoon, never a guessed float',()=>{
+  const rig=createTackle(),lake=createLake({...water,waterId:'coastal-bay'});
+  const views={water,flight:f,lureSelected:true};
+  const lure={sessionId:f.sessionId,phase:'in-water',position:{xMm:475,yMm:-420,zMm:11950},reeling:true,speedLevel:3};
+  try{
+    rig.animate(views,0,.05);assert.ok(!rig.float.visible&&!rig.spoon.visible&&!rig.line.visible);
+    rig.animate({...views,flight:{...f,phase:'flying',elapsedMilliseconds:250,yMm:490}},.25,.05);
+    assert.ok(rig.spoon.visible&&!rig.float.visible);assert.deepEqual(rig.spoon.position.toArray(),[.55,.49,-13]);
+    rig.animate({...views,lure:{...lure,sessionId:'earlier'}},.5,.05);assert.ok(!rig.spoon.visible&&!rig.line.visible);
+    rig.animate({...views,lure},1,.05);assert.deepEqual(rig.spoon.position.toArray(),[.475,-.42,-11.95]);
+    assert.ok(rig.spoon.visible&&!rig.float.visible&&rig.line.visible);lake.lure(rig.spoon);
+    const uniform=lake.group.getObjectByName('surveyed-surface').material.uniforms.spoon.value;
+    assert.deepEqual(uniform.toArray().slice(0,3),[.475,-.42,-11.95]);assert.ok(uniform.w>0);
+    assert.deepEqual(rodPose({...views,lure:{...lure,phase:'following'}}),rodPose({...views,lure}));
+    assert.equal(rodPose({...views,lure:{...lure,position:{...lure.position,yMm:700}}}).end,null);
+    rig.animate({...views,lure:{...lure,phase:'hooked'},fight},1.05,.05);
+    assert.ok(!rig.spoon.visible&&!rig.float.visible&&rig.line.visible);
+    assert.deepEqual(rodPose({...views,lure:{...lure,phase:'hooked'},fight}).end.toArray(),[1.25,-.27,-13.05]);
+    lake.lure(null);assert.equal(uniform.w,0);
+  }finally{lake.dispose();rig.dispose();}
+});
+
 test('scene has an offline entry and requires the surveyed surface, anchor and bed',()=>{
   assert.equal(typeof createGameScene,'function');assert.ok(validWater(water));
   for(const broken of [{enabled:false},{waterBounds:null},{bounds:{...water.bounds,maxZmm:80001}},

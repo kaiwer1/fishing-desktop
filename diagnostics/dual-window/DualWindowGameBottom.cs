@@ -56,10 +56,10 @@ sealed partial class DualWindowContext
             if(a=="select-bottom"&&!GameBottomSpot){GameReply(p,t,"bottom-spot-unavailable");return;}
             BottomEquipmentBridge binding;
             if(a=="select-bottom"&&BottomOwnedEquipment.Bind(s,out binding)!=null){GameReply(p,t,"bottom-kit-not-owned");return;}
-            if(gameBottomSelected!=(a=="select-bottom")){
+            if(gameBottomSelected!=(a=="select-bottom")||gameLureSelected){
                 ClearGameWalk();CancelGameCast();gameCastInput=null;gameWaterPlan=null;gameWaterTarget=null;gameWaterLanding=null;
                 gameBottom=null;gameBottomAttempt=Guid.Empty;gameBite=null;gameFight=null;gameFlight=null;
-                gameBottomSelected=a=="select-bottom";InitializeGameCast();InitializeGameFlight();
+                ResetGameLure();gameLureSelected=false;gameBottomSelected=a=="select-bottom";InitializeGameCast();InitializeGameFlight();
             }
             GameReply(p,t,"bottom-method-selected");
         }

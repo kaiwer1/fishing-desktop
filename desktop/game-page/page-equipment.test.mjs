@@ -156,6 +156,59 @@ function spotWater(f, revision, geometryVersion, waterId) {
 const bankKitState = (f,revision,extra={}) => f.emit({kind:'game-bank-kit-state',revision,state:{
   available:true, allowed:true, selected:false, standOwned:false, kitCount:1, extraPriceMinor:4800, standPriceMinor:1600, ...extra }});
 
+const lureShopState=(f,revision,extra={})=>f.emit({kind:'game-lure-shop-state',revision,state:{
+  available:true,owned:false,selected:false,allowed:false,priceMinor:5600,...extra}});
+test('the camp confirms one reusable lure and enters the method only after coastal ownership is projected',async()=>{
+  const f=await pageFixture();
+  assert.equal(f.nodes.get('lure-shop').hidden,true);lureShopState(f,1);
+  f.click('lure-buy');f.click('quote-bait',{},true);f.click('menu',{},true);assert.equal(f.messages.length,0);
+  f.click('lure-confirm');f.click('lure-confirm',{},true);assert.equal(f.messages.length,1);
+  const purchase=f.messages[0];assert.deepEqual([purchase.kind,purchase.action,purchase.expectedSequence],['game-lure-shop','buy','1']);
+  f.reply('lure-kit-purchased');assert.equal(f.probe.state().lureShopState.owned,false);
+  f.advance();f.snapshot.WalletMinor='6400';f.broadcast();lureShopState(f,2,{owned:true});
+  assert.equal(f.nodes.get('lure-select').disabled,true);f.click('lure-select',{},true);assert.equal(f.messages.length,1);
+  spotWater(f,1,3,'coastal-bay');lureShopState(f,3,{owned:true,allowed:true});f.click('lure-select');
+  assert.equal(f.messages.at(-1).action,'select');f.reply('lure-method-selected');assert.equal(f.probe.state().lureShopPending,'select');
+  lureShopState(f,4,{owned:true,selected:true,allowed:true});assert.equal(f.probe.state().lureShopPending,null);
+  assert.equal(f.nodes.get('bite').hidden,true);
+  bankKitState(f,1,{standOwned:true,allowed:true});assert.equal(f.nodes.get('bank-select').disabled,true);
+  f.click('lure-leave');assert.equal(f.messages.at(-1).action,'leave');f.reply('lure-method-selected');
+  lureShopState(f,5,{owned:true,allowed:true});assert.equal(f.nodes.get('bite').hidden,false);
+});
+
+test('real surface holds, wheel and attack hand off to the fight only after a new left press',async()=>{
+  const f=await pageFixture(), session=id(600), encounter=id(601), target=f.nodes.get('cast-target');
+  spotWater(f,1,3,'coastal-bay');lureShopState(f,1,{owned:true,selected:true,allowed:true});
+  f.snapshot.MenuOpen=false;f.snapshot.SessionId=session;f.broadcast();
+  target.setPointerCapture=()=>{};
+  const emit=(revision,phase,extra={})=>f.emit({kind:'game-lure-state',revision,state:{sessionId:session,phase,
+    encounterId:['following','strikeable','hooked'].includes(phase)?encounter:null,position:{xMm:0,yMm:-800,zMm:20000},layer:'middle',
+    depthMm:800,bedClearanceMm:2400,outLineMm:20800,remainingLineMm:39200,speedLevel:2,reeling:false,bailOpen:false,...extra}});
+  const left=(type,buttons)=>target.dispatch(type,{pointerType:'mouse',pointerId:1,button:0,buttons,timeStamp:42});
+  const right=()=>target.dispatch('mousedown',{button:2,buttons:3});
+  emit(1,'in-water');assert.equal(f.nodes.get('lure-observation').hidden,false);assert.equal(f.nodes.get('bite').hidden,true);
+  left('pointerdown',1);assert.deepEqual([f.messages[0].kind,f.messages[0].action],['game-lure','reel-start']);
+  emit(2,'following',{reeling:true});right();assert.equal(f.messages.length,1);
+  left('pointerup',0);assert.equal(f.messages[1].action,'reel-stop');
+  target.dispatch('wheel',{deltaY:-1});assert.equal(f.messages.length,2);
+  f.documentEvents.dispatch('keydown',{code:'KeyR'});target.dispatch('wheel',{deltaY:-1});
+  assert.deepEqual([f.messages.at(-1).action,f.messages.at(-1).value],['speed',3]);f.reply('lure-speed');
+  emit(3,'strikeable',{speedLevel:3});right();assert.equal(f.messages.length,3);
+  left('pointerdown',1);
+  const chord=buttons=>target.dispatch('pointermove',{button:2,buttons,pointerType:'mouse',pointerId:1,timeStamp:43});
+  chord(1);target.dispatch('pointermove',{button:-1,buttons:3,pointerType:'mouse',pointerId:1,timeStamp:44});
+  const beforeStrike=f.messages.length;chord(3);right();
+  assert.equal(f.messages.length,beforeStrike+1);
+  assert.equal(f.messages.at(-1).action,'strike');assert.equal(f.messages.at(-1).encounterId,encounter);f.reply('lure-hooked');
+  emit(4,'hooked');const count=f.messages.length;
+  f.emit({kind:'game-fight-state',revision:1,state:{sessionId:session,encounterId:encounter,phase:'fighting',reason:'fighting',landingReason:'fish-too-far',
+    stepIndex:'1',xMm:0,yMm:-800,zMm:20000,outLineMm:20800,spoolRemainingMm:39200,slackMm:100,tensionMilliN:1000,dragMilliN:6000,
+    rodDeflectionMm:100,energyPermille:900,reeling:false,dragLevel:5,reelLevel:5,canRetryLanding:false,canRetryFailure:false,unhookExposureSteps:0}});
+  left('pointermove',1);left('pointerup',0);assert.equal(f.messages.length,count);
+  left('pointerdown',1);assert.deepEqual([f.messages.at(-1).kind,f.messages.at(-1).action],['game-fight','reel-start']);
+  f.grant(null);const after=f.messages.length;right();left('pointerdown',1);assert.equal(f.messages.length,after);
+});
+
 test('the tackle counter confirms individual stand and kit purchases against real ownership before enabling the bank mode',async()=>{
   const f=await pageFixture();
   bankKitState(f,1);

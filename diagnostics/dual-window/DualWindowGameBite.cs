@@ -21,6 +21,7 @@ sealed partial class DualWindowContext
     {
         if(game==null)return;
         if(GameBankMode){AdvanceBankRods(activeSeconds);return;}
+        if(gameLureSelected){AdvanceGameLure(activeSeconds);return;}
         AdvanceGameBottom(activeSeconds);
         if(game.Snapshot.State!=null&&game.Snapshot.State.Session!=null&&game.Snapshot.State.Session.IsBottom)return;
         bool reconciled=ReconcileGameBite();

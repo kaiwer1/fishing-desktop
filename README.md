@@ -2,11 +2,17 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 试玩包 0.4.0-preview.4](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.4)**。选择 `FishingDesktop-0.4.0-preview.4-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 试玩包 0.4.0-preview.5](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.5)**。选择 `FishingDesktop-0.4.0-preview.5-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
-![静水湾三槽竿架](docs/preview-0.4/multi-rod-stand.png)
+![海湾岩岸用亮片收饵](docs/preview-0.4/lure-retrieve.png)
 
-[看竿架模式的渔获](docs/preview-0.4/multi-rod-catch.png) · [看静水湾岸景](docs/preview-0.4/shore-lake.png) · [看江湾滩岸](docs/preview-0.4/shore-river.png) · [看海湾礁岸](docs/preview-0.4/shore-coast.png)
+[海湾亮片渔获](docs/preview-0.4/lure-catch.png) · [静水湾竿架](docs/preview-0.4/multi-rod-stand.png) · [竿架渔获](docs/preview-0.4/multi-rod-catch.png) · [静水湾岸景](docs/preview-0.4/shore-lake.png) · [江湾滩岸](docs/preview-0.4/shore-river.png) · [海湾礁岸](docs/preview-0.4/shore-coast.png)
+
+### 用亮片在海湾钓花鲈
+
+1. 收回未结束的钓组，按 M 前往海湾岩岸。在营地「渔具店」购买 **56 银币**的亮片路亚套装，点「使用亮片路亚」，按 Esc 回岸边。若要留鱼，还需购买并装备 24 银币的抄网。新存档有 120 银币，两件合计 80 银币。
+2. 对准水面，按住左键蓄力，松开抛竿。这枚 12 克下沉亮片可重复使用，无需虫饵，每次确认抛出消耗 **2 点体力**。亮片入水后重新按住左键匀收，松手停顿让它下沉。按住 R 并滚动滚轮可切换五档收线速度，画面会显示亮片深度、出线和余线。
+3. 看到「鱼已攻击亮片」时按一次右键提竿。中鱼后松开再按左键遛鱼，靠岸后点「抄鱼」或按空格入护。没有中鱼或亮片已触底时，继续按住左键卷回岸边；收回确认后可再次抛投。
 
 ### 用浮漂钓第一条鱼
 
@@ -42,12 +48,13 @@
 
 ### 试玩版本与素材
 
-- **0.4.0-preview.4** 静水湾开放三槽竿架和两套可逐次购买的备用底竿。升级前先退出游戏，另存 `%LOCALAPPDATA%\FishingDesktop\Preview\game.fltj`。新版可接着玩上一版正常退出的进度。买竿架、添竿或用竿架抛竿后，旧版无法读取这些新记录；如需降级，请退出游戏并恢复更新前的备份。
+- **0.4.0-preview.5** 在海湾岩岸可用单枚下沉亮片钓花鲈。升级前先退出游戏，备份 `%LOCALAPPDATA%\FishingDesktop\Preview\game.fltj`，再将新包解压到独立文件夹。上一版正常退出的进度可继续使用。购买路亚套装或用亮片抛竿后，请用第五版读取这些新记录；若要降级，退出游戏后恢复更新前的备份。
+- **0.4.0-preview.4** 静水湾开放三槽竿架和两套可逐次购买的备用底竿。[第四版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.4)
 - **0.4.0-preview.3** 新增静水湾单钩铅坠底钓，三处钓场继续开放浮漂钓法。[第三版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.3)
 - **0.4.0-preview.2** 加入沿岸走位。静水湾岸土、江湾卵石和海湾礁石分别使用 Poly Haven 的 Forest Ground 04、Floor Pebbles 01 和 Rock 01 三款 CC0 材质。三张贴图随包提供，游玩时从本地读取。[第二版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.2) · [素材作者、原图与许可](desktop/game-scene/assets/SCENE-ASSET-CREDITS.txt)
 - **0.4.0-preview.1** 首次提供单竿浮漂、三处钓场、鱼护和营地商店的 Windows 试玩。[第一版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.1) · [第一版海湾](docs/preview-0.4/player-coast.png) · [鱼护画面](docs/preview-0.4/game-catch.png)
 
-玩法参考《俄罗斯钓鱼4》。钓组、水域和鱼护插画由项目独立制作，当前七种中国内陆与海洋鱼类的渔获以二维插画显示。路亚、36 种三维鱼模型以及不同硬件的性能验收仍列在后续计划中。[操作与存档](desktop/player/Readme-zh-CN.txt) · [建模交接清单](docs/ASSET_MODEL_BRIEF.md) · [开发日志](DEVLOG.md)
+玩法参考《俄罗斯钓鱼4》。钓组、水域和鱼护插画由项目独立制作，当前七种中国内陆与海洋鱼类的渔获以二维插画显示。其他拟饵钓法、36 种三维鱼模型以及不同硬件的性能验收仍列在后续计划中。[操作与存档](desktop/player/Readme-zh-CN.txt) · [建模交接清单](docs/ASSET_MODEL_BRIEF.md) · [开发日志](DEVLOG.md)
 
 ## 开发记录（按条目日期阅读）
 

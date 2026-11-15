@@ -235,8 +235,8 @@ async function fightRenderer(view) {
   }]));
   const renderSource = source.match(/function renderFight\(\) \{[\s\S]*?(?=\nfunction renderShop\()/)?.[0];
   assert.ok(renderSource, 'Actual fight renderer must be present');
-  const render = new Function('fightView', '$', `${renderSource}\nrenderFight();`);
-  return { nodes, render: () => render(view, id => { assert.ok(nodes.has(id), `Missing DOM id ${id}`); return nodes.get(id); }) };
+  const render = new Function('fightView', '$', 'lureMethod', `${renderSource}\nrenderFight();`);
+  return { nodes, render: () => render(view, id => { assert.ok(nodes.has(id), `Missing DOM id ${id}`); return nodes.get(id); }, () => false) };
 }
 
 test('real fight renderer confirms break losses only after the matching host terminal result', async () => {

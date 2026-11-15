@@ -27,7 +27,7 @@ sealed partial class DualWindowContext
         // This is a fixed host target for input integration, not a water raycast.
         gameCast=new FloatCastPreparation(game,new FloatCastPreparationRules(1600,150),
             target=>gameWater==null?target.Xmm==0 && target.Ymm==0 && target.Zmm==15000 && target.RequiredLineMm==15000:GameWaterTargetCurrent(target),gameBottomSelected,
-            GameBankMode?gameBankStand.Held:Guid.Empty);
+            GameBankMode?gameBankStand.Held:Guid.Empty,gameLureSelected);
     }
     static bool GameInputSequence(Dictionary<string,object> message,out long sequence)
     {
@@ -91,6 +91,7 @@ sealed partial class DualWindowContext
         if(action=="begin"){
             FloatCastLaunchPlan plan=null;string aimCode;
             if(gameWater!=null&&!ParseGameWaterAim(message,out plan,out aimCode)){GameReply(pane,transport,aimCode);return;}
+            if(gameLureSelected&&(aimCode=CheckGameLurePlan(plan))!=null){GameReply(pane,transport,aimCode);return;}
             // Consume even refused new begin attempts. A late delivery must
             // never become a fresh cast after the current session ends.
             if(sequence<=binding.CastHighWater){GameReply(pane,transport,"stale-input");return;}

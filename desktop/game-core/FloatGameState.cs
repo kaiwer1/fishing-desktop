@@ -111,10 +111,12 @@ namespace FishingDesktop.GameCore
         public readonly long EquipmentInventoryRevision,EquipmentRulesVersion,RequiredLineMm;
         public readonly FloatFish PendingFish;
         internal readonly BottomOwnedKit BottomKit;
+        internal readonly OwnedLureKit LureKit;
         internal readonly Guid BankRigId;
         public bool IsBottom {get{return BottomKit!=null;}}
+        public bool IsLure {get{return LureKit!=null;}}
         public bool CapacityBlocked{get{return PendingFish!=null;}}
-        internal FloatSession(Guid id,Guid releaseEvent,long rigRevision,long rulesVersion,FloatFish pendingFish=null,long equipmentInventoryRevision=0,long equipmentRulesVersion=0,long requiredLineMm=0,BottomOwnedKit bottomKit=null,Guid bankRig=default(Guid))
+        internal FloatSession(Guid id,Guid releaseEvent,long rigRevision,long rulesVersion,FloatFish pendingFish=null,long equipmentInventoryRevision=0,long equipmentRulesVersion=0,long requiredLineMm=0,BottomOwnedKit bottomKit=null,Guid bankRig=default(Guid),OwnedLureKit lureKit=null)
         {
             FloatGuard.Id(id,"id");FloatGuard.Id(releaseEvent,"releaseEvent");if(rigRevision<=0||rulesVersion<=0)throw new ArgumentOutOfRangeException("rigRevision");
             if(pendingFish!=null&&pendingFish.SessionId!=id)throw new ArgumentException("Pending fish belongs to another session.");
@@ -122,6 +124,8 @@ namespace FishingDesktop.GameCore
                 ((equipmentInventoryRevision==0||equipmentRulesVersion==0||requiredLineMm==0)&&!(equipmentInventoryRevision==0&&equipmentRulesVersion==0&&requiredLineMm==0)))throw new ArgumentException("Incomplete equipment session binding.");
             Id=id;ReleaseEventId=releaseEvent;RigRevision=rigRevision;RulesVersion=rulesVersion;PendingFish=pendingFish;
             if(bankRig!=Guid.Empty&&(bottomKit==null||bottomKit.Equipment.RigId!=bankRig))throw new ArgumentException("Invalid bank rig binding.");
+            if(lureKit!=null&&(bottomKit!=null||bankRig!=Guid.Empty))throw new ArgumentException("Conflicting fishing method bindings.");
+            LureKit=lureKit;
             EquipmentInventoryRevision=equipmentInventoryRevision;EquipmentRulesVersion=equipmentRulesVersion;RequiredLineMm=requiredLineMm;BottomKit=bottomKit;BankRigId=bankRig;
         }
     }
@@ -215,7 +219,28 @@ namespace FishingDesktop.GameCore
         internal int SlotCount {get{return 3;}}
         internal OwnedBankRodStand(Guid id){FloatGuard.Id(id,"stand");Id=id;}
     }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved,BottomKitPurchased,AdditionalBottomKitPurchased,BankRodStandPurchased }
+    // The fixed direct-tie kit is paid once. Its hook belongs to the spoon and
+    // cannot be equipped on a second rig or detached as a spare hook.
+    internal sealed class OwnedLureKit
+    {
+        internal const long PriceMinor=5600;
+        internal const int CastStaminaCost=2;
+        internal readonly Guid RigId,RodId,ReelId,LineId,LureId,HookId;
+        internal readonly ReadOnlyCollection<Guid> Ids;
+        internal int LineLengthMm {get{return 50000;}}
+        internal long RigRevision {get{return 1;}}
+        internal long LineRevision {get{return 1;}}
+        internal long LureRevision {get{return 1;}}
+        internal OwnedLureKit(Guid rig,Guid rod,Guid reel,Guid line,Guid lure,Guid hook)
+        {
+            var ids=new[]{rig,rod,reel,line,lure,hook};var unique=new HashSet<Guid>();
+            foreach(var id in ids)FloatGuard.Unique(unique,id);
+            RigId=rig;RodId=rod;ReelId=reel;LineId=line;LureId=lure;HookId=hook;Ids=Array.AsReadOnly(ids);
+        }
+        internal static bool Enabled(FloatGameState state)
+        {return state!=null && state.SchemaVersion==3 && state.RulesVersion==2 && state.EquipmentUpgradeOrigin==null;}
+    }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved,BottomKitPurchased,AdditionalBottomKitPurchased,BankRodStandPurchased,LureKitPurchased }
     public sealed class FloatEquipmentLossSummary
     {
         public readonly Guid LineId;
@@ -246,6 +271,8 @@ namespace FishingDesktop.GameCore
         internal readonly BottomOwnedKit BottomKitPurchase;
         internal readonly int BottomKitNumber;
         internal readonly OwnedBankRodStand StandPurchase;
+        internal readonly OwnedLureKit LurePurchase;
+        internal readonly Guid LureRigId;
         internal readonly Guid BankRigId;
         internal readonly string Fingerprint;
         internal bool Terminal{get{return Outcome==FloatOutcome.Recalled||Outcome==FloatOutcome.Landed||Outcome==FloatOutcome.Released||Outcome==FloatOutcome.Recovered||Outcome==FloatOutcome.Unhooked||Outcome==FloatOutcome.TerminalLost;}}
@@ -265,6 +292,10 @@ namespace FishingDesktop.GameCore
             var clothing=command as ChangeFloatClothing;
             ClothingItemId=clothing==null?null:clothing.ItemId;
             var first=command as BuyBottomKit;
+            var lurePurchase=command as BuyLureKit;var lureCast=command as CastLureWithEquipment;
+            if(lureCast!=null)LureRigId=lureCast.RigId;
+            if(lurePurchase!=null)LurePurchase=lurePurchase.Kit;
+            if((outcome==FloatOutcome.LureKitPurchased)!=(LurePurchase!=null))throw new ArgumentException("Invalid lure purchase receipt.");
             var additional=command as BuyAdditionalBottomKit;
             var stand=command as BuyBankRodStand;
             if(first!=null){BottomKitPurchase=first.Kit;BottomKitNumber=1;}
@@ -292,6 +323,7 @@ namespace FishingDesktop.GameCore
         internal readonly ReadOnlyCollection<BottomOwnedKit> OwnedBottomKits;
         internal BottomOwnedKit OwnedBottomKit {get{return OwnedBottomKits.Count==0?null:OwnedBottomKits[0];}}
         internal readonly OwnedBankRodStand OwnedBankRodStand;
+        internal readonly OwnedLureKit OwnedLureKit;
         readonly HashSet<Guid> bankGearIdentities=new HashSet<Guid>();
         readonly HashSet<Guid> bankJournalIdentities=new HashSet<Guid>();
         internal readonly ReadOnlyCollection<FloatSession> BankSessions;
@@ -340,6 +372,7 @@ namespace FishingDesktop.GameCore
             var clothingIds=new List<string>();string wearing=null;
             var kits=new List<BottomOwnedKit>();
             var bankCasts=new Dictionary<Guid,Guid>();
+            var lureCasts=new HashSet<Guid>();
             for(int i=0;i<history.Count;i++){
                 var row=history[i];if(row==null||row.Sequence!=(long)i+1||row.RulesVersion!=rules.Version||!requests.Add(row.RequestId)||!events.Add(row.EventId))throw new ArgumentException("Invalid receipt history.");
                 if(row.BottomKitPurchase!=null){
@@ -349,6 +382,19 @@ namespace FishingDesktop.GameCore
                         throw new ArgumentException("Invalid bottom kit purchase.");
                     kits.Add(row.BottomKitPurchase);
                     foreach(var id in row.BottomKitPurchase.Ids){FloatGuard.Unique(assets,id);FloatGuard.Unique(bankGearIdentities,id);}
+                }
+                if(row.LurePurchase!=null){
+                    if(OwnedLureKit!=null||schemaVersion!=3||rules.Version!=2||equipmentOrigin!=null||
+                        row.WalletBefore-row.WalletAfter!=OwnedLureKit.PriceMinor)throw new ArgumentException("Invalid lure kit purchase.");
+                    OwnedLureKit=row.LurePurchase;
+                    foreach(var id in OwnedLureKit.Ids){FloatGuard.Unique(assets,id);FloatGuard.Unique(bankGearIdentities,id);}
+                    FloatGuard.Unique(bankGearIdentities,row.RequestId);FloatGuard.Unique(bankGearIdentities,row.EventId);
+                }
+                if(row.LureRigId!=Guid.Empty){
+                    if(OwnedLureKit==null||OwnedLureKit.RigId!=row.LureRigId||row.Outcome!=FloatOutcome.CastCommitted||
+                        row.BaitBefore!=row.BaitAfter||row.StaminaBefore-row.StaminaAfter!=OwnedLureKit.CastStaminaCost||
+                        !lureCasts.Add(row.SessionId))throw new ArgumentException("Invalid paid lure cast.");
+                    bankJournalIdentities.Add(row.RequestId);bankJournalIdentities.Add(row.EventId);bankJournalIdentities.Add(row.SessionId);
                 }
                 if(row.StandPurchase!=null){
                     if(OwnedBankRodStand!=null || schemaVersion!=3 || rules.Version!=2 || equipmentOrigin!=null || baitDefinition!="worm" ||
@@ -418,8 +464,14 @@ namespace FishingDesktop.GameCore
             foreach(var id in casts)if(!terminals.Contains(id)&&!activeIds.Contains(id)&&(session==null||session.Id!=id))throw new ArgumentException("Unaccounted active cast.");
             foreach(var id in terminals)if(!casts.Contains(id))throw new ArgumentException("Terminal without cast.");
             if(session!=null){
-                if(!casts.Contains(session.Id)||terminals.Contains(session.Id)||bankCasts.ContainsKey(session.Id)||session.BankRigId!=Guid.Empty||session.RigRevision!=(session.IsBottom?session.BottomKit.Equipment.RigRevision:description.Revision)||session.RulesVersion!=rules.Version)throw new ArgumentException("Invalid current session.");
-                if(session.IsBottom){
+                long rigRevision=session.IsLure?session.LureKit.RigRevision:session.IsBottom?session.BottomKit.Equipment.RigRevision:description.Revision;
+                if(!casts.Contains(session.Id)||terminals.Contains(session.Id)||bankCasts.ContainsKey(session.Id)||session.BankRigId!=Guid.Empty||
+                    session.IsLure!=lureCasts.Contains(session.Id)||session.RigRevision!=rigRevision||session.RulesVersion!=rules.Version)throw new ArgumentException("Invalid current session.");
+                if(session.IsLure){
+                    if(schemaVersion!=3||session.LureKit!=OwnedLureKit||session.EquipmentInventoryRevision!=1||session.EquipmentRulesVersion!=1||
+                        session.RequiredLineMm<1||session.RequiredLineMm>OwnedLureKit.LineLengthMm||assets.Contains(session.Id))
+                        throw new ArgumentException("Invalid paid lure session binding.");
+                }else if(session.IsBottom){
                     if(schemaVersion!=3 || OwnedBottomKit!=session.BottomKit || session.EquipmentInventoryRevision!=OwnedBottomKit.Equipment.InventoryRevision ||
                         session.EquipmentRulesVersion!=OwnedBottomKit.Equipment.RulesVersion || session.RequiredLineMm<1 ||
                         session.RequiredLineMm>OwnedBottomKit.Equipment.Spool(OwnedBottomKit.Equipment.Equipped(FloatEquipmentSlot.Reel).Id).RemainingLineMm || assets.Contains(session.Id))
@@ -452,6 +504,7 @@ namespace FishingDesktop.GameCore
         internal void AddEquipmentAssets(HashSet<Guid> ids)
         {if(LegacyRig!=null)LegacyRig.AddAssets(ids);else{FloatGuard.Unique(ids,Equipment.RigId);foreach(var item in Equipment.Instances)FloatGuard.Unique(ids,item.Id);}
             foreach(var kit in OwnedBottomKits)foreach(var id in kit.Ids)FloatGuard.Unique(ids,id);
+            if(OwnedLureKit!=null)foreach(var id in OwnedLureKit.Ids)FloatGuard.Unique(ids,id);
             if(OwnedBankRodStand!=null)FloatGuard.Unique(ids,OwnedBankRodStand.Id);}
         internal bool BankGearIdentityUsed(Guid id){return bankGearIdentities.Contains(id);}
         internal bool BankJournalIdentityUsed(Guid id){return bankJournalIdentities.Contains(id);}

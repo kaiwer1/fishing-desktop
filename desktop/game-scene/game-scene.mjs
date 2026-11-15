@@ -7,7 +7,7 @@ import { createRodStand, standAtWater } from './rod-stand.mjs';
 import { sampleFightFish } from './fight-fish.mjs';
 import { aimPoint, pickAim, projectAim, setBankCamera, waterGeometryKey } from './water-space.mjs';
 
-const viewNames=['water','cast','flight','bite','fight','bottom','sleeveColor','stand'];
+const viewNames=['water','cast','flight','bite','fight','bottom','sleeveColor','stand','lureSelected','lure'];
 
 // All inputs are read-only page projections. The renderer neither advances a
 // fishing clock nor posts input. Projection helpers use live CSS client pixels.
@@ -45,6 +45,7 @@ export function createGameScene(canvas,{onFault}={}) {
     if(pendingImpact){lake.impact(pendingImpact,elapsed);pendingImpact=null;}
     lake.animate(elapsed);
     rodPhase=tackle.animate(views,elapsed,dt,viewYaw);
+    lake.lure(tackle.spoon.visible&&tackle.group.visible?tackle.spoon:null);
     renderer.render(scene,camera);frames++;
   },onError(){fault('webgl-render-failed');}});
   function fault(code){
@@ -94,6 +95,7 @@ export function createGameScene(canvas,{onFault}={}) {
       if(Object.hasOwn(data,'canAim')){canAim=data.canAim===true;if(!canAim)hideAim();}
       if(Object.hasOwn(data,'water'))resetLake(data.water);
       if(key!==oldWaterKey&&!Object.hasOwn(data,'stand'))views.stand=null;
+      if(key!==oldWaterKey&&!Object.hasOwn(data,'lure'))views.lure=null;
       if(Object.hasOwn(data,'stand')||Object.hasOwn(data,'water')){
         if(!stand&&standAtWater(views.stand,water)){stand=createRodStand();scene.add(stand.group);}
         const placed=stand?.update(views.stand,water)??false;
@@ -114,6 +116,7 @@ export function createGameScene(canvas,{onFault}={}) {
       shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
       sceneBuilds,mirrorUpdates:lake?.mirrorUpdates()??0,loadedMaterials:lake?.loadedMaterials()??0,cameraXmm:lake&&aspect>0?Math.round(camera.position.x*1000):null,
       rodAnchorXmm:lake?tackle.anchorXmm():null,bottomTipPermille:lake?tackle.bottomTipPermille():null,stand:stand?.state()??null,
+      lureVisible:frames>0&&Boolean(lake)&&tackle.group.visible&&tackle.spoon.visible,
       bobberVisible:frames>0&&Boolean(lake)&&tackle.group.visible&&tackle.float.visible,lineVisible:frames>0&&Boolean(lake)&&tackle.group.visible&&tackle.line.visible,error,disposed};
   }
   canvas.addEventListener('webglcontextlost',lost);

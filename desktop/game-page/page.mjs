@@ -281,7 +281,7 @@ function sceneProjection() {
     elapsedMilliseconds: castState.elapsedMilliseconds, inputSequence: castState.inputSequence } : null;
   const canAim = canPrepare() && bankWalk.canCast(water) && !castInput.state() && !document.hidden && !visualPaused && hostPolicy?.canRun === true;
   return { water, cast, flight: current(flightView.state()), bite: current(biteView.state()), fight: current(fightView.state()),
-    bottom:bottom ? { ...bottom, lineEnd:bottomLineEnd && { ...bottomLineEnd } } : null,
+    bottomSelected:bottomMethod(),bottom:bottom ? { ...bottom, lineEnd:bottomLineEnd && { ...bottomLineEnd } } : null,
     weather:currentConditions(),lureSelected:lureMethod(),lure:currentLure(),canAim,stand:bankKit.selected ? stand.state() : null,bank:bankWalk.forWater(water),sleeveColor:wardrobe.sleeveColor };
 }
 function renderSceneShell() {

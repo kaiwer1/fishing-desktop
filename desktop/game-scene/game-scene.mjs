@@ -8,7 +8,7 @@ import { createRodStand, standAtWater } from './rod-stand.mjs';
 import { sampleFightFish } from './fight-fish.mjs';
 import { aimPoint, pickAim, projectAim, setBankCamera, waterGeometryKey } from './water-space.mjs';
 
-const viewNames=['water','cast','flight','bite','fight','bottom','sleeveColor','stand','lureSelected','lure','weather'];
+const viewNames=['water','cast','flight','bite','fight','bottom','bottomSelected','sleeveColor','stand','lureSelected','lure','weather'];
 
 // All inputs are read-only page projections. The renderer neither advances a
 // fishing clock nor posts input. Projection helpers use live CSS client pixels.
@@ -128,7 +128,8 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
       triangles:renderer.info.render.triangles,calls:renderer.info.render.calls,geometryVersion:water?.geometryVersion??null,rodPhase,
       weather:lighting.state(),shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
       sceneBuilds,mirrorUpdates:lake?.mirrorUpdates()??0,loadedMaterials:lake?.loadedMaterials()??0,cameraXmm:lake&&aspect>0?Math.round(camera.position.x*1000):null,
-      rodAnchorXmm:lake?tackle.anchorXmm():null,bottomTipPermille:lake?tackle.bottomTipPermille():null,stand:stand?.state()??null,
+      rodType:lake&&tackle.group.visible?tackle.rodType():null,rodAnchorXmm:lake?tackle.anchorXmm():null,
+      bottomTipPermille:lake?tackle.bottomTipPermille():null,stand:stand?.state()??null,
       lureVisible:frames>0&&Boolean(lake)&&tackle.group.visible&&tackle.spoon.visible,
       bobberVisible:frames>0&&Boolean(lake)&&tackle.group.visible&&tackle.float.visible,lineVisible:frames>0&&Boolean(lake)&&tackle.group.visible&&tackle.line.visible,error,disposed};
   }

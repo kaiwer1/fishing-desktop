@@ -22,12 +22,12 @@ function bottomLineEnd(point, water) {
   return toWorld(point);
 }
 
-export function rodPose({water,cast,flight,bite,fight,bottom,lureSelected,lure}, time=0, viewYaw=0) {
+export function rodPose({water,cast,flight,bite,fight,bottom,bottomSelected,lureSelected,lure}, time=0, viewYaw=0) {
   const f = flight?.sessionId ? flight : null;
   const hooked = f && fight?.sessionId === f.sessionId ? fight : null;
   const b = f && bite?.sessionId === f.sessionId ? bite : null;
   const pose = {phase:'idle', pitch:.115, yaw:.16, roll:-.1, flex:.04,
-    shiftX:0, shiftY:0, reeling:false, reelLevel:0, end:null, float:false, spoon:false, bottomTipPermille:null};
+    shiftX:0, shiftY:0, reeling:false, reelLevel:0, end:null, float:false, spoon:false, sinker:false, bottomTipPermille:null};
   if (cast?.phase === 'charging' || cast?.phase === 'prepared') {
     return Object.assign(pose,{phase:'charging'},loadedGrip(cast.powerPermille||0));
   }
@@ -53,6 +53,7 @@ export function rodPose({water,cast,flight,bite,fight,bottom,lureSelected,lure},
   if (bottomHere) {
     pose.phase='bottom-'+bottom.phase;pose.pitch=.105;pose.roll=-.03;pose.flex=0;
     pose.end=bottomLineEnd(bottom.lineEnd,water);
+    pose.sinker=Boolean(pose.end);
     return pose;
   }
   if (f.phase==='flying') {
@@ -67,7 +68,9 @@ export function rodPose({water,cast,flight,bite,fight,bottom,lureSelected,lure},
     pose.flex=THREE.MathUtils.lerp(start.flex,.04,sweep)+Math.sin(sweep*Math.PI)*(.17+.48*effort)+recoil*(.07+.12*effort);
     pose.shiftX=start.shiftX*(1-sweep);
     pose.shiftY=THREE.MathUtils.lerp(start.shiftY,-.02,sweep);
-    if([f.xMm,f.yMm,f.zMm].every(Number.isFinite)){pose.end=toWorld(f);pose.spoon=isLure;pose.float=!isLure;}
+    if([f.xMm,f.yMm,f.zMm].every(Number.isFinite)){
+      pose.end=toWorld(f);pose.spoon=isLure;pose.sinker=bottomSelected===true;pose.float=!isLure&&!pose.sinker;
+    }
     return pose;
   }
   if(isLure){
@@ -80,7 +83,7 @@ export function rodPose({water,cast,flight,bite,fight,bottom,lureSelected,lure},
     pose.reelLevel=Number.isInteger(currentLure.speedLevel)?clamp(currentLure.speedLevel,0,4)*2:0;
     return pose;
   }
-  if (f.phase==='waiting' && b?.phase!=='ended') {
+  if (f.phase==='waiting' && !bottomSelected && b?.phase!=='ended') {
     pose.phase='waiting';pose.pitch=.079;pose.end=toWorld(f);
     if (b) {pose.end.x+=(b.bobberLateralMm||0)/1000;pose.end.y+=(b.bobberOffsetMm||0)/1000;}
     pose.float=true;
@@ -108,11 +111,41 @@ function rounded(parent, material, x,y,z,sx,sy,sz) {
   const shape=part(parent,new THREE.SphereGeometry(1,16,10),material,x,y,z);shape.scale.set(sx,sy,sz);return shape;
 }
 
+function corkFinish() {
+  const width=128,height=256,data=new Uint8Array(width*height*4);
+  let seed=19427;
+  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+  for(let y=0;y<height;y++){
+    const grain=3*Math.sin(y*.16)+2*Math.sin(y*.61);
+    for(let x=0;x<width;x++){
+      const k=(y*width+x)*4,tone=grain+(random()-.5)*16;
+      data[k]=181+tone;data[k+1]=153+tone;data[k+2]=113+tone;data[k+3]=255;
+    }
+  }
+  // Longitudinal pits and fine joints follow a turned stack of cork rings.
+  for(let i=0;i<460;i++){
+    const x=Math.floor(random()*width),y=Math.floor(random()*height);
+    const span=1+Math.floor(random()**2*9),shade=.53+random()*.30;
+    for(let j=0;j<span&&y+j<height;j++){
+      const k=((y+j)*width+x)*4;
+      for(let channel=0;channel<3;channel++)data[k+channel]*=shade;
+    }
+  }
+  for(let y=15;y<height;y+=26)for(let x=0;x<width;x++){
+    const k=(y*width+x)*4;
+    for(let channel=0;channel<3;channel++)data[k+channel]*=.83;
+  }
+  const map=new THREE.DataTexture(data,width,height,THREE.RGBAFormat);
+  map.colorSpace=THREE.SRGBColorSpace;map.magFilter=THREE.LinearFilter;
+  map.minFilter=THREE.LinearMipmapLinearFilter;map.generateMipmaps=true;map.needsUpdate=true;
+  const material=finish(0xffffff,.01,.9);material.map=map;return material;
+}
+
 function createReel(grip, black, steel, gunmetal, amber, thread) {
   // The rod runs along local -Z. The spindle, rotor and bail share that axis.
   wire(grip,gunmetal,[[0,-.014,.006],[0,-.048,.006],[0,-.085,-.02],[0,-.098,-.055]],.009);
   rounded(grip,gunmetal,0,-.103,-.05,.038,.04,.068);
-  const rotor=new THREE.Group();rotor.position.set(0,-.105,-.094);grip.add(rotor);
+  const rotor=new THREE.Group();rotor.name='bail-rotor';rotor.position.set(0,-.105,-.094);grip.add(rotor);
   const spool=new THREE.Group();spool.position.copy(rotor.position);grip.add(spool);
   spool.name='line-spool';
   axial(rotor,gunmetal,0,.033,.044,.039);
@@ -133,17 +166,20 @@ function createReel(grip, black, steel, gunmetal, amber, thread) {
 export function createTackle() {
   const group=new THREE.Group(), root=new THREE.Group();group.add(root);
   const carbon=finish(0x303b3b,.42,.32), black=finish(0x302e28,.03,.91), steel=finish(0xb9c1ba,.7,.25);
-  const gunmetal=finish(0x575d5c,.53,.32), amber=finish(0xa1844e,.42,.4), cork=finish(0xb09469,.01,.94);
+  const gunmetal=finish(0x727976,.49,.30), amber=finish(0xa1844e,.42,.4), cork=corkFinish();
   const thread=finish(0x9caa9a,.11,.6);
-  const rearGrip=axial(root,cork,.115,.28,.027,.025);
+  const rearGrip=axial(root,cork,.115,.28,.027,.025);rearGrip.name='rear-grip';
+  const splitGrip=new THREE.Group();splitGrip.name='spinning-split-grip';root.add(splitGrip);splitGrip.visible=false;
+  axial(splitGrip,cork,.013,.076,.026,.024);
+  axial(splitGrip,carbon,.123,.146,.014,.016);
+  axial(splitGrip,cork,.219,.072,.025,.021);
   axial(root,black,.257,.019,.027);
-  for(const z of [.219,.157,.097,.05])axial(root,black,z,.002,.0265);
   axial(root,gunmetal,-.05,.105,.022);
   axial(root,cork,-.139,.081,.022,.018);
   axial(root,steel,-.1,.008,.024);axial(root,amber,-.182,.007,.019);
   const reel=createReel(root,black,steel,gunmetal,amber,thread);
   const hands=createAnglerHands(root,reel.crank,reel.knob);
-  const sections=[], l=.252, segmentCount=9;
+  const sections=[],guides=[],l=.252,segmentCount=9;
   const quiverStart=segmentCount-3;
   const quiverPaint=carbon.clone(),quiverWrap=amber.clone();
   let parent=root;
@@ -158,15 +194,24 @@ export function createTackle() {
       wire(section,gunmetal,[[0,-r,-.18],[0,-r-guide,-.2],[0,-r-guide,-.217]],.0018,7);
       const ring=part(section,new THREE.TorusGeometry(guide,.0017,5,14),steel,0,-r-guide,-.218);
       ring.rotation.x=.09;
+      guides.push(ring);
     }
     sections.push(section);parent=section;
   }
   const tip=new THREE.Object3D();tip.position.set(0,-.004,-l);parent.add(tip);
+  part(tip,new THREE.TorusGeometry(.003,.0008,5,12),steel,0,0,0);
   const tipWorld=new THREE.Vector3();
+  const guidePoints=new THREE.BufferAttribute(new Float32Array((guides.length+3)*3),3).setUsage(THREE.DynamicDrawUsage);
+  const guideGeometry=new THREE.BufferGeometry();guideGeometry.setAttribute('position',guidePoints);
+  const fittedLine=new THREE.Line(guideGeometry,new THREE.LineBasicMaterial({color:0xc2cbbf,transparent:true,opacity:.48,depthWrite:false}));
+  fittedLine.name='threaded-line';fittedLine.frustumCulled=false;group.add(fittedLine);
+  const threadPoint=new THREE.Vector3();
   const float=new THREE.Group();group.add(float);
   rounded(float,finish(0x925d24),0,-.022,0,.02,.059,.02);
   part(float,new THREE.CylinderGeometry(.005,.008,.118,10),finish(0xff5521,0,.65),0,.07,0);
   part(float,new THREE.CylinderGeometry(.0055,.0055,.022,10),finish(0xffe6a2),0,.095,0);
+  const sinker=new THREE.Group();sinker.name='bottom-sinker';sinker.visible=false;group.add(sinker);
+  rounded(sinker,gunmetal,0,0,0,.009,.017,.009);
   const spoon=new THREE.Group();spoon.name='coast-spoon-12g';spoon.visible=false;group.add(spoon);
   const nickel=finish(0xc9d0ca,.58,.26);
   rounded(spoon,nickel,0,0,0,.011,.0035,.032);
@@ -178,18 +223,23 @@ export function createTackle() {
   line.frustumCulled=false;group.add(line);
   group.traverse(o=>o.layers.set(1));
   // Keep both the rod butt and the reel in the lower right of the view.
-  let previousPhase=null,shownColor=null,lastYaw=0,anchorXmm=null,bottomTipPermille=null;
+  let previousPhase=null,shownColor=null,lastYaw=0,anchorXmm=null,bottomTipPermille=null,shownRod=null;
   // Each flexible tip section contributes a share of the observed 0–46 mm
   // displacement, increasing towards the tip. No wave or local bite clock.
   const tipShares=[.12,.33,.55];
-  return {group, root, float, spoon, line, tip,
+  return {group, root, float, spoon, sinker, line, tip,
     animate(views, time, dt, viewYaw=0, verticalFov=60) {
       const pose=rodPose(views,time,viewYaw);
       const isBottom=pose.bottomTipPermille!==null;
-      if (isBottom!==(bottomTipPermille!==null)) {
-        rearGrip.material=isBottom?black:cork;
-        quiverPaint.color.setHex(isBottom?0xe6e59a:carbon.color.getHex());
-        quiverWrap.color.setHex(isBottom?0xe46429:amber.color.getHex());
+      const selectedRod=views.bottomSelected || isBottom ? 'bottom' : views.lureSelected ? 'spinning' : 'float';
+      if (selectedRod!==shownRod) {
+        const isFeeder=selectedRod==='bottom',isSpinning=selectedRod==='spinning';
+        rearGrip.material=isFeeder?black:cork;
+        rearGrip.visible=!isSpinning;splitGrip.visible=isSpinning;
+        sections[0].scale.z=isSpinning ? .86 : 1;
+        quiverPaint.color.setHex(isFeeder?0xe6e59a:carbon.color.getHex());
+        quiverWrap.color.setHex(isFeeder?0xe46429:amber.color.getHex());
+        shownRod=selectedRod;
       }
       bottomTipPermille=pose.bottomTipPermille;
       const color=typeof views.sleeveColor==='string'&&/^#[0-9a-f]{6}$/i.test(views.sleeveColor)?views.sleeveColor:null;
@@ -229,16 +279,34 @@ export function createTackle() {
         reel.spool.position.z=reel.rotor.position.z-.006*Math.sin(reel.crank.rotation.x*.7);
       }
       hands.update(pose,views.flight,dt);
+      // Read one up-to-date set of transforms for the moving roller and every guide.
+      // The line leaves the wound pack on the same side as the rotating pickup.
+      tip.updateWorldMatrix(true,false);
+      reel.spool.updateWorldMatrix(false,false);
+      reel.rotor.updateWorldMatrix(false,false);
+      const rotorAngle=reel.rotor.rotation.z;
+      threadPoint.set(.036*Math.cos(rotorAngle),.036*Math.sin(rotorAngle),-.048).applyMatrix4(reel.spool.matrixWorld);
+      guidePoints.setXYZ(0,threadPoint.x,threadPoint.y,threadPoint.z);
+      threadPoint.set(.049,.004,-.05).applyMatrix4(reel.rotor.matrixWorld);
+      guidePoints.setXYZ(1,threadPoint.x,threadPoint.y,threadPoint.z);
+      for(let i=0;i<guides.length;i++){
+        guides[i].updateWorldMatrix(false,false);
+        threadPoint.setFromMatrixPosition(guides[i].matrixWorld);
+        guidePoints.setXYZ(i+2,threadPoint.x,threadPoint.y,threadPoint.z);
+      }
+      tipWorld.setFromMatrixPosition(tip.matrixWorld);
+      guidePoints.setXYZ(guides.length+2,tipWorld.x,tipWorld.y,tipWorld.z);
+      guidePoints.needsUpdate=true;
       previousPhase=pose.phase;
-      line.visible=Boolean(pose.end);float.visible=Boolean(pose.float);spoon.visible=pose.spoon;
+      line.visible=Boolean(pose.end);float.visible=Boolean(pose.float);spoon.visible=pose.spoon;sinker.visible=pose.sinker;
       if(pose.end){
         if(pose.float)float.position.copy(pose.end);
+        if(pose.sinker)sinker.position.copy(pose.end);
         if(pose.spoon){
           spoon.position.copy(pose.end);
           spoon.rotation.y=Math.atan2(a.xMm/1000-pose.end.x,-a.zMm/1000-pose.end.z);
           spoon.rotation.z=pose.reeling?.6*Math.sin(time*(8+pose.reelLevel)):.16*Math.sin(time*3);
         }
-        tip.getWorldPosition(tipWorld);
         const slack=pose.phase==='fighting'?Math.min(.45,(views.fight?.slackMm||0)/1000*.15):pose.phase==='casting'?.09:.2;
         for(let i=0;i<positions.count;i++){
           const t=i/(positions.count-1);
@@ -250,6 +318,7 @@ export function createTackle() {
       return pose.phase;
     },
     sleeveColor(){return shownColor;},
+    rodType(){return shownRod;},
     bottomTipPermille(){return bottomTipPermille;},
     anchorXmm(){return anchorXmm;},
     dispose(){disposeGroup(group);}

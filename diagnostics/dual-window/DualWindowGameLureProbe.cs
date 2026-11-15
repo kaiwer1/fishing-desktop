@@ -77,7 +77,8 @@ sealed partial class DualWindowContext
             await Wait(pane,p=>AtlasProbeProjected(p,coast.Id)&&Field(p,"lureShopState")!=null&&(bool)Field(p,"lureShopState")["allowed"]);
             await SceneProbeButton(pane,"lure-select");
             await Wait(pane,p=>Field(p,"lureShopState")!=null&&(bool)Field(p,"lureShopState")["selected"]&&p["lureShopPending"]==null&&gameLureSelected);
-            await SceneProbeButton(pane,"menu");await Wait(pane,p=>PlayerProbeDrawn(p,coast),30000);
+            await SceneProbeButton(pane,"menu");var selectedView=await Wait(pane,p=>PlayerProbeDrawn(p,coast)&&
+                (string)SceneProbeRenderer(p)["rodType"]=="spinning"&&(string)SceneProbeRenderer(p)["rodPhase"]=="idle",30000);
             Require(gameWater.SpotId=="rock-bank"&&game.Snapshot.State.Sequence==4,"Selecting lure changed wallet or location.");
             checks.Add("the coast menu enables the owned method at the rock bank and returns to the real three-dimensional fishing view");
 
@@ -95,7 +96,9 @@ sealed partial class DualWindowContext
                     Number(Field(p,"lureState"),"speedLevel")==level&&Field(p,"lureInputState")!=null&&!(bool)Field(p,"lureInputState")["speedPending"]);
             }
             await CatchProbeKeyR(pane,false);await SceneProbeMouse(pane,shortPoint,true);
-            await Wait(pane,p=>first.Snapshot.Reeling&&(bool)Field(p,"lureState")["reeling"]&&first.Snapshot.OutLineM<shortStart.OutLineM-.5,15000);
+            var reelingView=await Wait(pane,p=>first.Snapshot.Reeling&&(bool)Field(p,"lureState")["reeling"]&&first.Snapshot.OutLineM<shortStart.OutLineM-.5&&
+                (string)SceneProbeRenderer(p)["rodType"]=="spinning"&&(string)SceneProbeRenderer(p)["rodPhase"]=="lure-retrieving"&&
+                (bool)SceneProbeRenderer(p)["lureVisible"]&&!(bool)SceneProbeRenderer(p)["bobberVisible"],15000);
             await WardrobeProbePhoto(pane,"lure-retrieve.png");
             await Wait(pane,p=>game.Snapshot.State.Sequence==6&&game.Snapshot.State.Session==null&&first.Snapshot.Phase==LureRetrievePhase.Ended,40000);
             await SceneProbeMouse(pane,shortPoint,false);
@@ -186,6 +189,7 @@ sealed partial class DualWindowContext
             checks.Add("private journal replay preserves the spoon and hook, both paid casts, the empty worm stack and the original float gear");
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),gameLoaded=true,lureFishingConnected=true,closedJournalVerified=true,realMouseCast=true,
+                equippedRod=SceneProbeRenderer(selectedView)["rodType"],retrievingRod=SceneProbeRenderer(reelingView)["rodType"],
                 naturalLureAttack=true,manualReel=true,shoreRetrieveVerified=true,saleVerified=true,originalFloatGearUnchanged=true,
                 controlledFishFacts=false,controlledFightTime=false,privateSeed=1,nativePhysicalMouse=false,personalSaveRead=false,desktopLayer=false,
                 schemaVersion=final.SchemaVersion,sequence=final.Sequence,value=final.WalletMinor,baitCount=final.BaitCount,stamina=final.Stamina,

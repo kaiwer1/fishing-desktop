@@ -40,7 +40,8 @@ sealed partial class DualWindowContext
             var pane=windows[true];await Ready(pane);pane.ClientSize=new Size(1280,800);await Activate(pane);
             var lake=FloatFishingAtlas.Find("development-still-water");
             var ini=game.Snapshot.State;
-            await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
+            var entryView=await Wait(pane,s=>PlayerProbeDrawn(s,lake)&&(string)SceneProbeRenderer(s)["rodType"]=="float",30000);
+            await WardrobeProbePhoto(pane,"rod-float.png");
             Require(ini.Sequence==1&&ini.WalletMinor==12000&&ini.OwnedBottomKit==null&&ini.OwnedNet==null&&
                 ini.BaitCount==12&&ini.Stamina==100&&ini.Creel.Count==0,"Unexpected starting ownership.");
             byte[] originalFloatGear=FloatEquipmentCodec.Encode(ini.Equipment);
@@ -77,7 +78,8 @@ sealed partial class DualWindowContext
             await Wait(pane,s=>Field(s,"bottomShopState")!=null&&(string)Field(s,"bottomShopState")["method"]=="bottom"&&
                 s["bottomShopPending"]==null&&gameBottomSelected);
             Require(journal==GameShopJournalDigest()&&game.Snapshot.State.Sequence==4,"Selecting an owned method spent resources.");
-            await SceneProbeButton(pane,"menu");await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
+            await SceneProbeButton(pane,"menu");var selectedView=await Wait(pane,s=>PlayerProbeDrawn(s,lake)&&
+                (string)SceneProbeRenderer(s)["rodType"]=="bottom"&&(string)SceneProbeRenderer(s)["rodPhase"]=="idle",30000);
             checks.Add("selecting bottom fishing projects the chosen method and makes no journal transaction");
 
             stage="aiming and casting";
@@ -98,7 +100,9 @@ sealed partial class DualWindowContext
             Require(entry.Phase==BottomPhase.Sinking&&entry.RigId==kit.Equipment.RigId&&entry.RigRevision==kit.Equipment.RigRevision&&
                 entry.SessionId==cast.Id&&entry.SinkerYmm>=entry.Contact.SinkerYmm&&entry.Contact.BaitYmm< -300&&
                 entry.Contact.BaitZmm<entry.Contact.Zmm&&game.Snapshot.State.Creel.Count==0,"Bottom water contact was not surveyed.");
-            await Wait(pane,s=>BottomProbePhase(s,"settled",cast.Id)&&bottom.Snapshot.SinkerOnBed&&bottom.Snapshot.BaitOnBed,20000);
+            await Wait(pane,s=>BottomProbePhase(s,"settled",cast.Id)&&bottom.Snapshot.SinkerOnBed&&bottom.Snapshot.BaitOnBed&&
+                (string)SceneProbeRenderer(s)["rodType"]=="bottom"&&(string)SceneProbeRenderer(s)["rodPhase"]=="bottom-settled"&&
+                !(bool)SceneProbeRenderer(s)["bobberVisible"],20000);
             var stable=bottom.Snapshot;
             Require(stable.SinkerYmm==entry.Contact.SinkerYmm&&stable.BaitYmm==entry.Contact.BaitYmm&&
                 stable.OutLineMm+stable.OnSpoolMm==50000&&stable.SignalSequence==0,"Inherited float depth, lost line or premature signal.");
@@ -106,7 +110,8 @@ sealed partial class DualWindowContext
             checks.Add("the sinker and trailing hook land at their own sampled bed heights before a settled tip appears");
 
             stage="waiting for the tip and striking";
-            var bitePage=await Wait(pane,s=>BottomProbePhase(s,"bite",cast.Id)&&bottom.Snapshot.Phase==BottomPhase.Strikeable,60000);
+            var bitePage=await Wait(pane,s=>BottomProbePhase(s,"bite",cast.Id)&&bottom.Snapshot.Phase==BottomPhase.Strikeable&&
+                (string)SceneProbeRenderer(s)["rodPhase"]=="bottom-bite"&&Number(SceneProbeRenderer(s),"bottomTipPermille")>0,60000);
             var window=bottom.Snapshot;Guid encounter=window.EncounterId;
             Require(encounter!=Guid.Empty&&window.SignalSequence==2&&Number(Field(bitePage,"bottomState"),"tipPermille")>0&&
                 gameFight==null&&game.Snapshot.State.Sequence==5,"Tip disclosed a fish or created an automatic fight.");
@@ -173,6 +178,8 @@ sealed partial class DualWindowContext
             checks.Add("closing and reopening the private file replays the kit identities, equipped net, balance and original untouched float equipment");
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),gameLoaded=true,bottomFishingConnected=true,realMouseCast=true,
+                startingRod=SceneProbeRenderer(entryView)["rodType"],equippedRod=SceneProbeRenderer(selectedView)["rodType"],
+                strikingTipPermille=SceneProbeRenderer(bitePage)["bottomTipPermille"],
                 naturalBottomBite=true,realMouseStrike=true,manualReel=true,netPurchased=true,saleVerified=true,
                 originalFloatGearUnchanged=true,closedJournalVerified=true,personalSaveRead=false,desktopLayer=false,nativePhysicalMouse=false,
                 controlledFishFacts=false,controlledFightTime=false,schemaVersion=final.SchemaVersion,sequence=final.Sequence,value=final.WalletMinor,

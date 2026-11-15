@@ -194,7 +194,7 @@ static class FloatAnglerLogTests
             string path=FileName();using(var st=FloatGameStore.CreateNew(path,FormerPlayer())){}
             string wrong=FileName();using(var st=FloatGameStore.CreateNew(wrong,FormerPlayer())){}
             var inspection=FloatJournalArchive.Inspect(path);
-            string backupPath=Path.Combine(folder,Path.GetFileNameWithoutExtension(path)+".before-nine-species."+inspection.Sha256+".fltj");
+            string backupPath=Path.Combine(folder,Path.GetFileNameWithoutExtension(path)+".before-nine-species."+inspection.Sha256.Substring(0,24)+".fltj");
             File.Copy(wrong,backupPath);
             using(var owner=OpenPlayer(path)){Need(owner.Snapshot.State.Sequence==0,"unverified backup allowed expansion");}
             Need(File.ReadAllBytes(backupPath).SequenceEqual(File.ReadAllBytes(wrong)),"existing backup was overwritten");

@@ -106,7 +106,7 @@ namespace FishingDesktop.GameCore
             if(!FloatDomesticSpeciesCatalog.IsPreviousPlayerCatalog(source.State) ||
                 source.State.HasPendingBankResult || (source.State.Session!=null && source.State.Session.CapacityBlocked))return null;
             string destination=Path.Combine(Path.GetDirectoryName(source.SourcePath),
-                Path.GetFileNameWithoutExtension(source.SourcePath)+".before-nine-species."+source.Sha256+".fltj");
+                Path.GetFileNameWithoutExtension(source.SourcePath)+".before-nine-species."+source.Sha256.Substring(0,24)+".fltj");
             try{
                 if(File.Exists(destination)){
                     if(Inspect(destination).Sha256!=source.Sha256)return null;

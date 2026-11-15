@@ -10,6 +10,20 @@
 // maximum body depth. Dorsal/anal records are [front, back, height, rays, spiny].
 // Distances outside the contour ordinates are in model metres.
 export const specimens = {
+  'yellow-catfish': {
+    depth:.239,width:.194,head:.694,eye:.891,eyeSize:.018,noseY:-.021,hump:.014,
+    profile:[.34,.35,.47,.62,.76,.91,1,.99,.85,.66,.42,.11],
+    colors:[0x48472a,0xab9740,0xe1d28c],fin:0x736849,ventral:0x91845e,iris:0xbfb998,
+    scales:0,dorsal:[[.671,.519,.125,7,false]],anal:[.402,.131,.077,21,false],tail:.144,fork:.88,
+    chest:.692,pelvis:.468,pectoral:.158,catfish:true,adipose:true
+  },
+  'black-rockfish': {
+    depth:.304,width:.170,head:.645,eye:.869,eyeSize:.024,noseY:.013,hump:.019,
+    profile:[.37,.39,.49,.66,.85,.96,1,.98,.85,.70,.42,.120],
+    colors:[0x30363a,0x535856,0x878774],fin:0x484c4a,ventral:0x656558,iris:0x918768,
+    scales:63,dorsal:[[.694,.377,.133,13,true],[.377,.122,.085,13,false]],anal:[.348,.136,.079,9,false],tail:.112,fork:.06,
+    chest:.652,pelvis:.618,pectoral:.188,rockfish:true
+  },
   carp: {
     depth:.318, width:.155, head:.738, eye:.880, eyeSize:.0165, noseY:-.038, hump:.029,
     profile:[.28,.28,.40,.61,.88,1,.96,.83,.64,.47,.26,.065],

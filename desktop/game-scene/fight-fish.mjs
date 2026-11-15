@@ -2,6 +2,7 @@
 // the eye ray through the surface; it never owns a second fish simulation.
 const showing = new Set(['fighting','landing-eligible']);
 const profiles = new Map([
+  ['yellow-catfish',[.30,.083]],['black-rockfish',[.41,.109]],
   ['carp',[.43,.12]],['crucian',[.32,.108]],['grass-carp',[.5,.104]],['blunt-snout-bream',[.38,.119]],
   ['black-seabream',[.38,.12]],['spotted-seabass',[.49,.10]],['yellowfin-seabream',[.35,.102]]
 ]);

@@ -17,7 +17,7 @@ const app=`
 import * as T from 'three';
 import {createSpecimen,disposeSpecimen} from './specimen-model.mjs';
 const species=[['carp','鲤鱼'],['crucian','鲫鱼'],['grass-carp','草鱼'],['blunt-snout-bream','鳊鱼'],
-  ['black-seabream','黑鲷'],['spotted-seabass','花鲈'],['yellowfin-seabream','黄鳍鲷']];
+  ['black-seabream','黑鲷'],['spotted-seabass','花鲈'],['yellowfin-seabream','黄鳍鲷'],['yellow-catfish','黄颡鱼'],['black-rockfish','许氏平鲉']];
 const result=document.querySelector('output');
 try{
 const renderer=new T.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});
@@ -30,7 +30,7 @@ scene.add(new T.HemisphereLight(0xe1edf1,0x585344,1.1));
 for(const [colour,power,pos] of [[0xffebd7,2.55,[1.0,1.55,2.3]],[0xb7d4e6,1.8,[-1,1.2,-1.5]]]){
   const lamp=new T.DirectionalLight(colour,power);lamp.position.set(...pos);scene.add(lamp);
 }
-const metrics=[],plate=document.createElement('canvas');plate.width=1200;plate.height=1192;
+const metrics=[],plate=document.createElement('canvas');plate.width=1200;plate.height=298*Math.ceil(species.length/2);
 const brush=plate.getContext('2d');brush.fillStyle='#202b2d';brush.fillRect(0,0,plate.width,plate.height);
 const rgba=new Uint8Array(640*332*4);
 for(const [i,[id,label]] of species.entries()){

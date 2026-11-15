@@ -2,9 +2,11 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 试玩包 0.4.0-preview.6](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.6)**。选择 `FishingDesktop-0.4.0-preview.6-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 试玩包 0.4.0-preview.7](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.7)**。选择 `FishingDesktop-0.4.0-preview.7-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
 ![静水湾正午的水面与岸边](docs/preview-0.4/ecology-day.png)
+
+**看自己钓到的鱼：** 抄鱼入护后按 C，点那一条鱼旁边的「查看鱼体」。按住左键拖动可以从侧面转到正面，滚轮放大看鳞片、鳍条与花纹；按 Esc 回鱼护。已入护的七种鱼均有各自的原创模型。[黑鲷实机画面](docs/preview-0.4/creel-specimen.png) · [七种鱼外形对照](docs/preview-0.4/specimens.png)
 
 三个钓场都有各自的天气。开局是早上 07:30，实际游玩一分钟，钓场约过去一小时。可以在天还亮时试一次静水湾浅滩，到晚上再钓同一个落点，看鲫鱼和鲤鱼的鱼口怎么变。切换钓场会沿用当前时刻；打开营地菜单时暂停，退出重开则从早上开始。
 
@@ -51,6 +53,8 @@
 | 海湾 | 黑鲷、花鲈、黄鳍鲷 |
 
 ### 试玩版本与素材
+
+- **0.4.0-preview.7** 鱼护新增七种原创三维模型与近看操作，使用所选渔获的真实种类、重量，无需联网。[第六版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.6)
 
 - **0.4.0-preview.6** 昼夜、当地天气与鱼情接入三个钓场。保持原有存档格式。[第五版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.5)
 

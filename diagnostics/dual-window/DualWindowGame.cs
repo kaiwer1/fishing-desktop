@@ -13,7 +13,7 @@ sealed partial class DualWindowContext
     internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest||GameEcologySelfTest; } }
     internal bool PlayerMode { get { return gameMode=="player-window"||gameMode=="player-wallpaper"; } }
     bool GamePlayerSelfTest { get { return gameMode=="player-self-test"; } }
-    bool GameCatchSelfTest { get { return gameMode=="catch-self-test"; } }
+    bool GameCatchSelfTest { get { return gameMode=="catch-self-test"||GameSpecimenSelfTest; } }
     bool GameAtlasSelfTest { get { return gameMode=="atlas-self-test"; } }
     bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest||GameEcologySelfTest||PlayerMode; } }
     internal bool GameMode { get { return gameMode != null; } }

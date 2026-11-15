@@ -16,6 +16,7 @@ import { ScenePresentation } from './scene-presentation.mjs';
 import { SpotMenu } from './spot-menu.mjs';
 import { Wardrobe, wardrobeMessages } from './wardrobe.mjs';
 import { fishName, fishFigure, installFishIllustrations, newCreelCatch } from './fish-illustration.mjs';
+import { createSpecimenView } from './specimen-view.mjs';
 import { BankWalk } from './bank-walk.mjs';
 import { BottomView, bottomPrompt, createBottomTipPanel } from './bottom-view.mjs';
 import { BottomShop, BottomStrike, confirmedLineEnd } from './bottom-controls.mjs';
@@ -53,6 +54,7 @@ const selected = new Set();
 const $ = id => document.getElementById(id);
 installFishIllustrations(document, $('fish-symbol-bank'));
 let catchTimer = null;
+let specimen = null;
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
 const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(authority.state().lease) && snapshot?.HasConfirmedState && !snapshot.Faulted && !snapshot.HostPaused && !snapshot.ShutdownConfirmed;
@@ -331,6 +333,17 @@ function showCatch(caught) {
   $('catch-mass').textContent = `${decimal(caught.massMg,6).replace(/\.?0+$/, '')} kg`;
   $('catch-card').hidden = false; catchTimer = setTimeout(hideCatch, 6500);
 }
+function canInspectFish() {
+  return canControl() && snapshot.MenuOpen && !inflight && !document.hidden && !visualPaused && hostPolicy?.canRun !== false;
+}
+function specimenButton(fish) {
+  if (readOnly || !snapshot.MenuOpen || !fishName(fish.SpeciesKey)) return null;
+  specimen ??= createSpecimenView(document, { readSnapshot: () => snapshot, canOpen: canInspectFish,
+    findButton: id => $('creel').querySelector(`[data-specimen-id="${id}"]`) });
+  const button = specimen.buttonFor(fish.Id);
+  if (button) button.disabled = !canInspectFish();
+  return button;
+}
 function render() {
   castInput.reconcile();
   strikeInput.reconcile();
@@ -361,7 +374,9 @@ function render() {
       checkbox.addEventListener('change', () => { if (checkbox.checked) selected.add(fish.Id); else selected.delete(fish.Id); updateButtons(); });
       const plate = fishFigure(document,fish.SpeciesKey); if (plate) item.append(plate);
       text.textContent = `${fishName(fish.SpeciesKey) ?? fish.SpeciesKey} · ${decimal(fish.MassMg, 6)} kg · ${decimal(fish.SaleValueMinor)} 银币`;
-      label.append(checkbox, text); item.append(label); return item;
+      label.append(checkbox, text); item.append(label);
+      const inspect = specimenButton(fish); if (inspect) item.append(inspect);
+      return item;
     }));
     if (!rows.length) { const item = document.createElement('li'); item.textContent = '鱼护为空'; $('creel').append(item); }
   }
@@ -499,6 +514,7 @@ function renderShop() {
   $('shop-cancel').hidden = !input.quote && !input.retry;
 }
 function updateButtons() {
+  specimen?.reconcile();
   bankWalk.reconcile();
   if (catchTimer !== null && (!canControl() || hostPolicy?.canRun === false || snapshot.MenuOpen || snapshot.SessionId || castInput.state() || document.hidden)) hideCatch();
   reconcileSpot();
@@ -1067,7 +1083,7 @@ for (const type of ['mouseup','mousemove']) window.addEventListener(type, event 
   markMouseButtons(event.buttons);
 });
 window.addEventListener('blur', () => revoke('blur'));
-window.addEventListener('pagehide', () => { revoke('pagehide'); scene.dispose(); });
+window.addEventListener('pagehide', () => { revoke('pagehide'); scene.dispose(); specimen?.dispose(); });
 window.addEventListener('resize', () => { if (!landscape()) revoke('portrait'); render(); scene.resize(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) revoke('hidden'); else scene.refresh(); });
 const typing = target => target instanceof Element && (target.isContentEditable || target.closest('input,textarea,select'));
@@ -1105,11 +1121,12 @@ $('scene-to-water').addEventListener('click', () => scene.showScene(true));
 for (const key of ['menu','recall','release','land','retry-land','retry-escape']) {
   $(`scene-${key}`).addEventListener('click', event => { if (event.detail <= 1 && !$(key).disabled) $(key).click(); });
 }
-function pauseVisual(value) { visualPaused = value; if (value) bankWalk.stop();renderConditions();scene.refresh(); }
+function pauseVisual(value) { visualPaused = value; if (value) bankWalk.stop();specimen?.reconcile();renderConditions();scene.refresh(); }
 const visual = { start: () => pauseVisual(false), stop: () => pauseVisual(true), pause: () => pauseVisual(true), resume: () => pauseVisual(false),
   state: () => scene.state().renderer ?? { running: false, frames: 0, kind: 'host-flight-projection' } };
 window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision,
   biteState: biteView.state(), biteRevision: biteView.revision, strikeInputState: strikeInput.state(),
+  specimenState: specimen?.state() ?? { open:false, loading:false, error:null, fish:null, viewer:null },
   bottomState:bottomView.state(), bottomRevision:bottomView.revision, bottomLineEnd:bottomLineEnd && { ...bottomLineEnd },
   bottomShopState:bottomShop.state(), bottomShopPending:bottomShop.pending,
   lureShopState:lureShop.state(),lureShopPending:lureShop.pending,lureState:lureView.state(),lureRevision:lureView.revision,lureInputState:lureInput.state(),lureCanRetryRetrieve:lureView.canRetryRetrieve,

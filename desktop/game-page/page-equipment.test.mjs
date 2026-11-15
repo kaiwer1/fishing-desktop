@@ -17,12 +17,19 @@ async function pageFixture() {
     get options() { return this.children; }
     get valueAsNumber() { return Number(this.value); }
     setAttribute(key, value) { this.attributes[key] = String(value); }
+    focus() { document.activeElement = this; }
+    showModal() { this.open = true; }
+    close() { this.open = false; }
+    querySelector(selector) {
+      const id = /^\[data-specimen-id="([^"]+)"\]$/.exec(selector)?.[1];
+      return this.children.flatMap(c => c.children).find(c => id && c.dataset.specimenId === id) ?? null;
+    }
     append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); if (child.id) nodes.set(child.id, child); } }
     replaceChildren(...children) { this.children = []; this.append(...children); if (this.tagName === 'SELECT') this.value = this.children[0]?.value ?? ''; }
     addEventListener(type, callback) { if (!this.listeners.has(type)) this.listeners.set(type, []); this.listeners.get(type).push(callback); }
     closest(selector) { return selector.split(',').includes(this.tagName.toLowerCase()) ? this : this.parentElement?.closest(selector) ?? null; }
     dispatch(type, values = {}, force = false) {
-      const event = { target: this, detail: 1, repeat: false, prevented: false, preventDefault() { this.prevented = true; }, ...values };
+      const event = { target: this, detail: 1, repeat: false, prevented: false, preventDefault() { this.prevented = true; }, stopPropagation() {}, ...values };
       if (type !== 'click' || !this.disabled || force) for (const callback of this.listeners.get(type) ?? []) callback(event);
       return event;
     }
@@ -37,6 +44,8 @@ async function pageFixture() {
     getElementById: id => { assert.ok(nodes.has(id), `Missing DOM id ${id}`); return nodes.get(id); }, addEventListener: (...args) => documentEvents.addEventListener(...args) };
   globalThis.window = { chrome: { webview: { postMessage: message => messages.push(message), addEventListener: (type, callback) => { assert.equal(type, 'message'); receive = callback; } } },
     addEventListener: (...args) => windowEvents.addEventListener(...args) };
+  document.defaultView = window;
+  window.innerWidth = innerWidth; window.innerHeight = innerHeight;
   let source = await readFile(new URL('./page.mjs', import.meta.url), 'utf8');
   source = source.replace(/from '([^']+)'/g, (_, path) => `from '${new URL(path === './lease-session.mjs' ? '../../diagnostics/state-owner/lease-session.mjs' : path, import.meta.url).href}'`);
   await import(`data:text/javascript;base64,${Buffer.from(`${source}\n// fresh page ${crypto.randomUUID()}`).toString('base64')}`);
@@ -158,6 +167,19 @@ const bankKitState = (f,revision,extra={}) => f.emit({kind:'game-bank-kit-state'
 
 const lureShopState=(f,revision,extra={})=>f.emit({kind:'game-lure-shop-state',revision,state:{
   available:true,owned:false,selected:false,allowed:false,priceMinor:5600,...extra}});
+test('a specimen button inspects the confirmed creel row without selecting it for sale or keeping a revoked view open',async()=>{
+  const f=await pageFixture(), fish={Id:id(200),SpeciesKey:'carp',MassMg:'2010500',SaleValueMinor:'190'};
+  f.snapshot.Creel=[fish];f.snapshot.CreelCount=1;f.broadcast();
+  const button=()=>f.nodes.get('creel').querySelector(`[data-specimen-id="${fish.Id}"]`);
+  assert.equal(button().disabled,false);button().dispatch('click');
+  assert.deepEqual(f.probe.state().specimenState.fish,{id:fish.Id,speciesId:'carp',massMg:'2010500'});
+  assert.equal(f.nodes.get('specimen-mass').textContent,'2.0105 千克');
+  assert.equal(f.nodes.get('sell').disabled,true);assert.equal(f.messages.length,0);
+  f.grant(null);assert.equal(f.probe.state().specimenState.open,false);assert.equal(button().disabled,true);
+  button().dispatch('click',{},true);assert.equal(f.probe.state().specimenState.open,false);
+  f.grant('next');button().dispatch('click');f.snapshot.Creel=[];f.snapshot.CreelCount=0;f.broadcast();
+  assert.equal(f.probe.state().specimenState.open,false);assert.equal(button(),null);assert.equal(f.messages.length,0);
+});
 test('actual shore HUD reads the current water and preserves its last time while the menu is open',async()=>{
   const f=await pageFixture(),hud=f.nodes.get('water-conditions'),map=f.nodes.get('map-weather');
   const s={waterId:'development-still-water',clockMinute:480,weatherCode:'cloudy',lightPermille:405,rainPermille:0,windDeciMs:22,tempDeciC:188,cloudPercent:50};

@@ -38,7 +38,7 @@ $hostFiles = @('DualWindowHost.exe','Microsoft.Web.WebView2.Core.dll','Microsoft
     'WebView2Loader.dll','WEBVIEW2-LICENSE.txt')
 $pageFiles = @('game.html','page.mjs','lease-session.mjs','cast-input.mjs','flight-view.mjs','bite-view.mjs',
     'fight-view.mjs','shop-view.mjs','equipment-view.mjs','equipment-panel.mjs','spares-view.mjs','spares-panel.mjs',
-    'camp-view.mjs','camp-panel.mjs','water-aim.mjs','water-view.mjs','spot-menu.mjs','water-conditions.mjs','wardrobe.mjs','fish-illustration.mjs','bank-walk.mjs','stand-view.mjs','bank-kit.mjs','lure-view.mjs','lure-controls.mjs','bottom-view.mjs','bottom-controls.mjs','scene-presentation.mjs','game-scene.mjs','THREE-LICENSE.txt')
+    'camp-view.mjs','camp-panel.mjs','water-aim.mjs','water-view.mjs','specimen-view.mjs','specimen-viewer.mjs','spot-menu.mjs','water-conditions.mjs','wardrobe.mjs','fish-illustration.mjs','bank-walk.mjs','stand-view.mjs','bank-kit.mjs','lure-view.mjs','lure-controls.mjs','bottom-view.mjs','bottom-controls.mjs','scene-presentation.mjs','game-scene.mjs','THREE-LICENSE.txt')
 foreach ($name in $hostFiles) { $members["app/$name"] = Join-Path $buildRoot.FullName $name }
 foreach ($name in $pageFiles) { $members["app/page/$name"] = Join-Path $buildRoot.FullName "page/$name" }
 $members['Readme-zh-CN.txt'] = Join-Path $player 'Readme-zh-CN.txt'

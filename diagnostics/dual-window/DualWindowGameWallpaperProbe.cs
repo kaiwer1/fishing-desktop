@@ -155,6 +155,24 @@ sealed partial class DualWindowContext
                 "Visible desktop renderer, physical viewport scaling or observer UI proof is missing.");
             checks.Add("the wallpaper WebGL2 canvas draws multiple frames and geometry at the monitor CSS scale with the observer HUD hidden");
 
+            const string sampleScript="(()=>{const r=window.dualProbe.visual.state();return {frames:r.frames,time:performance.now(),width:r.width,height:r.height,running:r.running};})()";
+            var startSample=await SceneProbeScript(read,sampleScript);
+            var lastSample=startSample;
+            var intervalRates=new List<double>();
+            for(int i=0;i<4;i++){
+                await Task.Delay(2000);
+                if(!WallpaperProbeCanRun())return;
+                var nextSample=await SceneProbeScript(read,sampleScript);
+                if(!(bool)nextSample["running"] || Number(nextSample,"width")!=Number(startSample,"width") ||
+                    Number(nextSample,"height")!=Number(startSample,"height"))throw new InvalidOperationException("Wallpaper render sampling interrupted.");
+                double elapsedMs=Convert.ToDouble(nextSample["time"])-Convert.ToDouble(lastSample["time"]);
+                intervalRates.Add(Math.Round((Number(nextSample,"frames")-Number(lastSample,"frames"))*1000.0/elapsedMs,2));
+                lastSample=nextSample;
+            }
+            long sampledFrames=Number(lastSample,"frames")-Number(startSample,"frames");
+            double sampleMilliseconds=Convert.ToDouble(lastSample["time"])-Convert.ToDouble(startSample["time"]);
+            Require(sampledFrames>0 && sampleMilliseconds>=7500,"No active isolated wallpaper frame sample.");
+
             if(!WallpaperProbeCanRun())return;
             int colors=await WallpaperProbeCapture(read,bounds.Width,bounds.Height);
             checks.Add("the full-resolution PNG contains rendered lake colors and captures only the application's own wallpaper WebView");
@@ -197,6 +215,9 @@ sealed partial class DualWindowContext
                 preparedMissingLayer=wallpaperPreparedLayer,prepareCalls=startupCalls,requestCalls=startupRequestCalls,messageAttempts=WallpaperMessageAttempts,
                 fullscreenPolicyApplied=true,externalFullscreenTested=false,actualMonitorWidth=bounds.Width,actualMonitorHeight=bounds.Height,
                 cssWidth=Number(gl,"cssWidth"),cssHeight=Number(gl,"cssHeight"),devicePixelRatio=ratio,rendererName=(string)gl["renderer"],triangles,
+                renderedFrames=sampledFrames,renderSampleMs=Math.Round(sampleMilliseconds,1),
+                renderFramesPerSecond=Math.Round(sampledFrames*1000.0/sampleMilliseconds,2),twoSecondRenderRates=intervalRates.ToArray(),
+                renderWidth=Number(startSample,"width"),renderHeight=Number(startSample,"height"),
                 sampleColors=colors,ownWebViewCapture=true,desktopCompositionCaptured=false,nativeInputTested=false,desktopIconInteractionTested=false,
                 systemWallpaperPreferenceChanged=false,personalSaveRead=false,attachments=desktopAttachments,detachments=desktopDetachments,
                 remainingLeases=desktopLeases.Count,presentationChecks,sequence=s.Sequence,value=s.WalletMinor,speciesCount=s.Rules.Species.Count,

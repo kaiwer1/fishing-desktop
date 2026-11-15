@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; img-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'">
 <title>钓鱼桌面</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#202421;color:#ededdf;font:16px/1.55 system-ui,"Microsoft YaHei",sans-serif}main{max-width:1120px;margin:auto;padding:24px}header{border-bottom:1px solid #737965;padding-bottom:16px}h1{font-size:24px;margin:0 0 8px}p{margin:8px 0}.muted{color:#bac1b0;font-size:14px}#status{color:#d3df8a}#stats{display:flex;flex-wrap:wrap;gap:14px;margin:20px 0}#stats span{padding:8px 16px;background:#343a31}button{font:inherit;background:#454c3a;border:1px solid #8c9872;color:#fff;padding:9px 18px;cursor:pointer;margin:0 8px 8px 0}button:disabled{opacity:.4;cursor:default}button:focus-visible{outline:3px solid #d6e18c;outline-offset:2px}section{padding:16px 0;border-top:1px solid #555e4d}h2{font-size:18px;margin:0 0 12px}#creel{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;list-style:none;padding:0}.fish{padding:14px;background:#343a31}.fish label{display:flex;gap:8px;align-items:flex-start}#notice{min-height:26px;color:#d9d498}#portrait{display:none}body[data-role=observer] .interactive{display:none}@media(orientation:portrait){main{display:none}#portrait{display:flex;height:100vh;align-items:center;justify-content:center;font-size:24px}}
@@ -26,8 +26,22 @@ body[data-scene-mode=loading] #scene-stage{visibility:hidden;pointer-events:none
 #bank-position{display:block;font-variant-numeric:tabular-nums}#bank-position[hidden]{display:none}
 #water-conditions,#map-weather{display:block;margin:3px 0 0;color:#e6eadf;font:500 12px/1.45 system-ui,"Microsoft YaHei",sans-serif;font-variant-numeric:tabular-nums}#water-conditions[hidden],#map-weather[hidden]{display:none}
 .scene-actions{right:clamp(14px,3vw,42px);top:clamp(10px,3vh,30px);display:flex;gap:6px}
-.scene-readout{bottom:clamp(12px,4vh,42px);left:clamp(14px,3vw,42px);max-width:min(620px,82vw);padding:12px 16px;background:linear-gradient(90deg,#101e1bde,#10221cc2 72%,transparent);border-left:2px solid #c9d599}
-.scene-readout strong{font-size:clamp(17px,2vw,24px)}.scene-readout p{margin:2px 0;font-size:14px}.scene-readout progress{width:min(280px,40vw);accent-color:#c7d891}.scene-readout button{margin:4px 6px 0 0}
+.scene-readout{bottom:clamp(12px,4vh,42px);left:clamp(14px,3vw,42px);max-width:min(30em,76vw);color:#fff;font-size:14px;line-height:1.45;text-shadow:0 1px 3px #101811,0 0 5px #101811}
+.scene-readout strong{display:inline-block;background:#13221de0;border-radius:3px;padding:4px 9px;font-size:14px;font-weight:600}
+.scene-sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.scene-readout strong::before{content:"";display:inline-block;margin:0 8px 2px 0;width:6px;height:6px;border-radius:50%;background:#bec9a6}
+.scene-readout[data-cue=strike] strong,.scene-readout[data-cue=land] strong{background:#253124f5;color:#f6e7aa}
+.scene-readout[data-cue=strike] strong::before,.scene-readout[data-cue=land] strong::before{background:#ffcf65;box-shadow:0 0 0 2px #ffcf6555}
+.scene-readout p{margin:4px 0 0;width:fit-content;padding:2px 6px;background:#14211bd9;border-radius:2px}
+#scene-lure-readout{font-size:12px;font-variant-numeric:tabular-nums}
+.scene-readout button{margin:4px 5px 0 0;padding:3px 9px;font-size:13px;min-height:27px}
+#scene-charge{position:absolute;left:50%;top:65%;transform:translateX(-50%);width:clamp(120px,14vw,190px);padding:6px 9px 8px;border-radius:3px;background:#14211dec;font-size:12px;line-height:1.3;font-variant-numeric:tabular-nums}
+#scene-charge span{float:right}#scene-power{display:block;width:100%;height:6px;margin:4px 0 0;border:0;appearance:none;accent-color:#d7df9c}
+#scene-power::-webkit-progress-bar{background:#506253;border-radius:1px}#scene-power::-webkit-progress-value{background:linear-gradient(90deg,#a6bf84,#eed680);border-radius:1px}
+#scene-help-sheet{position:absolute;z-index:2;right:0;top:calc(100% + 6px);width:min(275px,80vw);max-height:68vh;overflow:auto;pointer-events:auto;background:#14211cf5;border:1px solid #aebba066;padding:8px 13px;color:#eef2e6;border-radius:3px}
+#scene-help-sheet dl{display:grid;grid-template-columns:auto 1fr;column-gap:14px;row-gap:5px;align-items:baseline;margin:0;font-size:13px}
+#scene-help-sheet dt{color:#cbd8a8}#scene-help-sheet dd{margin:0}
+@media(max-width:720px){.scene-actions{gap:4px}.scene-hud .scene-actions button{font-size:12px;padding:4px 6px}.scene-place{max-width:42vw}}
 body[data-role=observer] .scene-hud,body[data-scene-mode=scene][data-scene-menu=closed] main{display:none}
 body[data-scene-mode=scene][data-scene-menu=open] main{position:fixed;inset:6vh max(4vw,calc((100vw - 1100px)/2));z-index:2;overflow:auto;overscroll-behavior:contain;background:#202822f7;border:1px solid #86917d;box-shadow:0 14px 45px #0c130c91}
 body[data-scene-mode=scene] main header,body[data-scene-mode=scene] #cast-workbench,body[data-scene-mode=scene] #bite,body[data-scene-mode=scene] #fight,body[data-scene-mode=scene] #session,body[data-scene-mode=scene] #recall,body[data-scene-mode=scene] #release{display:none}
@@ -58,16 +72,25 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 #angler-log-columns h3{font-size:16px;margin:18px 0 7px}#angler-log-columns table{width:100%;border-collapse:collapse}
 #angler-log-columns th,#angler-log-columns td{padding:5px 6px;text-align:right;border-bottom:1px solid #495343;overflow-wrap:anywhere}
 #angler-log-columns th:first-child{text-align:left}#angler-log-columns thead{font-size:13px;color:#bdc7af}#angler-log-columns tbody th{font-weight:500}
-</style></head>
+</style><link rel="stylesheet" href="camp.css"></head>
 <body><svg id="fish-symbol-bank" aria-hidden="true" focusable="false"></svg><div id="portrait">请横屏游玩</div>
 <aside id="catch-card" role="status" aria-live="polite" hidden><small>渔获已入护</small><div id="catch-art"></div><strong id="catch-name"></strong><span id="catch-mass"></span></aside>
 <div id="scene-stage" hidden>
-<canvas id="scene-canvas" aria-label="钓场水面，按住鼠标左键蓄力，松开抛竿"></canvas>
+<canvas id="scene-canvas" tabindex="-1" aria-label="钓场水面，按住鼠标左键蓄力，松开抛竿"></canvas>
 <div class="scene-hud"><div class="scene-place"><strong id="scene-spot-name">岸边钓位</strong><small id="scene-spot-region"></small><small id="bank-position" hidden></small><small id="water-conditions" aria-label="钓场时间与天气" hidden></small></div>
-<div class="scene-actions"><button id="scene-menu">钓点与补给</button><button id="scene-to-map">俯视瞄准</button></div>
+<div class="scene-actions"><button id="scene-help-toggle" aria-expanded="false" aria-controls="scene-help-sheet">操作 <kbd>F1</kbd></button><button id="scene-menu">钓点与补给</button><button id="scene-to-map">俯视瞄准</button>
+<div id="scene-help-sheet" role="region" aria-label="岸边操作" hidden><dl>
+<dt>抛竿</dt><dd>对准水面，按住左键蓄力，松开抛出。右键取消蓄力。</dd>
+<dt>提竿</dt><dd>见到明显鱼口时按右键。</dd>
+<dt>收线</dt><dd>按住左键收线，松开停收。遛鱼时滚轮调泄力。</dd>
+<dt>路亚</dt><dd>按住 R 并滚动滚轮调收线速度。</dd>
+<dt>抄鱼</dt><dd>鱼进入抄网范围时按空格。</dd>
+<dt id="scene-help-walk" hidden>走位</dt><dd id="scene-help-walk-keys" hidden>A、D 或左右方向键沿岸走，Shift 快走。</dd>
+</dl></div></div>
 <aside id="scene-stand" class="bank-stand-box" hidden></aside>
-<div class="scene-readout"><strong id="scene-action">等待钓场</strong><p id="scene-hint"></p>
-<p id="scene-lure-readout" hidden></p><progress id="scene-power" max="1000" value="0" aria-label="抛竿蓄力" hidden></progress><p id="scene-message" role="status" hidden></p>
+<div id="scene-charge" hidden>抛竿力度<span id="scene-power-percent" aria-hidden="true">0%</span><progress id="scene-power" max="1000" value="0" aria-label="抛竿蓄力" hidden></progress></div>
+<div id="scene-readout" class="scene-readout"><div role="status" aria-atomic="true"><strong id="scene-action">等待钓场</strong><span id="scene-input-cue" class="scene-sr-only"></span></div><p id="scene-hint" hidden></p>
+<p id="scene-lure-readout" hidden></p><p id="scene-message" role="status" hidden></p>
 <div><button id="scene-recall" hidden>收回这一竿</button><button id="scene-release" hidden>放流当前鱼</button><button id="scene-land" hidden>抄鱼</button><button id="scene-retry-land" hidden>重试收鱼</button><button id="scene-retry-escape" hidden>重试失败结算</button></div>
 </div></div></div><main>
 <header><h1><span id="map-spot-name">钓鱼桌面 · 俯视钓位</span></h1><p class="muted">左键蓄力后松开出手，右键提竿，中鱼后按住左键收线。</p><p id="status">等待宿主载入进度…</p><div id="scene-map-tools" hidden><button id="scene-to-water">返回岸边视角</button><p id="scene-map-status" hidden></p></div></header>
@@ -145,11 +168,11 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <p id="fight-exposure" class="muted">松线暴露 —</p>
 <p id="fight-overload" class="muted" hidden>主线过载 —</p>
 <p class="muted">这是原创简化受力模型；张力以牛顿显示。松线脱钩与主线过载由当前钓组及宿主受力状态判定。失败结果保存确认后才结束本竿，断线损失以保存后的装备记录为准，不退还已使用的鱼饵和体力。真实抄网动画尚未接入。</p></section>
-<div id="scene-menu-bar" class="interactive"><button id="recall" disabled>收回这一竿</button><button id="release" disabled>放流当前鱼</button><button id="camp-overview" hidden>营地总览</button><button id="menu" disabled>打开鱼护与商店</button></div>
-<section id="camp-home" hidden><div id="camp-home-head"><h2>岸边营地</h2><span id="camp-location"></span></div>
+<div id="scene-menu-bar" class="interactive"><button id="recall" disabled>收回这一竿</button><button id="release" disabled>放流当前鱼</button><button id="camp-overview" hidden>‹ 营地总览</button><strong class="camp-only" id="camp-section-title">岸边营地</strong><span class="camp-only" id="camp-balance"></span><button id="menu" disabled>打开鱼护与商店</button></div>
+<section id="camp-home" hidden><div id="camp-home-head"><h2>当前钓场</h2><span id="camp-location"></span></div>
 <nav id="camp-destinations" aria-label="营地分区">
 <button id="camp-go-map" type="button"><strong>钓点</strong><kbd>M</kbd><small>水域与当地鱼种</small></button>
-<button id="camp-go-creel" type="button"><strong>鱼护</strong><kbd>C</kbd><small>查看鱼体、出售渔获</small></button>
+<button id="camp-go-creel" type="button"><strong>鱼护</strong><kbd>C</kbd><small id="camp-creel-count">查看鱼体、出售渔获</small></button>
 <button id="camp-go-log" type="button" aria-haspopup="dialog"><strong>钓手日志</strong><kbd>O</kbd><small>钓法成绩与个人纪录</small></button>
 <button id="camp-go-gear" type="button"><strong>钓组与背包</strong><kbd>I</kbd><small>装配渔具和鱼线</small></button>
 <button id="camp-go-tackle" type="button"><strong>渔具店</strong><small>抄网、鱼饵与备件</small></button>
@@ -157,6 +180,7 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <button id="camp-go-clothes" type="button"><strong>服装商店</strong><small>购买、换上钓鱼服</small></button>
 <button id="camp-go-work" type="button"><strong>营地帮工</strong><small>完成帮工领取银币</small></button>
 </nav></section>
+<div id="camp-panels">
 <p id="notice" role="status"></p>
 <section id="spot-menu" hidden></section>
 <section id="wardrobe" hidden></section>
@@ -182,9 +206,9 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <article id="shop-food"><h3>面包</h3><p id="shop-food-price">— 银币 / 份</p><p id="shop-food-count">现有 — 份</p>
 <div class="interactive"><label>份数<input id="food-packs" type="number" min="1" max="100" step="1" value="1" disabled></label><button id="quote-food" disabled>获取食品报价</button><button id="food-eat" disabled>食用一份</button></div></article>
 </div>
-<div id="shop-quote" hidden><p id="shop-quote-text"></p><button id="shop-buy" class="interactive" disabled>确认购买</button></div>
+<div id="shop-confirmation"><div id="shop-quote" hidden><p id="shop-quote-text"></p><button id="shop-buy" class="interactive" disabled>确认购买</button></div>
 <div id="shop-retry" hidden><p id="shop-retry-text"></p><button id="shop-retry-confirm" class="interactive" disabled>重试原操作</button></div>
-<button id="shop-cancel" class="interactive" hidden disabled>取消本次操作</button>
+<button id="shop-cancel" class="interactive" hidden disabled>取消本次操作</button></div>
 </section>
 <section id="camp" hidden><h2>营地帮工</h2><p id="camp-status" role="status">等待帮工信息</p>
 <p>余额低于 32 银币且鱼护为空时，可帮工 1 分钟，完成后领取 8 银币；不消耗鱼饵或体力。</p>
@@ -202,7 +226,7 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <p class="muted">卸下渔轮时，鱼线仍在线杯内。缺少必需部件时不能抛竿；目前可更换已拥有的部件。</p>
 <div id="equipment-retry-controls" hidden><button id="equipment-retry" class="interactive" disabled>重试原装备操作</button><button id="equipment-cancel" class="interactive" disabled>取消未写入操作</button></div></section>
 <section id="creel-section"><h2>鱼护 <span id="capacity"></span></h2><ul id="creel"></ul><div class="interactive"><button id="sell" disabled>出售选中的鱼</button></div><button id="previous" disabled>上一页</button><button id="next" disabled>下一页</button></section>
-<p class="muted">从窗口顶部开启交互。收回不退还已经使用的鱼饵；切出窗口后需重新开启交互。</p>
+<p class="muted">从窗口顶部开启交互。收回不退还已经使用的鱼饵；切出窗口后需重新开启交互。</p></div>
 </main>
 <dialog id="angler-log-dialog" aria-labelledby="angler-log-title">
 <div id="angler-log-head"><h2 id="angler-log-title">钓手日志</h2><button type="button" id="angler-log-close">返回营地 · Esc</button></div>

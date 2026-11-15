@@ -148,6 +148,7 @@ sealed partial class DualWindowContext
             stage="selling the owned catch";
             await SceneProbeButton(pane,"scene-menu");
             await Wait(pane,s=>Field(s,"snapshot")!=null&&(bool)Field(s,"snapshot")["MenuOpen"]&&Number(Field(s,"snapshot"),"CreelCount")==1);
+            await SceneProbeButton(pane,"camp-go-creel");
             var row=await SceneProbeScript(pane,@"(()=>{
                 const rows=document.querySelectorAll('#creel .fish');if(rows.length!==1)return null;
                 const checkbox=rows[0].querySelector('input[type=checkbox]');checkbox.scrollIntoView({block:'center'});

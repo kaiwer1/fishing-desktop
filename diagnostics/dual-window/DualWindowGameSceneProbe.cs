@@ -64,6 +64,12 @@ sealed partial class DualWindowContext
         string script=@"(()=>{
             const b=document.getElementById("+json.Serialize(id)+@");
             if(!b)return {ready:false,reason:'missing'};
+            if(document.body.dataset.camp==='open' && !b.getClientRects().length){
+                const areas=[['#spot-menu','map'],['#creel-section','creel'],['#equipment','gear'],
+                    ['#wardrobe','clothes'],['#camp','work'],['#shop-food','food'],['#spares,#shop-products','tackle']];
+                const item=areas.find(([selector])=>b.closest(selector));
+                if(item && document.body.dataset.campPage!==item[1])return {ready:false,route:'camp-go-'+item[1],reason:'switch camp page'};
+            }
             if(b.disabled)return {ready:false,reason:'disabled'};
             b.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
             const r=b.getBoundingClientRect(), x=Math.round(r.left+r.width/2), y=Math.round(r.top+r.height/2);
@@ -74,6 +80,11 @@ sealed partial class DualWindowContext
         var timer=System.Diagnostics.Stopwatch.StartNew();
         while(true){
             var point=await SceneProbeScript(pane,script);
+            if(point.ContainsKey("route")){
+                await SceneProbeButton(pane,(string)point["route"]);
+                if(timer.ElapsedMilliseconds>=5000)throw new InvalidOperationException("Could not navigate to "+id);
+                continue;
+            }
             if((bool)point["ready"]){
                 await SceneProbeMouse(pane,point,true);
                 await SceneProbeMouse(pane,point,false);

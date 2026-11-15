@@ -1,0 +1,76 @@
+.camp-only {display:none}
+body[data-camp=open] {
+  --camp-accent:#dce79b;
+  --camp-panel:#282d2a;
+  --camp-photo:url('./scene-assets/lake-shore.jpg');
+}
+body[data-camp-water=river-bend] {--camp-photo:url('./scene-assets/river-shore.jpg')}
+body[data-camp-water=coastal-bay] {--camp-photo:url('./scene-assets/coast-shore.jpg')}
+@media (orientation:landscape) {
+  body[data-camp=open][data-scene-mode=scene] main {
+    inset:0; max-width:none; margin:0; padding:clamp(14px,3vh,36px) clamp(16px,4vw,80px);
+    box-sizing:border-box; border:0; color:#f1f1e9;
+    background:linear-gradient(115deg,#121614fb,#1c211ff8 55%,#202522ed);
+    display:grid; grid-template-columns:clamp(155px,18vw,248px) minmax(0,1fr);
+    grid-template-rows:auto minmax(0,1fr); gap:14px clamp(16px,2.5vw,44px); overflow:hidden;
+  }
+  body[data-camp=open] main > :not(#scene-menu-bar,#camp-home,#camp-panels) {display:none}
+  body[data-camp=open] #scene-menu-bar {
+    grid-column:1/-1; position:static; display:flex; align-items:center; gap:16px;
+    min-height:46px; padding:0 0 10px; border-bottom:1px solid #687064; background:transparent;
+  }
+  body[data-camp=open] .camp-only {display:inline}
+  #camp-section-title {font-size:clamp(20px,2vw,30px);font-weight:600}
+  #camp-balance {margin-left:auto;color:#dddcc1;font-variant-numeric:tabular-nums;white-space:nowrap}
+  body[data-camp=open] #scene-menu-bar button {margin:0;white-space:nowrap}
+  body[data-camp=open][data-camp-page=home] #camp-overview {display:none}
+  body[data-camp=open] #camp-panels {min-height:0;overflow:auto;padding-right:6px;scrollbar-color:#808777 transparent}
+  body[data-camp=open] #camp-panels > :not(#notice) {display:none}
+  body[data-camp=open][data-camp-page=map] #camp-panels #spot-menu:not([hidden]),
+  body[data-camp=open][data-camp-page=creel] #camp-panels #creel-section:not([hidden]),
+  body[data-camp=open][data-camp-page=gear] #camp-panels #equipment:not([hidden]),
+  body[data-camp=open][data-camp-page=clothes] #camp-panels #wardrobe:not([hidden]),
+  body[data-camp=open][data-camp-page=work] #camp-panels #camp:not([hidden]),
+  body[data-camp=open][data-camp-page=tackle] #camp-panels #spares:not([hidden]),
+  body[data-camp=open]:is([data-camp-page=tackle],[data-camp-page=food]) #camp-panels #shop:not([hidden]) {display:block;border-top:0}
+  body[data-camp=open][data-camp-page=tackle] #shop-food,
+  body[data-camp=open][data-camp-page=food] #shop-products > :not(#shop-food),
+  body[data-camp=open] #shop > h2 {display:none}
+  body[data-camp=open] #notice {min-height:0;margin:0 0 8px;color:var(--camp-accent)}
+  body[data-camp=open] #shop-confirmation:has(> :not([hidden])) {position:sticky;bottom:0;background:#343e32;border:1px solid #899675;padding:8px 14px;z-index:1}
+  body[data-camp=open] #shop-confirmation :is(#shop-quote,#shop-retry) {border:0;background:transparent;padding:0}
+  body[data-camp=open] #camp-home {margin:0;padding:0;min-height:0;overflow:auto}
+  body[data-camp=open] #camp-destinations {display:grid;grid-template-columns:1fr;gap:4px}
+  body[data-camp=open] #camp-destinations button {
+    align-items:center; min-height:36px; padding:8px 12px; background:#333934; border:1px solid transparent;
+    border-left:3px solid transparent; color:#e2e6dc; border-radius:0;
+  }
+  body[data-camp=open] #camp-destinations button:hover:enabled,
+  body[data-camp=open] #camp-destinations button[aria-current=page] {border-left-color:var(--camp-accent);background:#464d43;color:white}
+  body[data-camp=open] #camp-destinations small {display:none}
+  body[data-camp=open] #camp-home-head {display:block;padding:5px 0 14px;margin:0 0 12px}
+  body[data-camp=open] #camp-home-head h2 {font-weight:400;font-size:12px;color:#b6beb1;margin:0 0 2px}
+  body[data-camp=open] #camp-location {font-size:clamp(18px,2vw,28px);font-weight:600;color:#eff2e9}
+  body[data-camp=open][data-camp-page=home] #camp-home {grid-column:1/-1;width:min(970px,100%);justify-self:center;align-self:center;max-height:100%}
+  body[data-camp=open][data-camp-page=home] #camp-panels {display:none}
+  body[data-camp=open][data-camp-page=home] #camp-destinations {grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+  body[data-camp=open][data-camp-page=home] #camp-destinations button {grid-column:span 2;padding:14px 16px;min-height:82px;align-content:end}
+  body[data-camp=open][data-camp-page=home] #camp-destinations small {display:block;color:#c5cabc}
+  body[data-camp=open][data-camp-page=home] #camp-destinations #camp-go-map {
+    grid-column:span 3;min-height:clamp(90px,16vh,160px);background:linear-gradient(0deg,#101712e6,transparent 110%),var(--camp-photo) center/cover;
+  }
+  body[data-camp=open][data-camp-page=home] #camp-destinations #camp-go-creel {grid-column:span 3;background:#39453b}
+  body[data-camp=open] .spot-list {grid-template-columns:repeat(3,minmax(0,1fr))}
+  body[data-camp=open] .spot-list article {padding:0 12px 12px;overflow:hidden;background:var(--camp-panel);border-color:#555e54}
+  body[data-camp=open] .spot-list article::before {content:"";width:calc(100% + 24px);margin:0 -12px 12px;aspect-ratio:2.28;background-position:center;background-size:cover}
+  .spot-list [data-water=development-still-water]::before {background-image:url('./scene-assets/lake-shore.jpg')}
+  .spot-list [data-water=river-bend]::before {background-image:url('./scene-assets/river-shore.jpg')}
+  .spot-list [data-water=coastal-bay]::before {background-image:url('./scene-assets/coast-shore.jpg')}
+  body[data-camp=open] #camp-panels section:focus {outline:none}
+}
+@media (orientation:landscape) and (max-width:850px) {
+  body[data-camp=open][data-scene-mode=scene] main {grid-template-columns:132px minmax(0,1fr);gap:8px;padding:8px 12px}
+  body[data-camp=open] #camp-destinations strong {font-size:14px}
+  body[data-camp=open] .spot-list {grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  body[data-camp=open][data-camp-page=home] #camp-destinations button {min-height:48px;padding:6px 9px}
+}

@@ -114,6 +114,21 @@ sealed partial class DualWindowContext
             await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
             checks.Add("the standalone player starts at the lake in a single hidden interaction pane with all seven sale rules");
 
+            await SceneProbeButton(pane,"scene-menu");
+            await Wait(pane,s=>Field(s,"snapshot")!=null&&(bool)Field(s,"snapshot")["MenuOpen"]);
+            await SceneProbeButton(pane,"camp-go-map");
+            var routes=await SceneProbeScript(pane,@"(()=>{const shown=id=>document.getElementById(id).getClientRects().length>0;
+                return {map:shown('spot-menu'),food:shown('shop-food'),creel:shown('creel-section'),cards:document.querySelectorAll('.spot-list article').length};})()");
+            Require((bool)routes["map"]&&!(bool)routes["food"]&&!(bool)routes["creel"]&&Number(routes,"cards")==3,"Map page sections: "+json.Serialize(routes));
+            await WardrobeProbePhoto(pane,"camp-map.png");
+            await SceneProbeButton(pane,"camp-go-food");
+            Require(await pane.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('shop-food').getClientRects().length>0 && !document.getElementById('shop-net').getClientRects().length && !document.getElementById('spot-menu').getClientRects().length")=="true","Food page contains other catalogues.");
+            await SceneProbeButton(pane,"camp-overview");
+            await WardrobeProbePhoto(pane,"camp-home.png");
+            await SceneProbeButton(pane,"menu");
+            await Wait(pane,s=>PlayerProbeDrawn(s,lake));
+            checks.Add("real camp tiles and side navigation isolate the three-water map and food shop, and return to the same bank with no purchase");
+
             var materials=new Dictionary<string,int>();
             await PlayerProbeTravel(pane,lease,river);
             var riverPixels=await PlayerProbePicture(pane,river,"player-river.png",2,materials);

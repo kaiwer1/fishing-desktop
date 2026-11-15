@@ -2,9 +2,11 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 离线版 0.4.0](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0)**。选择 `FishingDesktop-0.4.0-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 离线版 0.4.1](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.1)**。选择 `FishingDesktop-0.4.1-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
-![静水湾正午的水面与岸边](docs/preview-0.4/ecology-day.png)
+在水面按住左键，看到力度条后松开抛竿。漂尾下沉时按右键提竿，中鱼后按住左键收线。**F1** 可随时在岸边查操作。按 **Esc** 打开营地，**M** 选钓场，**C** 进鱼护，**T** 进食品店。在菜单内就能买装备、换衣和卖鱼。
+
+![岸边营地总览](docs/preview-0.4/camp-home-041.png)
 
 抄鱼入护后按 **C**，点那条鱼旁边的「查看鱼体」。按住左键拖动可以把鱼从侧面转到正面，滚轮放大看鳞片和鳍条，按 Esc 回到鱼护。七种鱼均有各自的原创模型。[0.4.0 黑鲷实机画面](docs/preview-0.4/black-seabream-release.png) · [七种鱼外形对照](docs/preview-0.4/specimens-release.png)
 
@@ -77,7 +79,7 @@ npm ci
 $sdk = Join-Path $env:USERPROFILE '.nuget/packages/microsoft.web.webview2/1.0.3405.78'
 $output = (New-Item -ItemType Directory -Force -Path '../fishing-windows-build').FullName
 $build = & ./diagnostics/dual-window/build.ps1 -Game -SdkDirectory $sdk -OutputDirectory $output
-& ./scripts/package-game-preview.ps1 -BuildDirectory $build.outputDirectory -ArchivePath (Join-Path $output 'FishingDesktop-0.4.0-win-x64.zip')
+& ./scripts/package-game-preview.ps1 -BuildDirectory $build.outputDirectory -ArchivePath (Join-Path $output 'FishingDesktop-0.4.1-win-x64.zip')
 ```
 
 运行 `diagnostics/dual-window/test-webviews.ps1` 并指定同一组 `-SdkDirectory` 和 `-OutputDirectory`，加上 `-GameSpecimen` 可验证从抛竿到看鱼、卖鱼的流程，加上 `-GameWallpaper` 可单独验证壁纸挂载。每次选择其中一项。

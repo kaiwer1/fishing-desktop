@@ -206,9 +206,9 @@ try{
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Wardrobe shutdown was not confirmed.'}
   }elseif($GamePlayer){
-    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 8 -or -not $taskReport.playerWindowConnected -or -not $taskReport.singleInteractionWindow -or -not $taskReport.distinctScenery -or -not $taskReport.coastalCast -or -not $taskReport.reloadRetainedStation -or $taskReport.observerOpened -or $taskReport.personalSaveRead -or $taskReport.desktopLayer -or $taskReport.controlledCharge){throw 'Player window scope mismatch.'}
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 9 -or -not $taskReport.playerWindowConnected -or -not $taskReport.singleInteractionWindow -or -not $taskReport.distinctScenery -or -not $taskReport.coastalCast -or -not $taskReport.reloadRetainedStation -or $taskReport.observerOpened -or $taskReport.personalSaveRead -or $taskReport.desktopLayer -or $taskReport.controlledCharge){throw 'Player window scope mismatch.'}
     if($taskReport.sequence -ne 3 -or $taskReport.value -ne 12000 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.mapCount -ne 3 -or $taskReport.speciesCount -ne 7 -or $taskReport.playerPreviewCount -ne 3 -or $taskReport.gameFlightEmissions -ne 1){throw 'Player window resources mismatch.'}
-    foreach($image in 'player-lake.png','player-river.png','player-coast.png'){if(-not (Test-Path -LiteralPath (Join-Path $taskRun $image) -PathType Leaf)){throw 'Player lake capture missing.'}}
+    foreach($image in 'player-lake.png','player-river.png','player-coast.png','camp-home.png','camp-map.png'){if(-not (Test-Path -LiteralPath (Join-Path $taskRun $image) -PathType Leaf)){throw 'Player or camp capture missing.'}}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Player window shutdown was not confirmed.'}
   }elseif($GameAtlas){

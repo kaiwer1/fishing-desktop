@@ -62,6 +62,7 @@ export class SpotMenu {
   #card(spot) {
     const el = tag => this.#document.createElement(tag);
     const card = el('article'), title = el('h3'), region = el('small'), description = el('p'), species = el('div'), button = el('button');
+    card.dataset.water=spot.id;
     title.textContent = spot.name; region.textContent = spot.region; description.textContent = spot.description;
     const plates = spot.species.map(name => this.#fishArt?.(this.#document, name));
     if (plates.some(Boolean)) {

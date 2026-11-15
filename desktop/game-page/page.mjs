@@ -232,6 +232,7 @@ function renderSpotLocation() {
   $('scene-spot-name').textContent = active?.name ?? '岸边钓位';
   $('scene-spot-region').textContent = active?.region ?? '';
   $('camp-location').textContent = active?.name ?? '';
+  document.body.dataset.campWater = active?.id ?? '';
   $('map-spot-name').textContent = active ? `${active.name} · 俯视钓位` : '钓鱼桌面 · 俯视钓位';
 }
 let visualPaused = false;
@@ -267,23 +268,43 @@ function renderSceneShell() {
   $('scene-map-status').hidden = !state.fault;
   if (state.fault) $('scene-map-status').textContent = '岸边画面暂不可用，可以继续在俯视图钓鱼。重新打开窗口后可再进入岸边视角。';
   renderStand();
-  if (state.mode !== 'scene') return;
+  if (state.mode !== 'scene') { setSceneHelp(false); return; }
   renderSceneHud();
+}
+function setSceneHelp(open) {
+  $('scene-help-sheet').hidden = !open;
+  $('scene-help-toggle').setAttribute('aria-expanded', String(open));
+}
+let shoreMessageTimer;
+function showShoreMessage(code) {
+  const element = $('scene-message');
+  clearTimeout(shoreMessageTimer);
+  element.hidden = true;
+  if (readOnly || !scene.visible || !canControl() || snapshot.MenuOpen) return;
+  if (['charging','prepared','cast-candidate','reel-held','reel-released','menu-updated','lure-reeling','lure-stopped','lure-speed','bottom-hooked','lure-hooked'].includes(code)) return;
+  const text = replyText(code);
+  if (!text) return;
+  element.textContent = text; element.hidden = false;
+  shoreMessageTimer = setTimeout(() => { element.hidden = true; }, 3600);
 }
 function renderSceneHud() {
   document.body.dataset.sceneMenu = !readOnly && snapshot?.MenuOpen ? 'open' : 'closed';
+  const helpAvailable = scene.visible && canControl() && !snapshot.MenuOpen && !document.hidden && !visualPaused && document.hasFocus();
+  $('scene-help-toggle').disabled = !helpAvailable;
+  if (!helpAvailable) { setSceneHelp(false); $('scene-message').hidden = true; }
   if (readOnly || !scene.visible) return;
   const session = heldSession(), bite = biteView.state(), fight = fightView.state(), flight = flightView.state();
   const bank = bankWalk.forWater(waterView.state());
+  $('scene-help-walk').hidden = $('scene-help-walk-keys').hidden = !bank;
   $('bank-position').hidden = !bank;
   if (bank) {
     const side = bank.xMm < 0 ? '左侧' : '右侧';
     $('bank-position').textContent = bank.xMm === 0 ? '岸线中央' : `岸线${side} ${(Math.abs(bank.xMm) / 1000).toFixed(1)} 米`;
   }
-  let action = '选择水面落点', hint = '按住左键蓄力，松开抛竿。';
-  if (bank) hint = 'A / D 或左右键沿岸走位，Shift 快走。对准水面按住左键，松开抛竿。';
+  let action = '对准水面', hint = '按住左键蓄力，松开抛竿。', cue = 'quiet';
   if (bank && !bankWalk.canCast(waterView.state())) { action = '沿岸走位'; hint = '松开走位键，站稳后按住水面抛竿。'; }
-  const charging = castState?.phase === 'charging' && !session;
+  const charging = castState?.phase === 'charging' && !session && helpAvailable;
+  const lure = currentLure(), bottom = currentBottom();
   if (!canControl()) { action = $('status').textContent; hint = ''; }
   else if (snapshot.PendingResult) { action = '鱼护已满'; hint = $('session').textContent; }
   else if (bankKit.selected && !stand.state()?.heldRig) {
@@ -291,26 +312,48 @@ function renderSceneHud() {
   }
   else if (session && fight?.sessionId === session && fight.phase !== 'idle') {
     action = $('fight-status').textContent;
-    hint = ['fighting','landing-eligible'].includes(fight.phase) ? `张力 ${(fight.tensionMilliN / 1000).toFixed(1)} N · 泄力 ${fight.dragLevel}/10 · 按住左键收线，滚轮调泄力` : $('fight-detail').textContent;
-  } else if (session && currentLure()) {
-    [action,hint] = lurePrompt(currentLure().phase);
-  } else if (session && currentBottom()) {
-    [action,hint] = bottomPrompt(currentBottom().phase);
+    if (fight.phase === 'fighting') {
+      hint = `${fight.reeling ? '收线中' : '按住左键收线'} · 张力 ${(fight.tensionMilliN / 1000).toFixed(1)} N · 泄力 ${fight.dragLevel}/10`;
+    } else if (fight.phase === 'landing-eligible') {
+      cue = 'land'; action = '可抄鱼'; hint = '按空格抄鱼。';
+    } else {
+      hint = ['landing-pending','failure-pending','faulted','escaped'].includes(fight.phase) ? $('fight-detail').textContent : '';
+    }
+  } else if (lure) {
+    [action,hint] = lurePrompt(lure.phase);
+    if (['in-water','following'].includes(lure.phase)) { action = lure.reeling ? '正在收饵' : '亮片下沉'; hint = lure.reeling ? '' : '按住左键收饵'; }
+    if (lure.phase === 'strikeable') cue = 'strike';
+  } else if (bottom) {
+    [action,hint] = bottomPrompt(bottom.phase);
+    if (['sinking','settling','settled','touch','retrieved'].includes(bottom.phase)) hint = '';
+    if (bottom.phase === 'bite') cue = 'strike';
   } else if (session && !lureMethod() && !bottomMethod() && bite?.sessionId === session && bite.phase !== 'idle') {
-    action = $('bite-status').textContent; hint = bite.phase === 'strikeable' ? '现在按鼠标右键提竿。' : '留意漂尾，浮漂明显下沉时按右键提竿。';
+    action = $('bite-status').textContent; hint = '';
+    if (bite.phase === 'strikeable') { cue = 'strike'; hint = '现在按鼠标右键提竿。'; }
+    else if (bite.phase === 'hooked') hint = '按住左键收线。';
+    else if (bite.phase === 'retrieve-required') hint = $('bite-detail').textContent;
   } else if (session) {
-    action = flight?.sessionId === session ? $('flight-status').textContent : '钓组已出手';
-    hint = flight?.phase === 'invalid' ? '收回这一竿后可重新选择水面落点。' : '等待钓组落水。';
-  } else if (charging) { action = `蓄力 ${(castState.powerPermille / 10).toFixed(0)}%`; hint = '松开左键出手，右键取消。'; }
+    const current = flight?.sessionId === session ? flight : null;
+    action = current?.phase === 'waiting' ? '钓组已落水' : current ? $('flight-status').textContent : '钓组已出手';
+    hint = current?.phase === 'invalid' ? '收回这一竿后可重新选择水面落点。' : '';
+  } else if (charging) { action = '松开左键抛竿'; hint = ''; }
   const method=lureMethod()?'亮片路亚':bottomMethod()?'底钓':'';
-  $('scene-action').textContent = method && !session && canControl() ? method + ' · ' + action : action; $('scene-hint').textContent = hint;
-  const lure=currentLure(), showLure=lure && !['hooked','ended'].includes(lure.phase) && !snapshot.PendingResult;
+  const title = method && !session && canControl() ? method + ' · ' + action : action;
+  if ($('scene-action').textContent !== title) $('scene-action').textContent = title;
+  $('scene-readout').dataset.cue = cue;
+  const inputCue = cue === 'strike' || cue === 'land' ? hint : '';
+  if ($('scene-input-cue').textContent !== inputCue) $('scene-input-cue').textContent = inputCue;
+  $('scene-hint').hidden = !hint;
+  if ($('scene-hint').textContent !== hint) $('scene-hint').textContent = hint;
+  const showLure = lure && !['hooked','ended'].includes(lure.phase) && !snapshot.PendingResult;
   $('scene-lure-readout').hidden=!showLure;
-  if(showLure)$('scene-lure-readout').textContent=lureMetrics(lure);
-  $('scene-power').hidden = !charging; $('scene-power').value = charging ? castState.powerPermille : 0;
-  const message = lastReply && ['escaped','landed'].includes(fight?.phase) ? $('fight-status').textContent :
-    lastReply && !['charging','prepared','cast-candidate','reel-held','reel-released','menu-updated','lure-reeling','lure-stopped','lure-speed'].includes(lastReply.code) ? replyText(lastReply.code) : '';
-  $('scene-message').textContent = message || ''; $('scene-message').hidden = !message;
+  if(showLure) {
+    $('scene-lure-readout').textContent = `水下 ${(lure.depthMm / 1000).toFixed(1)} 米 · ${lure.speedLevel+1}/5 档`;
+    $('scene-lure-readout').setAttribute('title',lureMetrics(lure));
+  }
+  $('scene-charge').hidden = $('scene-power').hidden = !charging;
+  $('scene-power').value = charging ? castState.powerPermille : 0;
+  if (charging) $('scene-power-percent').textContent = Math.round(castState.powerPermille / 10) + '%';
   $('scene-menu').disabled = $('menu').disabled;
   for (const key of ['recall','release','land','retry-land','retry-escape']) {
     const source = $(key), proxy = $(`scene-${key}`);
@@ -629,6 +672,7 @@ function renderStand() {
 const campAreas = { map: 'spot-menu', creel: 'creel-section', log:'angler-log-dialog', gear: 'equipment', tackle: 'shop-net',
   food: 'shop-food', clothes: 'wardrobe', work: 'camp' };
 const campKeys = { KeyM: 'map', KeyC: 'creel', KeyO:'log', KeyI: 'gear', KeyT: 'food' };
+const campTitles = {home:'岸边营地',map:'选择水域',creel:'鱼护',gear:'钓组与背包',tackle:'渔具店',food:'食品补给',clothes:'服装商店',work:'营地帮工'};
 const playerCamp = () => !readOnly && spotMenu.revision > 0 && scene.state().enabled;
 const logPanel = createAnglerLogPanel(document,anglerLog,() => playerCamp() && canControl() &&
   snapshot.MenuOpen && !document.hidden && !visualPaused && hostPolicy?.canRun !== false);
@@ -647,12 +691,24 @@ function areaAvailable(area) {
 }
 function visitCampArea(area) {
   if (!playerCamp() || !canControl() || !snapshot.MenuOpen || !areaAvailable(area)) return false;
+  if (!canLeaveCampPage(area)) return false;
   if (campOpening?.area === 'log' && area !== 'log') { campOpening = null; campOpenShown = true; }
   if (area === 'log') return logPanel.open();
   const node = $(area === 'home' ? 'camp-home' : campAreas[area]);
   if (!node || node.hidden) return false;
+  document.body.dataset.campPage = area;
+  $('camp-section-title').textContent = campTitles[area];
+  for (const key of Object.keys(campAreas)) $('camp-go-'+key).setAttribute('aria-current',key===area?'page':'false');
+  $('camp-panels').scrollTop=0;
+  if(area!=='home') { node.setAttribute('tabindex','-1'); node.focus?.({preventScroll:true}); }
   node.scrollIntoView?.({ block: 'start', inline: 'nearest', behavior: 'instant' });
   return true;
+}
+function canLeaveCampPage(destination) {
+  const current=document.body.dataset.campPage;
+  if(current===destination || !['tackle','food'].includes(current)) return true;
+  const shop=shopInput.state();
+  return !shop.quote && !shop.retry && !shopBusy();
 }
 function renderCampNavigation() {
   const enabled = playerCamp(), open = Boolean(enabled && snapshot?.MenuOpen && landscape());
@@ -661,9 +717,11 @@ function renderCampNavigation() {
   $('camp-home').hidden = $('camp-overview').hidden = !open;
   if (enabled) $('menu').textContent = snapshot?.MenuOpen ? '返回钓位 · Esc' : '进入营地 · Esc';
   if (campOpening && (!enabled || !canControl() || campOpening.lease !== authority.state().lease)) campOpening = null;
-  if (!open) { campOpenShown = false; return; }
-  for (const area of Object.keys(campAreas)) $('camp-go-' + area).disabled = !canControl() || !areaAvailable(area);
-  $('camp-overview').disabled = !canControl();
+  if (!open) { campOpenShown = false; document.body.dataset.campPage='home'; return; }
+  $('camp-balance').textContent = formatMinor(snapshot.WalletMinor)+' 银币';
+  $('camp-creel-count').textContent = '已入护 '+snapshot.CreelCount+' / '+snapshot.CreelCapacity+' 条';
+  for (const area of Object.keys(campAreas)) $('camp-go-' + area).disabled = !canControl() || !areaAvailable(area) || !canLeaveCampPage(area);
+  $('camp-overview').disabled = !canControl() || !canLeaveCampPage('home');
   if (!campOpenShown) {
     // Opening from shore can deliver the menu before its first journal projection.
     if (campOpening?.area === 'log' && !areaAvailable('log')) return;
@@ -887,7 +945,7 @@ window.chrome.webview.addEventListener('message', event => {
       if (m.code === 'spot-selected' || m.code === 'spot-unchanged') spotRequest.acknowledged = true;
       else { spotRequest = null; spotMenu.reject(codes[m.code]); }
     }
-    lastReply = m; castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m); equipmentInput.reply(m); sparesInput.reply(m); campInput.reply(m);
+    lastReply = m; showShoreMessage(m.code); castInput.reply(m); strikeInput.reply(m); fightInput.reply(m); shopInput.reply(m); equipmentInput.reply(m); sparesInput.reply(m); campInput.reply(m);
     if (['save-outcome-unknown', 'failure-save-unknown', 'landing-save-unknown', 'camp-work-save-unknown'].includes(m.code)) saveFaulted = true;
     if (inflight === m.transportId) inflight = null;
     $('notice').textContent = m.code === 'wardrobe-updated' || (m.code === 'menu-updated' && playerCamp()) ? '' : replyText(m.code) ?? `操作未完成：${m.code}`;
@@ -1103,6 +1161,15 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) revok
 const typing = target => target instanceof Element && (target.isContentEditable || target.closest('input,textarea,select'));
 document.addEventListener('focusin', event => { if (typing(event.target)) bankWalk.stop(); });
 document.addEventListener('keydown', event => {
+  if (!$('scene-help-toggle').disabled && scene.visible && !snapshot?.MenuOpen &&
+      !typing(event.target) && !event.isComposing && !event.defaultPrevented && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+      (event.code === 'F1' || event.key === 'Escape' && !$('scene-help-sheet').hidden)) {
+    event.preventDefault();
+    const open = event.code === 'F1' && $('scene-help-sheet').hidden;
+    setSceneHelp(open);
+    if (!open && document.activeElement === $('scene-help-toggle')) $('scene-canvas').focus();
+    return;
+  }
   if (bankKit.selected && stand.key(event,true)) { event.preventDefault(); updateButtons(); return; }
   if (!typing(event.target) && !event.isComposing && !event.defaultPrevented && !event.altKey && !event.ctrlKey && !event.metaKey &&
       bankWalk.key(event,true)) { event.preventDefault(); return; }
@@ -1131,11 +1198,17 @@ document.addEventListener('keyup', event => {
   if (event.code === 'KeyR') { speedKeyHeld=false;lureInput.speedKey(false); }
 });
 $('scene-to-map').addEventListener('click', () => scene.showScene(false));
+$('scene-help-toggle').addEventListener('click', () => {
+  if ($('scene-help-toggle').disabled || !scene.visible) return;
+  const open = $('scene-help-sheet').hidden;
+  setSceneHelp(open);
+  if (!open) $('scene-canvas').focus();
+});
 $('scene-to-water').addEventListener('click', () => scene.showScene(true));
 for (const key of ['menu','recall','release','land','retry-land','retry-escape']) {
   $(`scene-${key}`).addEventListener('click', event => { if (event.detail <= 1 && !$(key).disabled) $(key).click(); });
 }
-function pauseVisual(value) { visualPaused = value; if (value) bankWalk.stop();specimen?.reconcile();logPanel.reconcile();renderConditions();scene.refresh(); }
+function pauseVisual(value) { visualPaused = value; if (value) bankWalk.stop();specimen?.reconcile();logPanel.reconcile();renderConditions();scene.refresh();if(scene.visible)renderSceneHud(); }
 const visual = { start: () => pauseVisual(false), stop: () => pauseVisual(true), pause: () => pauseVisual(true), resume: () => pauseVisual(false),
   state: () => scene.state().renderer ?? { running: false, frames: 0, kind: 'host-flight-projection' } };
 window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision,

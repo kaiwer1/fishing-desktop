@@ -127,6 +127,7 @@ sealed partial class DualWindowContext
 
             await SceneProbeButton(pane,"scene-menu");
             await Wait(pane,s=>Field(s,"snapshot")!=null && (bool)Field(s,"snapshot")["MenuOpen"] && Number(Field(s,"snapshot"),"CreelCount")==1);
+            await SceneProbeButton(pane,"camp-go-creel");
             object specimen=GameSpecimenSelfTest?await SpecimenProbeInspect(pane,fish,name):null;
             if(GameAnglerLogSelfTest){
                 await AnglerProbeRead(pane,fish,name,false,false);

@@ -168,6 +168,69 @@ test('3D HUD presents the observed tip and forwards only the current host endpoi
   phase(3,'bite','20000000-0000-0000-0000-000000000019',endpoint);
   assert.equal(renderer.log.updates.at(-1).bottom,null);
 });
+test('shoreline power follows the current host charge and disappears on cancellation, pause and release', async () => {
+  const f=await pageFixture(fakeScene()); await enableScene(f);
+  const charge=(revision,phase,powerPermille)=>f.emit({kind:'game-cast-state',revision,phase,powerPermille,elapsedMilliseconds:500,inputSequence:'1'});
+  charge(1,'charging',132);
+  assert.equal(f.nodes.get('scene-charge').hidden,false);
+  assert.equal(f.nodes.get('scene-power').value,132);
+  assert.equal(f.nodes.get('scene-power-percent').textContent,'13%');
+  const action=f.nodes.get('scene-action').textContent;
+  charge(2,'charging',789);
+  assert.equal(f.nodes.get('scene-power-percent').textContent,'79%');
+  assert.equal(f.nodes.get('scene-action').textContent,action);
+  charge(2,'charging',1000); assert.equal(f.nodes.get('scene-power').value,789);
+  f.probe.visual.pause(); assert.equal(f.nodes.get('scene-power').hidden,true);
+  f.probe.visual.resume(); assert.equal(f.nodes.get('scene-power').value,789);
+  charge(3,'cancelled',0); assert.equal(f.nodes.get('scene-charge').hidden,true);
+  charge(4,'charging',680); charge(5,'prepared',680);
+  assert.equal(f.nodes.get('scene-power').hidden,true); assert.equal(f.messages.length,0);
+});
+test('F1 and the help button work locally and close before Escape reaches camp or the lease is lost', async () => {
+  const f=await pageFixture(fakeScene()); await enableScene(f); enableCampCatalog(f);
+  const sheet=f.nodes.get('scene-help-sheet'), toggle=f.nodes.get('scene-help-toggle');
+  for(const extra of [{ctrlKey:true},{target:f.nodes.get('food-packs')},{repeat:true}]) f.key('F1',extra);
+  assert.equal(sheet.hidden,true);
+  f.key('F1'); assert.equal(sheet.hidden,false); assert.equal(toggle.attributes['aria-expanded'],'true');
+  f.key('Escape'); assert.equal(sheet.hidden,true); assert.equal(f.probe.state().lease,'first');
+  toggle.focus(); f.click('scene-help-toggle'); f.click('scene-help-toggle');
+  assert.equal(document.activeElement,f.nodes.get('scene-canvas'));
+  f.key('F1'); f.emit({kind:'lease',revision:2,cancellationEpoch:0,lease:null});
+  assert.equal(sheet.hidden,true); assert.equal(toggle.disabled,true);
+  f.emit({kind:'role',role:'桌面只读'}); f.key('F1'); f.click('scene-help-toggle');
+  assert.equal(sheet.hidden,true); assert.equal(f.messages.length,0);
+});
+test('waiting leaves the lake clear; actual float submersion and landing eligibility show the current input',async()=>{
+  const f=await pageFixture(fakeScene()); await enableScene(f);
+  const encounterId='20000000-0000-0000-0000-000000000019';
+  f.emit({kind:'game-snapshot',revision:2,snapshot:{...f.snapshot,SessionId:sessionId}});
+  const base={sessionId,encounterId,reason:null,stepIndex:'80',searchEpoch:'1',baitAttached:true,bobberOffsetMm:0,bobberLateralMm:0};
+  const bite=(revision,phase)=>f.emit({kind:'game-bite-state',revision,state:{...base,phase}});
+  bite(1,'searching'); assert.equal(f.nodes.get('scene-hint').hidden,true);
+  assert.equal(f.nodes.get('scene-recall').hidden,false);
+  assert.equal(f.nodes.get('scene-action').textContent,'静候鱼口');
+  bite(2,'strikeable'); assert.equal(f.nodes.get('scene-readout').dataset.cue,'strike');
+  assert.equal(f.nodes.get('scene-hint').hidden,false); assert.match(f.nodes.get('scene-input-cue').textContent,/右键提竿/);
+  const fight={sessionId,encounterId,reason:'fighting',landingReason:'fish-too-far',stepIndex:'150',xMm:0,yMm:-600,zMm:1700,
+    outLineMm:5500,spoolRemainingMm:34500,slackMm:35,tensionMilliN:3700,dragMilliN:6000,rodDeflectionMm:250,
+    energyPermille:140,reeling:false,dragLevel:5,reelLevel:5,canRetryLanding:false,unhookExposureSteps:0,canRetryFailure:false};
+  f.emit({kind:'game-fight-state',revision:1,state:{...fight,phase:'fighting'}});
+  assert.match(f.nodes.get('scene-hint').textContent,/3.7 N/); assert.equal(f.nodes.get('scene-land').hidden,true);
+  f.emit({kind:'game-fight-state',revision:2,state:{...fight,phase:'landing-eligible',landingReason:'eligible'}});
+  assert.equal(f.nodes.get('scene-land').hidden,false); assert.equal(f.nodes.get('scene-readout').dataset.cue,'land');
+  assert.match(f.nodes.get('scene-input-cue').textContent,/空格抄鱼/); assert.equal(f.messages.length,0);
+});
+test('shore confirmations expire even when no new host packet arrives',async t=>{
+  const f=await pageFixture(fakeScene()); await enableScene(f);
+  t.mock.timers.enable({apis:['setTimeout']});
+  const msg=f.nodes.get('scene-message');
+  f.emit({kind:'game-reply',transportId:'first',code:'bait-empty'}); assert.equal(msg.hidden,false);
+  t.mock.timers.tick(3000);
+  f.emit({kind:'game-reply',transportId:'second',code:'stamina-insufficient'}); t.mock.timers.tick(700);
+  assert.equal(msg.hidden,false); assert.match(msg.textContent,/体力/);
+  t.mock.timers.tick(3000); assert.equal(msg.hidden,true);
+  f.emit({kind:'game-reply',transportId:'third',code:'cast-candidate'}); assert.equal(msg.hidden,true);
+});
 test('player camp keyboard waits for the host open transition then scrolls once, keeps every destination and returns to the lake', async () => {
   const f=await pageFixture(fakeScene()); await enableScene(f); enableCampCatalog(f);
   f.key('KeyM'); assert.equal(f.messages.length,1); assert.equal(f.messages[0].kind,'game-menu'); assert.equal(f.messages[0].open,true);

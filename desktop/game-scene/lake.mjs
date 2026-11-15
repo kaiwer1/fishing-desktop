@@ -93,13 +93,37 @@ const waterShader = {
     ${waterWeatherGLSL}
     uniform vec3 fishPos;uniform vec4 fishShape;uniform vec4 spoon;varying vec4 uvMirror;varying vec3 world;
     float oval(vec2 p,vec2 radius){float d=length(p/radius);return 1.-smoothstep(.91,1.06,d);}
+    // Suppress ripples narrower than a pixel towards the horizon. In the
+    // foreground overlapping trains and moving wind patches break up the crests.
+    float slope(float phase){return cos(phase)*(1.-smoothstep(.30,2.9,fwidth(phase)));}
+    float waveHash(vec2 cell){
+      vec3 q=fract(cell.xyx*vec3(.1031,.11369,.13787));q+=dot(q,q.yzx+19.19);
+      return fract((q.x+q.y)*q.z);
+    }
+    // Derivative of smooth value noise. Crosswinds shear these patches into
+    // short crests that lose contrast once their spacing falls below a pixel.
+    vec2 windSlope(vec2 p){
+      vec2 cell=floor(p),f=fract(p),u=f*f*(3.-2.*f);
+      float a=waveHash(cell),b=waveHash(cell+vec2(1.,0.)),c=waveHash(cell+vec2(0.,1.)),d=waveHash(cell+1.);
+      vec2 gradient=6.*f*(1.-f)*mix(vec2(b-a,c-a),vec2(d-c,d-b),u.yx);
+      return gradient*(1.-smoothstep(.22,1.3,length(fwidth(p))));
+    }
     void main(){vec2 p=world.xz;vec3 eye=normalize(cameraPosition-world);
       float amp=clamp(eye.y*4.,.32,1.);
-      float ax=cos(p.x*2.2+p.y*.5+time*1.4+sin(p.y*.67))*.022+cos(p.x*7.7-p.y*3.3-time*2.1)*.013*amp;
-      float az=cos(p.y*4.7-p.x*.6-time*1.7+sin(p.x*.6+time*.22))*.036+cos(p.y*11.2+p.x*6.+time*2.5)*.018*amp;
+      vec2 patchPhase=p*vec2(.34,.21)+vec2(-.14,.10)*time;
+      float wind=.68+.21*sin(patchPhase.x+sin(patchPhase.y))+.11*cos(patchPhase.y*1.8+.65*patchPhase.x);
+      float broad=dot(p,vec2(.94,1.53))-.95*time+.71*sin(p.x*.35-p.y*.08);
+      float crossing=dot(p,vec2(-2.31,1.14))-.80*time+sin(p.y*.44+.16*time);
+      float ripple=dot(p,vec2(3.37,6.09))-2.0*time+1.4*sin(p.x*.7+p.y*.35+.2*time);
+      float capillary=dot(p,vec2(-8.16,10.71))-3.2*time+2.5*sin(p.y*.63+p.x*.81);
+      vec2 tilt=vec2(.007,.011)*slope(broad)+vec2(-.007,.004)*slope(crossing);
+      tilt+=wind*(vec2(.013,.024)*slope(ripple)+vec2(-.010,.016)*slope(capillary));
+      vec2 rippled=vec2(p.x*1.18+p.y*.37,p.y*3.43-p.x*.64)+vec2(.20,-.82)*time;
+      tilt+=vec2(.028,.042)*windSlope(rippled)+wind*vec2(.024,.040)*windSlope(rippled*2.17-vec2(.4,.61)*time);
+      float ax=tilt.x,az=tilt.y;
       vec2 radial=p-impact.xy;float age=time-impact.z;float r=length(radial);
       if(age>=0.&&age<4.){float ring=sin((r-age*1.12)*24.)*exp(-pow((r-age*1.12)*3.5,2.))*exp(-age*.8);
-        vec2 tilt=radial/max(r,.001)*ring*.07;ax+=tilt.x;az+=tilt.y;}
+        vec2 impactSlope=radial/max(r,.001)*ring*.07;ax+=impactSlope.x;az+=impactSlope.y;}
       vec3 normal=normalize(vec3(ax*rough,1.,az*rough));vec2 uv=uvMirror.xy/uvMirror.w;
       vec3 shore=texture2D(tDiffuse,clamp(uv+vec2(ax,az)*rough*(.09+.13*amp),.001,.999)).rgb;
       float fresnel=.09+.89*pow(1.-max(dot(eye,normal),0.),3.7);
@@ -185,6 +209,86 @@ function bedMesh(water) {
   const bed = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x474938 })); bed.name = 'surveyed-bed'; return bed;
 }
 
+function createStoneMaterial(surfaceY) {
+  const material=new THREE.MeshStandardMaterial({color:0x9ca39f,roughness:.83,metalness:0});
+  material.onBeforeCompile=shader=>{
+    shader.uniforms.tideHeight={value:surfaceY};
+    shader.vertexShader=shader.vertexShader
+      .replace('#include <common>','#include <common>\nvarying vec3 stoneWorld; varying vec3 stoneAxis;')
+      .replace('#include <defaultnormal_vertex>','#include <defaultnormal_vertex>\nstoneAxis=inverseTransformDirection(transformedNormal,viewMatrix);')
+      .replace('#include <worldpos_vertex>',`#include <worldpos_vertex>
+        vec4 stoneLocal=vec4(transformed,1.);
+        #ifdef USE_INSTANCING
+          stoneLocal=instanceMatrix*stoneLocal;
+        #endif
+        stoneWorld=(modelMatrix*stoneLocal).xyz;`);
+    shader.fragmentShader=shader.fragmentShader
+      .replace('#include <common>','#include <common>\nvarying vec3 stoneWorld; varying vec3 stoneAxis; uniform float tideHeight;')
+      .replace('#include <map_fragment>',`// Sample in metres so a large stone gets more detail than a pebble.
+        #ifdef USE_MAP
+          vec3 normalWeights=abs(normalize(stoneAxis));
+          normalWeights=pow(max(normalWeights,vec3(.001)),vec3(4.));
+          normalWeights/=dot(normalWeights,vec3(1.));
+          vec3 tile=stoneWorld/1.05;
+          vec3 scan=texture2D(map,tile.zy).rgb*normalWeights.x
+            +texture2D(map,tile.xz).rgb*normalWeights.y+texture2D(map,tile.xy).rgb*normalWeights.z;
+          diffuseColor.rgb*=mix(scan,sqrt(scan)*.76,.31);
+        #endif
+        float splashMark=tideHeight+.07+.023*sin(stoneWorld.x*3.1+stoneWorld.z*1.7);
+        float wetStone=1.-smoothstep(splashMark,splashMark+.09,stoneWorld.y);
+        diffuseColor.rgb*=mix(vec3(1.),vec3(.65,.72,.71),wetStone);`)
+      .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.37,wetStone);');
+  };
+  return material;
+}
+
+// The overcast sky dome illuminates the weathered rock faces from all sides.
+// Share its irradiance between the beach and boulders, including the fallback
+// materials, and preserve the albedo and orientation of each surface.
+function addCoastalSkylight(material,irradiance) {
+  const decorate=material.onBeforeCompile.bind(material);
+  material.onBeforeCompile=shader=>{
+    decorate(shader);
+    shader.uniforms.coastalSky=irradiance;
+    shader.fragmentShader=shader.fragmentShader
+      .replace('#include <common>','#include <common>\nuniform vec3 coastalSky;')
+      .replace('#include <lights_fragment_begin>',`#include <lights_fragment_begin>
+        #ifdef RE_IndirectDiffuse
+          float upward=inverseTransformDirection(geometryNormal,viewMatrix).y;
+          irradiance+=coastalSky*(.56+.44*upward);
+        #endif`);
+  };
+}
+
+// Connected weathered shelves project a continuous headland against the sky.
+// Both ends taper below water; the model sits beyond the surveyed casting area.
+function coastalHeadland(random,group,cx,width,far,sy) {
+  const positions=[],colors=[],indices=[];
+  const columns=72,rows=6;
+  const heights=[.32,.65,1.6,1.2,2.3,3.05,1.9,2.4,1.1,.7,.23];
+  for(let i=0;i<=columns;i++){
+    const t=i/columns,along=t*(heights.length-1),segment=Math.min(heights.length-2,Math.floor(along));
+    const u=along-segment,ease=u*u*(3-2*u);
+    const ridge=THREE.MathUtils.lerp(heights[segment],heights[segment+1],ease)+random()*.17;
+    for(let j=0;j<rows;j++){
+      const land=j/(rows-1);
+      const elevation=sy+ridge*Math.sin(Math.PI*land)**.61-.20+(.12*random()-.06)*Math.sin(Math.PI*land);
+      const x=cx+width*(.31+.83*t)+.11*Math.sin(land*5+i*.40);
+      const z=far-37-18*land-4.8*Math.sin(t*8)-1.3*Math.sin(t*25);
+      positions.push(x,elevation,z);
+      const colour=new THREE.Color(0x89958b).lerp(new THREE.Color(0x64716b),.42*land+.17*random());
+      colors.push(colour.r,colour.g,colour.b);
+      if(i<columns&&j<rows-1){const a=i*rows+j,b=a+rows;indices.push(a,b,a+1,b,b+1,a+1);}
+    }
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  geometry.setIndex(indices);geometry.computeVertexNormals();
+  const rocks=new THREE.Mesh(geometry,new THREE.MeshLambertMaterial({vertexColors:true}));
+  rocks.name='distant-headland';group.add(rocks);
+}
+
 function distantTrees(group, random, farZ, cx, width, sy, height, river) {
   const transform = new THREE.Object3D(), color = new THREE.Color();
   for (let kind = 0; kind < 3; kind++) {
@@ -227,19 +331,27 @@ function nearShore(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX, kind
   const grass = new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide}));grass.name='bank-vegetation';group.add(grass);
   const tform = new THREE.Object3D();
   const rock=new THREE.IcosahedronGeometry(1,2), points=rock.attributes.position;
+  const roundNormal=new THREE.Vector3(),shelfNormal=new THREE.Vector3();
   for(let i=0;i<points.count;i++){
     const x=points.getX(i),y=points.getY(i),z=points.getZ(i),scale=1+.09*Math.sin(4*x+3*z)+.043*Math.cos(5*y-3*x);
-    points.setXYZ(i,x*scale,y*scale,z*scale);
-    rock.attributes.normal.setXYZ(i,x,y,z);
+    const shelf=.66+.16*x-.08*z+.045*Math.sin(8*x),top=kind==='sea'?Math.min(y,shelf):y;
+    points.setXYZ(i,x*scale,top*scale,z*scale);
+    roundNormal.set(x,y,z);
+    if(kind==='sea'){
+      shelfNormal.set(-.16-.36*Math.cos(8*x),1,.08).normalize();
+      roundNormal.lerp(shelfNormal,THREE.MathUtils.smoothstep(y-shelf,-.16,.12)).normalize();
+    }
+    rock.attributes.normal.setXYZ(i,roundNormal.x,roundNormal.y,roundNormal.z);
   }
   const stones = new THREE.InstancedMesh(rock,rockMaterial,kind==='sea'?107:64);
+  const shades=[0xc1c4b4,0xc9b8a6,0x969f99,0xb7bbb8,0xc4c4b7];
   stones.name=kind==='sea'?'tidal-rocks':'shore-pebbles';
   for (let i = 0; i < stones.count; i++) {
     const x = anchorX + (random() - .5) * 30, z = nearZ + (random() - .2) * 2.3;
     const s = .02 + random() ** 2 * (kind==='sea'?.88:kind==='river'?.12:.19);
     tform.position.set(x,sy+.025+Math.max(0,z-nearZ)*.05,z);tform.rotation.set(random()*.3,random()*6,random()*.15);
     tform.scale.set(s*(1.27+random()*.5),s*(kind==='sea'?.55:.47),s);tform.updateMatrix();stones.setMatrixAt(i,tform.matrix);
-    t.set(kind==='sea'?0xa8b2b0:0xbcb5a7).multiplyScalar(.62+random()*.43);stones.setColorAt(i,t);
+    t.set(kind==='sea'?shades[i%shades.length]:0xbcb5a7).multiplyScalar(.72+random()*.35);stones.setColorAt(i,t);
   }
   group.add(stones);
 }
@@ -262,9 +374,20 @@ export function createLake(water,assetUrl=null) {
   const groundTexture=earthTexture(random,kind);
   const bankColor=ocean?0x666b6b:river?0xa29475:0x77694e;
   const bankMaterial=new THREE.MeshLambertMaterial({color:bankColor,map:groundTexture,vertexColors:true});
-  const rockMaterial=new THREE.MeshLambertMaterial({color:0xa4a79c});
+  const rockMaterial=createStoneMaterial(sy);
+  const coastalSky={value:new THREE.Color(0,0,0)};
+  if(ocean){
+    addCoastalSkylight(bankMaterial,coastalSky);addCoastalSkylight(rockMaterial,coastalSky);
+  }
   const tileMetres=ocean?1.5:river?3:3.2;
-  terrain(group,width+3,16,x,near+8,sy,(px,pz)=>-.025+(pz-near)*.053+.05*Math.sin(px*.89)*Math.min(1,(pz-near)),false,bankMaterial,tileMetres);
+  if(ocean){
+    terrain(group,width+3,18,x,near+7,sy,(px,pz)=>{
+      const cove=.55*Math.sin((px-x)*1.27)+.35*Math.sin((px-x)*.49+.6);
+      return (pz-near+cove-.03)*.09;
+    },false,bankMaterial,tileMetres);
+  }else{
+    terrain(group,width+3,16,x,near+8,sy,(px,pz)=>-.025+(pz-near)*.053+.05*Math.sin(px*.89)*Math.min(1,(pz-near)),false,bankMaterial,tileMetres);
+  }
   if(!ocean){
     terrain(group,Math.max(300,width*3.6),100,x,far-50,sy,farHeight,true,new THREE.MeshLambertMaterial({color:0x637054,vertexColors:true}));
     for (const side of [-1,1]) {
@@ -275,13 +398,7 @@ export function createLake(water,assetUrl=null) {
   }else{
     // These distant rocks stand beyond the surveyed rectangle. They and the
     // horizon are scenic only. Input still intersects the surveyed surface.
-    const outcropMaterial=new THREE.MeshLambertMaterial({color:0x728184});
-    for(let i=0;i<7;i++){
-      const rock=new THREE.Mesh(new THREE.IcosahedronGeometry(1,2),outcropMaterial);
-      rock.position.set(x+width*.7+i*4,sy-1.15,far-38-random()*7);
-      rock.scale.set(5+random()*5,1.5+random()*4.2,5+random()*3);
-      rock.rotation.y=random()*4;group.add(rock);
-    }
+    coastalHeadland(randomSource(83576),group,x,width,far,sy);
   }
   nearShore(group,random,x,near,sy,b.minXmm/1000,b.maxXmm/1000,kind,rockMaterial);
   group.add(bedMesh(water));
@@ -298,6 +415,9 @@ export function createLake(water,assetUrl=null) {
       const plane=new THREE.Mesh(new THREE.PlaneGeometry(w,d).translate(cx,cy,0),surface.material);
       plane.position.copy(surface.position);plane.quaternion.copy(surface.quaternion);plane.layers.set(1);plane.renderOrder=1;plane.name='open-sea-horizon';group.add(plane);
     }
+    const wash=new THREE.Mesh(new THREE.PlaneGeometry(width,2).translate(0,-depth/2-1,0),surface.material);
+    wash.name='tidal-wash';wash.position.copy(surface.position);wash.quaternion.copy(surface.quaternion);
+    wash.layers.set(1);wash.renderOrder=1;group.add(wash);
   }
   // A stationary camera reuses its last shore reflection. During a walk the
   // reflection is projected from its last camera and refreshed at most 10 Hz.
@@ -326,7 +446,7 @@ export function createLake(water,assetUrl=null) {
           groundTexture.dispose();
         }
         if(name==='coastal-rock.jpg'){
-          rockMaterial.map=scan;rockMaterial.color.set(0xd7dcd9);rockMaterial.needsUpdate=true;
+          rockMaterial.map=scan;rockMaterial.color.set(0xffffff);rockMaterial.needsUpdate=true;
         }
         loadedMaterials++;mirrorDirty=true;forceMirror=true;
       },undefined,()=>texture?.dispose());
@@ -336,6 +456,11 @@ export function createLake(water,assetUrl=null) {
   return {group,kind,waterId:water.waterId,
     setConditions(value){
       setWeatherUniforms(uniforms,value);setWeatherUniforms(surface.material.uniforms,value);
+      if(ocean){
+        const day=value?THREE.MathUtils.smoothstep(value.waterLight,.28,.53):0;
+        const skyFill=day*(.12+2.95*(value?.cloudCover??0)**1.2);
+        coastalSky.value.setRGB(.90*skyFill,.96*skyFill,skyFill);
+      }
       if(grass)grass.material.color.setScalar(value?.waterLight??1);
       mirrorDirty=true;
     },

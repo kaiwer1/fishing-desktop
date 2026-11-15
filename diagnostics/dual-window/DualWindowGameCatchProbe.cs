@@ -31,6 +31,47 @@ sealed partial class DualWindowContext
             type=down?"rawKeyDown":"keyUp",key="r",code="KeyR",windowsVirtualKeyCode=82}));
     }
 
+    async Task RunBreadBaitProbe(ProbeWindow pane,FloatFishingWater lake)
+    {
+        await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
+        await SceneProbeButton(pane,"scene-menu");
+        await Wait(pane,s=>Field(s,"snapshot")!=null&&(bool)Field(s,"snapshot")["MenuOpen"]);
+        await SceneProbeButton(pane,"camp-go-food");
+        await CatchProbeShop(pane,"quote-food","shop-quoted",false);
+        await CatchProbeShop(pane,"shop-buy","purchase-candidate",true);
+        await CatchProbeShop(pane,"prepare-bread","bread-bait-prepared",true);
+        await CatchProbeShop(pane,"select-bread","float-bait-selected",true);
+        var prepared=game.Snapshot.State;
+        Require(prepared.FoodCount==0&&prepared.BreadBaitCount==3&&prepared.BreadBaitSelected&&prepared.WalletMinor==11980,"Food preparation or selection did not settle.");
+        await WardrobeProbePhoto(pane,"bread-bait-menu.png");
+        checks.Add("player clicks at the food counter buy one bread, prepare three portions and attach bread to the float hook");
+        await SceneProbeButton(pane,"menu");
+        await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
+        var point=await SceneProbePoint(pane);
+        await SceneProbeMouse(pane,point,true);
+        await Wait(pane,s=>gameCast.Snapshot.Phase==FloatCastPhase.Charging);
+        await SceneProbeMouse(pane,point,false);
+        await Wait(pane,s=>game.Snapshot.State.Sequence==5&&gameFlightEmissions==1);
+        await WaterProbeLanding(pane,false);
+        Require(game.Snapshot.State.BaitCount==12&&game.Snapshot.State.BreadBaitCount==2&&game.Snapshot.State.Stamina==98,"Cast used the wrong inventory.");
+        await GameWaitForBite(pane,FloatBitePhase.Strikeable);
+        var species=gameBite.Snapshot.Target.SpeciesId;
+        Require(gameFishingPool.Environment.ContainsTarget(species),"Bite outside landing pool.");
+        checks.Add("a real WebView mouse release casts on the lake, debits one prepared portion and receives a natural bite");
+        await SceneProbeButton(pane,"scene-recall");
+        await Wait(pane,s=>game.Snapshot.State.Sequence==6&&game.Snapshot.State.Session==null);
+        PrepareGameShutdown();Require(gameShutdownCode=="no-active-session"&&ExitCode==0,"Bakery probe failed to exit cleanly.");
+        DisposeGame();
+        var saved=FloatJournalArchive.Inspect(Path.Combine(root,"game.fltj")).State;
+        Require(saved.Sequence==6&&saved.BreadBaitCount==2&&saved.BreadBaitSelected&&saved.BaitCount==12&&saved.FoodCount==0&&saved.Stamina==98,"Journal replay changed the selected bait or remaining quantity.");
+        checks.Add("the closed save reopens with two prepared portions, twelve worms and bread still selected");
+        File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new {
+            passed=true,checks=checks.ToArray(),gameLoaded=true,reopened=true,naturalBite=true,speciesId=species,
+            sequence=saved.Sequence,value=saved.WalletMinor,breadBaitCount=saved.BreadBaitCount,baitCount=saved.BaitCount,stamina=saved.Stamina
+        }),Encoding.UTF8);
+        Shutdown();
+    }
+
     async void RunGameCatchProbe()
     {
         try{
@@ -38,6 +79,7 @@ sealed partial class DualWindowContext
             var pane=windows[true];await Ready(pane);pane.ClientSize=new Size(1280,800);
             await Activate(pane);
             var ini=game.Snapshot.State;var lake=FloatFishingAtlas.Find("development-still-water");var station=FloatFishingAtlas.Find("coastal-bay");
+            if(gameMode=="bread-bait-self-test"){await RunBreadBaitProbe(pane,lake);return;}
             await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
             Require(ini.Sequence==1 && ini.Rules.Species.Count==9 && ini.OwnedNet==null && ini.WalletMinor==12000 &&
                 ini.BaitCount==12 && ini.Stamina==100 && ini.Creel.Count==0,"Unexpected standalone catch profile.");

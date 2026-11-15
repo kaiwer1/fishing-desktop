@@ -24,6 +24,20 @@ namespace FishingDesktop.GameCore
         internal ExpandDomesticSpecies(Guid profile,Guid branch,Guid request,Guid businessEvent,long sequence,long rigRevision,long rulesVersion)
             :base("expand-domestic-seven-to-nine-v1",profile,branch,request,businessEvent,Guid.Empty,sequence,rigRevision,rulesVersion){}
     }
+    internal enum FloatBaitAction : byte { PrepareBread=1, SelectBread=2, SelectWorm=3 }
+    internal sealed class ManageFloatBait : FloatCommand
+    {
+        internal const int PortionsPerBread=3;
+        internal readonly FloatBaitAction Action;
+        internal ManageFloatBait(Guid profile,Guid branch,Guid request,Guid businessEvent,FloatBaitAction action,long sequence,long rig,long rules)
+            :base("manage-float-bait-v1",profile,branch,request,businessEvent,Guid.Empty,sequence,rig,rules)
+        {
+            if(action!=FloatBaitAction.PrepareBread&&action!=FloatBaitAction.SelectBread&&action!=FloatBaitAction.SelectWorm)
+                throw new ArgumentOutOfRangeException("action");
+            Action=action;
+        }
+        internal override string Detail {get{return FloatGuard.Number((int)Action);}}
+    }
     internal sealed class BuyLureKit : FloatCommand
     {
         internal readonly OwnedLureKit Kit;
@@ -403,6 +417,8 @@ namespace FishingDesktop.GameCore
         }
         static string Code(FloatOutcome outcome)
         {switch(outcome){
+            case FloatOutcome.BreadBaitPrepared:return "bread-bait-prepared";
+            case FloatOutcome.FloatBaitSelected:return "float-bait-selected";
             case FloatOutcome.BottomKitPurchased:return "bottom-kit-purchase-candidate";
             case FloatOutcome.LureKitPurchased:return "lure-kit-purchase-candidate";
             case FloatOutcome.SpeciesCatalogExpanded:return "species-catalog-expanded";
@@ -453,12 +469,28 @@ namespace FishingDesktop.GameCore
             int schema=state.SchemaVersion,foods=state.FoodCount;Guid branch=state.BranchId,foodStack=state.FoodStackId,equipped=state.EquippedNetId;var net=state.OwnedNet;var catalog=state.CommerceCatalog;var origin=state.UpgradeOrigin;
             var equipment=state.Equipment;var equipmentOffers=state.EquipmentOffers;var equipmentOrigin=state.EquipmentUpgradeOrigin;FloatEquipmentLossSummary equipmentLoss=null;FloatEquipmentArchiveSummary equipmentArchive=null;
             var bankSessions=new List<FloatSession>(state.BankSessions);
+            int breadBaits=state.BreadBaitCount;
+            bool breadSelected=state.BreadBaitSelected;
             try{
                 if(command is ExpandDomesticSpecies){
                     if(!FloatDomesticSpeciesCatalog.CanExpand(state))return Reject("species-catalog-ineligible");
                     if(command.RequestId==command.EventId||KnownPurchaseIdentity(state,command.RequestId)||KnownPurchaseIdentity(state,command.EventId))
                         return Reject("species-catalog-identity-invalid");
                     rules=FloatDomesticSpeciesCatalog.Nine;outcome=FloatOutcome.SpeciesCatalogExpanded;
+                }else if(command is ManageFloatBait){
+                    if(!state.BreadRecipeAvailable)return Reject("bread-recipe-unavailable");
+                    if(session!=null)return Reject("session-busy");
+                    var action=((ManageFloatBait)command).Action;
+                    if(action==FloatBaitAction.PrepareBread){
+                        if(foods<1)return Reject("food-empty");
+                        if(breadBaits>catalog.MaximumBaitCount-ManageFloatBait.PortionsPerBread)return Reject("bait-limit-exceeded");
+                        foods--;breadBaits+=ManageFloatBait.PortionsPerBread;outcome=FloatOutcome.BreadBaitPrepared;
+                    }else{
+                        bool desired=action==FloatBaitAction.SelectBread;
+                        if(desired==breadSelected)return Reject("float-bait-unchanged");
+                        if((desired?breadBaits:baits)<1)return Reject("bait-empty");
+                        breadSelected=desired;outcome=FloatOutcome.FloatBaitSelected;
+                    }
                 }else if(command is BuyLureKit){
                     if(!OwnedLureKit.Enabled(state))return Reject("lure-kit-unavailable");
                     if(session!=null)return Reject("session-busy");
@@ -671,9 +703,10 @@ namespace FishingDesktop.GameCore
                 }else if(command is CastFloatWithEquipment){
                     if(session!=null)return Reject("session-busy");var cast=(CastFloatWithEquipment)command;
                     if(AssetExists(state,cast.SessionId))return Reject("session-identity-used");
-                    var readiness=equipment.EvaluateCastReadiness(FloatEquipmentGate.Idle,cast.RequiredLineMm,baits,stamina,rules.CastStaminaCost);
+                    var readiness=equipment.EvaluateCastReadiness(FloatEquipmentGate.Idle,cast.RequiredLineMm,state.SelectedFloatBaitCount,stamina,rules.CastStaminaCost);
                     if(!readiness.Valid)return Reject(readiness.Issues[0].Code);
-                    baits=checked(baits-1);stamina=checked(stamina-rules.CastStaminaCost);
+                    if(breadSelected)breadBaits--;else baits--;
+                    stamina=checked(stamina-rules.CastStaminaCost);
                     session=new FloatSession(command.SessionId,command.EventId,equipment.RigRevision,rules.Version,null,equipment.InventoryRevision,equipment.RulesVersion,cast.RequiredLineMm);outcome=FloatOutcome.CastCommitted;
                 }else if(command is CastFloat){
                     if(schema==3)return Reject("equipment-cast-required");
@@ -735,7 +768,7 @@ namespace FishingDesktop.GameCore
                 long sequence=checked(state.Sequence+1);
                 var receipt=new FloatReceipt(command,sequence,rules.Version,outcome,encounterId,state.WalletMinor,wallet,state.Stamina,stamina,state.BaitCount,baits,affected,state.FoodCount,foods,state.OwnedNet==null?Guid.Empty:state.OwnedNet.Id,net==null?Guid.Empty:net.Id,state.EquippedNetId,equipped,equipmentLoss,equipmentArchive);
                 var history=new List<FloatReceipt>(state.Receipts);history.Add(receipt);
-                var candidate=new FloatGameState(state.ProfileId,branch,sequence,wallet,stamina,state.BaitStackId,state.BaitDefinitionKey,baits,schema==3?null:state.LegacyRig,session,fish,history,rules,schema,catalog,foodStack,foods,net,equipped,origin,equipment,equipmentOffers,equipmentOrigin,bankSessions);
+                var candidate=new FloatGameState(state.ProfileId,branch,sequence,wallet,stamina,state.BaitStackId,state.BaitDefinitionKey,baits,schema==3?null:state.LegacyRig,session,fish,history,rules,schema,catalog,foodStack,foods,net,equipped,origin,equipment,equipmentOffers,equipmentOrigin,bankSessions,breadBaits,breadSelected);
                 return new FloatReduction(Code(outcome),candidate,receipt);
             }catch(OverflowException){return Reject("arithmetic-overflow");}
         }

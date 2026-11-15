@@ -44,6 +44,15 @@ namespace FishingDesktop.GameCore
         }
         internal bool ContainsTarget(string speciesId)
         {foreach(var candidate in Candidates)if(candidate.SpeciesId==speciesId&&candidate.Weight>0)return true;return false;}
+        internal FloatBiteEnvironment WithBreadPaste()
+        {
+            var rows=new List<FloatBiteCandidate>();
+            foreach(var fish in Candidates){
+                int multiplier=fish.SpeciesId=="carp"?3:fish.SpeciesId=="crucian"?2:1;
+                rows.Add(new FloatBiteCandidate(fish.SpeciesId,Math.Min(1000000,fish.Weight*multiplier),fish.MinimumMassMg,fish.MaximumMassMg));
+            }
+            return new FloatBiteEnvironment(HazardPerSecond,rows.ToArray(),Available);
+        }
     }
     internal sealed class FloatBiteRules
     {

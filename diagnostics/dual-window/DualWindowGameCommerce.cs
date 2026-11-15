@@ -11,7 +11,7 @@ sealed partial class DualWindowContext
     // quote: action, product("net"|"bait"|"food"), packs(int 1..100)
     // buy: action, quoteId(host D-Guid string)
     // equip: action, equipped(bool), inputSequence(canonical positive decimal string)
-    // eat: action, inputSequence(same monotone stream as equip, per lease)
+    // eat, prepare-bread, select-bread, select-worm: action, inputSequence (one stream per lease)
     // retry: action, operationId(host D-Guid after known-not-written failure only)
     // cancel: action (drops only a never-written/known-not-written pending intent).
     // Reply: normal game-reply. Independent game-shop-state carries documentId,
@@ -111,6 +111,7 @@ sealed partial class DualWindowContext
         Send(pane,new{kind="game-shop-state",documentId=pane.Ticket.DocumentId,revision=checked(++binding.ShopRevision),state=new{
             schemaVersion=state==null?0:state.SchemaVersion,available=reason==null,reason=reason,
             walletMinor=state==null?null:ShopNumber(state.WalletMinor),baitCount=state==null?0:state.BaitCount,foodCount=state==null?0:state.FoodCount,
+            breadRecipe=state!=null&&state.BreadRecipeAvailable,breadBaitCount=state==null?0:state.BreadBaitCount,breadSelected=state!=null&&state.BreadBaitSelected,
             netOwned=state!=null&&state.OwnedNet!=null,netEquipped=state!=null&&state.OwnedNet!=null&&state.EquippedNetId==state.OwnedNet.Id,
             catalogVersion=catalog==null?null:ShopNumber(catalog.Version),netPriceMinor=catalog==null?null:ShopNumber(catalog.NetPriceMinor),
             baitPackPriceMinor=catalog==null?null:ShopNumber(catalog.BaitPackPriceMinor),foodPriceMinor=catalog==null?null:ShopNumber(catalog.FoodPriceMinor),
@@ -130,7 +131,7 @@ sealed partial class DualWindowContext
             valid=message.Count==7&&message.TryGetValue("equipped",out raw)&&raw is bool&&GameInputSequence(message,out sequence);
             if(valid)equipped=(bool)message["equipped"];
         }
-        else if(action=="eat")valid=message.Count==6&&GameInputSequence(message,out sequence);
+        else if(action=="eat"||action=="prepare-bread"||action=="select-bread"||action=="select-worm")valid=message.Count==6&&GameInputSequence(message,out sequence);
         else if(action=="cancel")valid=message.Count==5;
         if(!valid){ShopReply(pane,transport,"invalid-intent");return;}
         // Settle elapsed simulation first. Then recheck BOTH host authority
@@ -169,7 +170,12 @@ sealed partial class DualWindowContext
         if(action=="equip"){
             if(equipped&&state.OwnedNet==null){ShopReply(pane,transport,"net-not-owned");return;}
             intent=new EquipFloatNet(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),equipped?state.OwnedNet.Id:Guid.Empty,state.Sequence,state.Rig.Revision,state.RulesVersion);
-        }else intent=new UseFloatFood(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),state.FoodStackId,state.Sequence,state.Rig.Revision,state.RulesVersion);
+        }else if(action=="eat"){
+            intent=new UseFloatFood(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),state.FoodStackId,state.Sequence,state.Rig.Revision,state.RulesVersion);
+        }else{
+            var choice=action=="prepare-bread"?FloatBaitAction.PrepareBread:action=="select-bread"?FloatBaitAction.SelectBread:FloatBaitAction.SelectWorm;
+            intent=new ManageFloatBait(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),choice,state.Sequence,state.Rig.Revision,state.RulesVersion);
+        }
         binding.Shop=PrepareGameShop(binding,intent,action);CommitGameShop(pane,binding,binding.Shop,transport);
     }
     void CommitGameShop(ProbeWindow pane,GameBinding binding,GameShopPending pending,string transport)

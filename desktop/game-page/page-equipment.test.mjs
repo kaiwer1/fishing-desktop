@@ -415,6 +415,30 @@ test('equipment completion enables an immediate shop action in the real shop-bef
   f.click('quote-bait'); assert.equal(f.messages.length, 2); assert.equal(f.messages.at(-1).action, 'quote');
 });
 
+test('food menu buys bread, prepares it once, and lets the player choose either available hook bait', async () => {
+  const f = await pageFixture();
+  Object.assign(f.shop,{breadRecipe:true,breadSelected:false,breadBaitCount:0,foodCount:0});
+  f.broadcast();
+  assert.equal(f.nodes.get('prepare-bread').disabled,true);
+  f.nodes.get('food-packs').value='1';
+  f.click('quote-food');
+  assert.equal(f.messages.at(-1).product,'food');
+  f.shop.quote={id:id(42),product:'food',packs:1,units:1,totalPriceMinor:'20'};
+  f.reply('shop-quoted');f.broadcast();f.click('shop-buy');
+  assert.equal(f.messages.at(-1).action,'buy');
+  f.shop.quote=null;f.shop.foodCount=1;f.advance();f.reply('purchase-candidate');f.broadcast();
+  f.click('prepare-bread');f.click('prepare-bread',{},true);
+  assert.deepEqual(f.messages.map(m=>m.action),['quote','buy','prepare-bread']);
+  f.shop.foodCount=0;f.shop.breadBaitCount=3;f.advance();f.reply('bread-bait-prepared');f.broadcast();
+  assert.equal(f.nodes.get('prepare-bread').disabled,true);
+  assert.match(f.nodes.get('bread-stock').textContent,/面饵 3 份/);
+  f.click('select-bread');assert.equal(f.messages.at(-1).action,'select-bread');
+  f.shop.breadSelected=true;f.advance();f.reply('float-bait-selected');f.broadcast();
+  assert.equal(f.nodes.get('select-bread').disabled,true);
+  assert.match(f.nodes.get('bread-stock').textContent,/当前浮漂钩饵：面饵/);
+  f.click('select-worm');assert.equal(f.messages.at(-1).action,'select-worm');
+});
+
 test('shop completion enables an immediate equipment action using the resulting sequence', async () => {
   const f = await pageFixture(); f.select('equipment-slot-rod', id(7)); f.click('food-eat');
   assert.equal(f.messages.at(-1).action, 'eat'); assert.equal(f.nodes.get('equipment-apply-rod').disabled, true);

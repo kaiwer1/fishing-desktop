@@ -6,7 +6,8 @@ const number = (value, positive = false) => typeof value === 'string' && /^(0|[1
 const copyQuote = q => q ? { id: q.id, product: q.product, packs: q.packs, units: q.units, totalPriceMinor: q.totalPriceMinor } : null;
 const copyRetry = r => r ? { operationId: r.operationId, action: r.action } : null;
 const copy = s => ({ schemaVersion: s.schemaVersion, available: s.available, reason: s.reason, walletMinor: s.walletMinor,
-  baitCount: s.baitCount, foodCount: s.foodCount, netOwned: s.netOwned, netEquipped: s.netEquipped, catalogVersion: s.catalogVersion,
+  baitCount: s.baitCount, foodCount: s.foodCount, breadRecipe: s.breadRecipe ?? false, breadBaitCount: s.breadBaitCount ?? 0, breadSelected: s.breadSelected ?? false,
+  netOwned: s.netOwned, netEquipped: s.netEquipped, catalogVersion: s.catalogVersion,
   netPriceMinor: s.netPriceMinor, baitPackPriceMinor: s.baitPackPriceMinor, foodPriceMinor: s.foodPriceMinor,
   baitPackUnits: s.baitPackUnits, foodStaminaRestore: s.foodStaminaRestore, maxPacks: s.maxPacks, quote: copyQuote(s.quote), retry: copyRetry(s.retry) });
 
@@ -34,6 +35,10 @@ export class ShopView {
         !integer(s.baitCount, 0, 2147483647) || !integer(s.foodCount, 0, 2147483647) ||
         typeof s.netOwned !== 'boolean' || typeof s.netEquipped !== 'boolean' || s.netEquipped && !s.netOwned) return false;
     if (s.schemaVersion === 0 ? s.walletMinor !== null : !number(s.walletMinor)) return false;
+    if ('breadRecipe' in s || 'breadBaitCount' in s || 'breadSelected' in s) {
+      if (typeof s.breadRecipe !== 'boolean' || typeof s.breadSelected !== 'boolean' || !integer(s.breadBaitCount, 0, 2147483647) ||
+          (s.breadRecipe && s.schemaVersion !== 3) || (!s.breadRecipe && (s.breadSelected || s.breadBaitCount !== 0))) return false;
+    }
     if ((s.schemaVersion === 2 || s.schemaVersion === 3)) {
       if (!['catalogVersion', 'netPriceMinor', 'baitPackPriceMinor', 'foodPriceMinor'].every(k => number(s[k], true)) ||
           !integer(s.baitPackUnits, 1, 2147483647) || !integer(s.foodStaminaRestore, 1, 2147483647) || !integer(s.maxPacks, 1, 100)) return false;
@@ -44,7 +49,7 @@ export class ShopView {
       if (!s.available || !q || !guid(q.id) || !products.has(q.product) || !integer(q.packs, 1, s.maxPacks) ||
           !integer(q.units, 1, 2147483647) || !number(q.totalPriceMinor, true) || q.product === 'net' && (q.packs !== 1 || q.units !== 1)) return false;
     }
-    if (s.retry !== null && (!s.available || !s.retry || !guid(s.retry.operationId) || !['buy', 'equip', 'eat'].includes(s.retry.action))) return false;
+    if (s.retry !== null && (!s.available || !s.retry || !guid(s.retry.operationId) || !['buy', 'equip', 'eat', 'prepare-bread', 'select-bread', 'select-worm'].includes(s.retry.action))) return false;
     if (s.quote !== null && s.retry !== null) return false;
     this.#state = copy(s); this.#revision = message.revision; return true;
   }
@@ -105,6 +110,14 @@ export class ShopInput {
   eat() {
     if (!this.#ready() || this.#retry || this.#context().foodCount < 1 || this.#next === Number.MAX_SAFE_INTEGER) return false;
     return this.#send('eat', { inputSequence: String(++this.#next) });
+  }
+  bait(action) {
+    if (!this.#ready() || this.#retry || this.#next === Number.MAX_SAFE_INTEGER) return false;
+    const c = this.#context();
+    if (!c.breadRecipe || !['prepare-bread', 'select-bread', 'select-worm'].includes(action)) return false;
+    if (action === 'prepare-bread' && c.foodCount < 1 || action === 'select-bread' && (c.breadSelected || c.breadBaitCount < 1) ||
+        action === 'select-worm' && (!c.breadSelected || c.baitCount < 1)) return false;
+    return this.#send(action, { inputSequence: String(++this.#next) });
   }
   retry() { if (!this.#ready() || !this.#retry) return false; return this.#send('retry', { operationId: this.#retry.operationId }); }
   cancel() { if (!this.#ready() || !this.#quote && !this.#retry) return false; return this.#send('cancel'); }

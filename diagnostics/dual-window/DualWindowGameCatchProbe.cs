@@ -184,14 +184,20 @@ sealed partial class DualWindowContext
                 input.scrollIntoView({block:'center'});const r=input.getBoundingClientRect();
                 const x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2);
                 if(input.disabled || document.elementFromPoint(x,y)!==input)return null;
-                return {x,y,label:entry.querySelector('label').textContent,key:entry.querySelector('svg[data-fish]')?.dataset.fish};
+                return {x,y,name:entry.querySelector('strong').textContent,mass:entry.querySelector('.fish-mass').textContent,
+                    price:entry.querySelector('.fish-price').textContent,key:entry.querySelector('svg[data-fish]')?.dataset.fish};
             })()");
-            string rowText=name+" · "+(fish.MassMg/1000000m).ToString("F6",CultureInfo.InvariantCulture)+" kg · "+
-                (fish.SaleValueMinor/100m).ToString("F2",CultureInfo.InvariantCulture)+" 银币";
-            Require((string)row["key"]==fish.SpeciesKey && (string)row["label"]==rowText,"Menu row disagrees with the durable creel.");
+            string rowMass=(fish.MassMg/(fish.MassMg<1000000?1000m:1000000m)).ToString("0.######",CultureInfo.InvariantCulture)+(fish.MassMg<1000000?" 克":" 千克");
+            string rowPrice=(fish.SaleValueMinor/100m).ToString("F2",CultureInfo.InvariantCulture)+" 银币";
+            Require((string)row["key"]==fish.SpeciesKey && (string)row["name"]==name && (string)row["mass"]==rowMass &&
+                (string)row["price"]==rowPrice,"Menu row disagrees with the durable creel.");
             await SceneProbeMouse(pane,row,true);await SceneProbeMouse(pane,row,false);
             Require(await pane.View.CoreWebView2.ExecuteScriptAsync("document.querySelector('#creel input').checked && !document.getElementById('sell').disabled")=="true",
                 "Selecting the owned fish did not enable its sale.");
+            var review=await SceneProbeScript(pane,@"(()=>({summary:document.getElementById('creel-review').textContent,
+                selection:document.getElementById('creel-selected-names').textContent,action:document.getElementById('sell').textContent}))()");
+            Require((string)review["summary"]=="已选 1 条 · 合计 "+rowPrice && (string)review["selection"]==name+" "+rowMass &&
+                (string)review["action"]=="确认出售" && game.Snapshot.State.Sequence==landed.Sequence,"Selection or price was not confirmed before settlement.");
             using(var file=new FileStream(Path.Combine(root,"game-catch.png"),FileMode.CreateNew,FileAccess.Write,FileShare.None))
                 await pane.View.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,file);
             checks.Add("the pre-sale screenshot shows the selected illustrated fish, its actual measured mass and the host sale price in the creel");

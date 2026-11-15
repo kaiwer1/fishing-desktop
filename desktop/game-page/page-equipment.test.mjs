@@ -95,6 +95,71 @@ const spots = [
   { id: 'coastal-bay', name: '海湾', region: '东海', description: '海岸礁湾', species: ['黑鲷','花鲈','黄鳍鲷'] },
 ];
 
+const smallFish={Id:id(201),SpeciesKey:'yellow-catfish',MassMg:'112234',SaleValueMinor:'16'};
+const largeFish={Id:id(202),SpeciesKey:'black-rockfish',MassMg:'1012345',SaleValueMinor:'190'};
+function stockCreel(f,rows) {
+  Object.assign(f.snapshot,{Creel:rows,CreelCount:rows.length}); f.broadcast();
+}
+const creelCards=f=>f.nodes.get('creel').children.filter(card=>card.className==='fish');
+function chooseFish(f,key,checked=true) {
+  const card=creelCards(f).find(row=>row.dataset.fishId===key);
+  const box=card.children.find(node=>node.tagName==='LABEL').children[0];
+  box.checked=checked; box.dispatch('change'); return box;
+}
+test('creel sorts by landed order and exact mass, keeps same species selections visible and sells only the reviewed rows',async()=>{
+  const f=await pageFixture();stockCreel(f,[largeFish,smallFish]);
+  const ids=()=>creelCards(f).map(c=>c.dataset.fishId);
+  assert.deepEqual(ids(),[smallFish.Id,largeFish.Id]);
+  f.select('creel-sort','heaviest');assert.deepEqual(ids(),[largeFish.Id,smallFish.Id]);
+  const box=chooseFish(f,largeFish.Id);box.focus();chooseFish(f,smallFish.Id);
+  assert.equal(f.nodes.get('creel-review').textContent,'已选 2 条 · 合计 2.06 银币');
+  assert.match(f.nodes.get('creel-selected-names').textContent,/许氏平鲉 1\.012345 千克、黄颡鱼 112\.234 克/);
+  f.broadcast();assert.equal(document.activeElement,box);assert.equal(chooseFish(f,largeFish.Id),box);
+  f.select('creel-sort','lightest');assert.deepEqual(ids(),[smallFish.Id,largeFish.Id]);
+  f.select('creel-sort','oldest');assert.deepEqual(ids(),[largeFish.Id,smallFish.Id]);
+  f.select('creel-filter','yellow-catfish');assert.deepEqual(ids(),[smallFish.Id]);
+  assert.equal(f.nodes.get('creel-order-label').hidden,true);
+  assert.equal(f.nodes.get('creel-review').textContent,'已选 1 条 · 合计 0.16 银币');
+  f.select('creel-filter','');assert.equal(creelCards(f)[0].dataset.selected,'false');
+  assert.equal(f.messages.length,0);f.click('sell');f.click('sell',{},true);
+  assert.equal(f.messages.length,1);assert.deepEqual(f.messages[0].intent.fishIds,[smallFish.Id]);
+  f.reply('sale-candidate');f.click('sell',{},true);chooseFish(f,smallFish.Id);f.click('sell',{},true);
+  assert.equal(f.messages.length,1);f.advance();stockCreel(f,[largeFish]);
+  assert.equal(f.nodes.get('sell').disabled,true);chooseFish(f,largeFish.Id);assert.equal(f.nodes.get('sell').disabled,false);
+});
+test('sale selection never survives altered facts, a revoked lease, a closed menu or a page change',async()=>{
+  const f=await pageFixture(); stockCreel(f,[smallFish,largeFish]);
+  chooseFish(f,smallFish.Id);stockCreel(f,[{...smallFish,SaleValueMinor:'17'},largeFish]);
+  assert.equal(f.nodes.get('sell').disabled,true); f.click('sell',{},true);assert.equal(f.messages.length,0);
+  chooseFish(f,smallFish.Id);f.grant(null);f.grant('next');assert.equal(f.nodes.get('sell').disabled,true);
+  chooseFish(f,smallFish.Id);f.snapshot.MenuOpen=false;f.broadcast();f.snapshot.MenuOpen=true;f.broadcast();
+  assert.equal(f.nodes.get('sell').disabled,true);
+  chooseFish(f,smallFish.Id);f.snapshot.CreelCount=70;f.snapshot.CreelOffset=50;f.broadcast();
+  assert.equal(f.nodes.get('creel-pages').hidden,false);assert.equal(f.nodes.get('creel-filter-label').textContent,'本页鱼种');
+  assert.equal(f.nodes.get('sell').disabled,true);
+  f.emit({kind:'role',role:'桌面只读'});chooseFish(f,smallFish.Id);f.click('sell',{},true);
+  assert.equal(f.nodes.get('creel-checkout').hidden,true);assert.equal(f.messages.length,0);
+});
+test('rejected sales can be retried and reversed reply order does not sell twice',async()=>{
+  const f=await pageFixture();stockCreel(f,[smallFish]);chooseFish(f,smallFish.Id);f.click('sell');
+  f.reply('version-conflict','unrelated');assert.equal(f.nodes.get('sell').disabled,true);
+  f.reply('version-conflict');assert.equal(f.nodes.get('sell').disabled,false);
+  f.click('sell');assert.equal(f.messages.length,2);f.advance();stockCreel(f,[]);
+  f.reply('sale-candidate');f.click('sell',{},true);assert.equal(f.messages.length,2);
+  assert.equal(f.nodes.get('creel-checkout').hidden,true);assert.equal(f.nodes.get('creel-tools').hidden,true);
+  assert.equal(f.nodes.get('creel-pages').hidden,true);
+});
+test('creel values stay exact beyond safe JS integers and an out-of-range total cannot be sold',async()=>{
+  const f=await pageFixture();
+  stockCreel(f,[{...largeFish,MassMg:'9007199254740993',SaleValueMinor:'9007199254740993'},{...smallFish,MassMg:'9007199254740992',SaleValueMinor:'8'}]);
+  f.select('creel-sort','heaviest');assert.deepEqual(creelCards(f).map(row=>row.dataset.fishId),[largeFish.Id,smallFish.Id]);
+  chooseFish(f,largeFish.Id);chooseFish(f,smallFish.Id);
+  assert.equal(f.nodes.get('creel-review').textContent,'已选 2 条 · 合计 90071992547410.01 银币');
+  stockCreel(f,[{...largeFish,SaleValueMinor:'9223372036854775807'},smallFish]);
+  chooseFish(f,largeFish.Id);chooseFish(f,smallFish.Id);assert.match(f.nodes.get('creel-review').textContent,/减少选择/);
+  assert.equal(f.nodes.get('sell').disabled,true);f.click('sell',{},true);assert.equal(f.messages.length,0);
+});
+
 const bottomShopState = (f, revision, extra = {}) => f.emit({ kind:'game-bottom-shop-state', revision,
   state:{ available:true, owned:false, method:'float', allowed:true, priceMinor:6400, ...extra } });
 test('camp buys the bottom kit once, confirms ownership and separately selects the method on legal water',async()=>{

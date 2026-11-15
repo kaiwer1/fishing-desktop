@@ -229,7 +229,16 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <p id="equipment-capacity"></p><button id="equipment-archive-lost" class="interactive" disabled>整理损失记录</button><p class="muted">腾出名额，损失历史仍保留，不返还装备或银币。</p>
 <p class="muted">卸下渔轮时，鱼线仍在线杯内。缺少必需部件时不能抛竿；目前可更换已拥有的部件。</p>
 <div id="equipment-retry-controls" hidden><button id="equipment-retry" class="interactive" disabled>重试原装备操作</button><button id="equipment-cancel" class="interactive" disabled>取消未写入操作</button></div></section>
-<section id="creel-section"><h2>鱼护 <span id="capacity"></span></h2><ul id="creel"></ul><div class="interactive"><button id="sell" disabled>出售选中的鱼</button></div><button id="previous" disabled>上一页</button><button id="next" disabled>下一页</button></section>
+<section id="creel-section">
+<div class="creel-head"><h2>鱼护</h2><span id="capacity" aria-label="鱼护容量"></span></div>
+<div id="creel-tools" hidden>
+<label id="creel-species-label" hidden><span id="creel-filter-label">鱼种</span><select id="creel-filter"></select></label>
+<label id="creel-order-label" hidden><span id="creel-sort-label">排列</span><select id="creel-sort"><option value="newest">最近入护</option><option value="oldest">最早入护</option><option value="heaviest">重量从高到低</option><option value="lightest">重量从低到高</option></select></label>
+</div>
+<ul id="creel" aria-label="已入护渔获"></ul>
+<div id="creel-checkout" class="interactive" hidden><div><p id="creel-review" role="status"></p><small id="creel-selected-names" hidden></small></div><button id="sell" aria-describedby="creel-review creel-selected-names" disabled>确认出售</button></div>
+<div id="creel-pages" hidden><button id="previous" disabled>上一页</button><button id="next" disabled>下一页</button></div>
+</section>
 <p class="muted">从窗口顶部开启交互。收回不退还已经使用的鱼饵；切出窗口后需重新开启交互。</p></div>
 </main>
 <dialog id="angler-log-dialog" aria-labelledby="angler-log-title">

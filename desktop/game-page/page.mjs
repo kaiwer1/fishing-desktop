@@ -17,6 +17,7 @@ import { SpotMenu } from './spot-menu.mjs';
 import { Wardrobe, wardrobeMessages } from './wardrobe.mjs';
 import { fishName, fishFigure, installFishIllustrations, newCreelCatch } from './fish-illustration.mjs';
 import { createSpecimenView } from './specimen-view.mjs';
+import { createCreelPanel } from './creel-panel.mjs';
 import { AnglerLog, createAnglerLogPanel } from './angler-log.mjs';
 import { BankWalk } from './bank-walk.mjs';
 import { BottomView, bottomPrompt, createBottomTipPanel } from './bottom-view.mjs';
@@ -52,9 +53,9 @@ const anglerLog = new AnglerLog(documentId);
 let selectedAim = null;
 let saveFaulted = false;
 let speedKeyHeld = false;
-const selected = new Set();
 const $ = id => document.getElementById(id);
 installFishIllustrations(document, $('fish-symbol-bank'));
+const creel = createCreelPanel(document,specimenButton);
 let catchTimer = null;
 let specimen = null;
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
@@ -403,7 +404,7 @@ function render() {
   if (!fightContext().allowed) speedKeyHeld = false;
   $('status').textContent = snapshot?.Faulted || saveFaulted ? '保存结果待核验，请退出后重新打开原存档。' : snapshot?.HostPaused ? '当前暂停' : readOnly ? '观赏窗口' : canControl() ? '交互已开启' : '请从窗口顶部开启交互';
   if (!snapshot?.HasConfirmedState) {
-    $('stats').replaceChildren(); $('session').textContent = '尚无可确认的游戏进度'; $('creel').replaceChildren(); $('capacity').textContent = '';
+    $('stats').replaceChildren(); $('session').textContent = '尚无可确认的游戏进度'; $('capacity').textContent = '';
   } else {
     $('stats').replaceChildren(...[
       `银币 ${decimal(snapshot.WalletMinor)}`, `体力 ${snapshot.Stamina}`, !bottomMethod() && !bankKit.selected && !lureMethod() && shopView.state()?.breadSelected
@@ -412,20 +413,6 @@ function render() {
     const pending = snapshot.PendingFish;
     $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${fishName(pending.SpeciesKey) ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : heldSession() ? (lureMethod() ? '亮片已出手，入水后按住左键匀收。' : bottomMethod() ? '底钓钓组已出手，请观察竿尖。' : '这一竿已出手，请观察轨迹与浮漂。') : bankKit.selected && !stand.state()?.heldRig ? '请先从竿架取竿。' : '可以出手';
     $('capacity').textContent = `${snapshot.CreelCount} / ${snapshot.CreelCapacity}`;
-    const rows = snapshot.Creel ?? [];
-    for (const id of selected) if (!rows.some(f => f.Id === id)) selected.delete(id);
-    $('creel').replaceChildren(...rows.map(fish => {
-      const item = document.createElement('li'); item.className = 'fish';
-      const label = document.createElement('label'), checkbox = document.createElement('input'), text = document.createElement('span');
-      checkbox.type = 'checkbox'; checkbox.checked = selected.has(fish.Id); checkbox.disabled = !canControl() || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || Boolean(inflight) || occupiedBank();
-      checkbox.addEventListener('change', () => { if (checkbox.checked) selected.add(fish.Id); else selected.delete(fish.Id); updateButtons(); });
-      const plate = fishFigure(document,fish.SpeciesKey); if (plate) item.append(plate);
-      text.textContent = `${fishName(fish.SpeciesKey) ?? fish.SpeciesKey} · ${decimal(fish.MassMg, 6)} kg · ${decimal(fish.SaleValueMinor)} 银币`;
-      label.append(checkbox, text); item.append(label);
-      const inspect = specimenButton(fish); if (inspect) item.append(inspect);
-      return item;
-    }));
-    if (!rows.length) { const item = document.createElement('li'); item.textContent = '鱼护为空'; $('creel').append(item); }
   }
   renderCast(); renderBite(); renderFight(); renderShop(); equipmentPanel.render(); updateButtons();
 }
@@ -595,7 +582,9 @@ function updateButtons() {
   $('release').disabled = !active || !handReady() || !snapshot.PendingResult;
   $('menu').disabled = !active;
   $('menu').textContent = snapshot?.MenuOpen ? '返回钓位' : spotMenu.revision ? '打开钓点、鱼护与商店' : '打开鱼护与商店';
-  $('sell').disabled = !active || campEngaged() || !snapshot.MenuOpen || Boolean(snapshot.SessionId) || occupiedBank() || !selected.size;
+  const creelLease = canControl() && snapshot.MenuOpen && !document.hidden && document.hasFocus() ? authority.state().lease : null;
+  creel.render(snapshot,{lease:creelLease,enabled:Boolean(creelLease && active && !campEngaged() && !snapshot.SessionId && !occupiedBank()),
+    inspect:canInspectFish(),offerInspect:!readOnly && Boolean(snapshot?.MenuOpen)});
   $('previous').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset <= 0;
   $('next').disabled = !snapshot?.HasConfirmedState || snapshot.CreelOffset + (snapshot.Creel?.length ?? 0) >= snapshot.CreelCount;
   const shop = shopContext(), shopState = shopInput.state(), shopping = shop.allowed && shopState.ready && !shopBusy() && !shopState.faulted && canUseShop();
@@ -703,6 +692,7 @@ function visitCampArea(area) {
   if (area === 'log') return logPanel.open();
   const node = $(area === 'home' ? 'camp-home' : campAreas[area]);
   if (!node || node.hidden) return false;
+  if (document.body.dataset.campPage === 'creel' && area !== 'creel') creel.clearSelection();
   document.body.dataset.campPage = area;
   $('camp-section-title').textContent = campTitles[area];
   for (const key of Object.keys(campAreas)) $('camp-go-'+key).setAttribute('aria-current',key===area?'page':'false');
@@ -756,8 +746,13 @@ function intent(action) {
   fightInput.cancel();
   const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : heldSession(),
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
-  if (action === 'sell') command.fishIds = [...selected];
-  inflight = crypto.randomUUID();
+  const transportId = crypto.randomUUID();
+  if (action === 'sell') {
+    if (!snapshot.MenuOpen || snapshot.SessionId || document.hidden || !document.hasFocus()) return;
+    command.fishIds = creel.begin(transportId,snapshot.Sequence);
+    if (!command.fishIds) return;
+  }
+  inflight = transportId;
   send({ kind: 'game-intent', lease: authority.state().lease, transportId: inflight, intent: command });
   render();
 }
@@ -945,6 +940,7 @@ window.chrome.webview.addEventListener('message', event => {
     const caught = newCreelCatch(snapshot, m.snapshot); snapshot = m.snapshot; revision = m.revision; showCatch(caught);
   }
   if (m.kind === 'game-reply') {
+    creel.reply(m);
     const walkReply = bankWalk.reply(m);
     if (['walk-updated','walk-stopped'].includes(m.code)) { if (walkReply) updateButtons(); return; }
     if (campOpening && campOpening.transportId === m.transportId && m.code !== 'menu-updated') campOpening = null;
@@ -1004,7 +1000,7 @@ for (const [id, action, direction] of [['drag-minus', 'drag', -1], ['drag-plus',
   $(id).addEventListener('click', () => changeFightLevel(action, direction));
 $('recall').addEventListener('click', () => intent('recall'));
 $('release').addEventListener('click', () => intent('release-current'));
-$('sell').addEventListener('click', () => intent('sell'));
+$('sell').addEventListener('click', event => { if (event.detail <= 1 && !$('sell').disabled) intent('sell'); });
 function toggleMenu(area = 'home') {
   if (!canControl() || inflight || spotRequest || gearBusy() || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy()) return;
   stand.clearInput();

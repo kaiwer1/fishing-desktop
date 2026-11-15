@@ -65,11 +65,27 @@ static class FloatFishingAtlasTests
             Need(river.Geometry.Version==2 && coast.Geometry.Version==3 &&
                 !river.Geometry.ResolveAim(5000,5000,1).Accepted && !coast.Geometry.ResolveAim(5000,5000,2).Accepted,"A stale map aim was accepted.");
         });
-        Test("station manifests expose the intended seven species with stable matching reference IDs",()=>{
+        Test("station manifests expose the nine species with matching reference IDs",()=>{
             Need(still.SpeciesFor(rules).Select(x=>x.Id).SequenceEqual(new[]{"carp","crucian"}) &&
-                river.SpeciesFor(rules).Select(x=>x.Id).SequenceEqual(new[]{"grass-carp","blunt-snout-bream","carp"}) &&
-                coast.SpeciesFor(rules).Select(x=>x.AssetId).SequenceEqual(new[]{"sw_black_seabream","sw_spotted_seabass","sw_yellowfin_seabream"}) &&
-                rules.Species.Count==7 && rules.Find("carp").MinorPerKg==old.Find("carp").MinorPerKg,"Missing or substituted species.");
+                river.SpeciesFor(rules).Select(x=>x.Id).SequenceEqual(new[]{"grass-carp","blunt-snout-bream","carp","yellow-catfish"}) &&
+                coast.SpeciesFor(rules).Select(x=>x.AssetId).SequenceEqual(new[]{"sw_black_seabream","sw_spotted_seabass","sw_yellowfin_seabream","sw_black_rockfish"}) &&
+                rules.Species.Count==9 && rules.Find("carp").MinorPerKg==old.Find("carp").MinorPerKg,"Missing or substituted species.");
+        });
+        Test("a previous seven-species river and coast retain the original draws and weights",()=>{
+            foreach(var water in new[]{river,coast})foreach(bool deep in new[]{false,true}){
+                var previous=water.CreatePool(Land(water,deep?1000:0),FloatDomesticSpeciesCatalog.Seven).Environment;
+                var original=water==river?new[]{
+                    new FloatBiteCandidate("grass-carp",deep?2:5,550000,2400000),new FloatBiteCandidate("blunt-snout-bream",deep?3:4,220000,1050000),new FloatBiteCandidate("carp",deep?5:1,300000,1800000)
+                }:new[]{
+                    new FloatBiteCandidate("black-seabream",deep?5:3,330000,1900000),new FloatBiteCandidate("spotted-seabass",deep?4:1,480000,2600000),new FloatBiteCandidate("yellowfin-seabream",deep?1:6,180000,1300000)
+                };
+                var expected=new FloatBiteEnvironment(.18,original);
+                Need(previous.TotalWeight==10 && previous.Candidates.Count==3,"New stock leaked into old water.");
+                for(uint seed=1;seed<=128;seed++){
+                    var a=Draw(previous,seed);var b=Draw(expected,seed);
+                    Need(a.SpeciesId==b.SpeciesId&&a.MassMg==b.MassMg,"A previously supported draw changed.");
+                }
+            }
         });
         Test("old two-species saves see only legal freshwater fish without changing their sale rules",()=>{
             var signature=old.Signature;
@@ -100,7 +116,7 @@ static class FloatFishingAtlasTests
                 var shallow=water.CreatePool(near,rules);var deep=water.CreatePool(far,rules);
                 Need(near.Zmm<far.Zmm && near.DepthMm<water.DeepThresholdMm && far.DepthMm>=water.DeepThresholdMm &&
                     shallow.Id=="shallow" && deep.Id=="deep" && shallow.Name!=deep.Name &&
-                    shallow.Environment.TotalWeight==10 && deep.Environment.TotalWeight==10 &&
+                    shallow.Environment.TotalWeight==(water==still?10:11) && deep.Environment.TotalWeight==(water==still?10:water==river?13:14) &&
                     !shallow.Environment.Candidates.Select(x=>x.Weight).SequenceEqual(deep.Environment.Candidates.Select(x=>x.Weight)),
                     "Pools did not follow actual water depth.");
             });
@@ -123,7 +139,7 @@ static class FloatFishingAtlasTests
                 Need(seen.Count==env.Candidates.Count,"Some enabled species never appeared in the fixed seed cohort.");
             }
         });
-        Test("all seven sale rules permit host landing and a normal sale at the saved price",()=>{
+        Test("all nine sale rules permit host landing and a normal sale at the saved price",()=>{
             var rig=new FixedFloatRig(G(),1,"float-starter",G(),G(),G(),50000,G(),G(),G());
             var state=FloatGameState.CreateNew(G(),G(),100,100,G(),"worm",12,rig,rules);
             foreach(var rule in rules.Species){
@@ -135,7 +151,7 @@ static class FloatFishingAtlasTests
                 state=Adopt(state,new SellFloatFish(state.ProfileId,state.BranchId,G(),G(),new[]{fish.Id},state.Sequence,1,rules.Version));
                 Need(state.WalletMinor==startingMoney+rule.MinorPerKg && state.Creel.Count==0 && state.Session==null,"Sale did not settle exactly once.");
             }
-            Need(state.Sequence==21 && state.BaitCount==5 && state.Stamina==86,"Seven fishing sessions had unexpected resource costs.");
+            Need(state.Sequence==27 && state.BaitCount==3 && state.Stamina==82,"Nine fishing sessions had unexpected resource costs.");
         });
         Console.WriteLine("RESULT "+passed+" passed, "+failed+" failed");return failed==0?0:1;
     }

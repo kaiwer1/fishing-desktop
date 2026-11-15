@@ -50,8 +50,8 @@ sealed partial class DualWindowContext
             await Wait(pane,p=>PlayerProbeDrawn(p,lake),30000);
             var initial=game.Snapshot.State;byte[] floatGear=FloatEquipmentCodec.Encode(initial.Equipment);
             Require(initial.Sequence==1&&initial.Stamina==100&&initial.BaitCount==0&&initial.WalletMinor==12000&&
-                initial.OwnedLureKit==null&&initial.OwnedNet==null&&initial.Creel.Count==0&&initial.Rules.Species.Count==7,"Wrong private genesis.");
-            checks.Add("one landscape player opens a private seven-species profile with 120 silver, zero worms and no lure equipment");
+                initial.OwnedLureKit==null&&initial.OwnedNet==null&&initial.Creel.Count==0&&initial.Rules.Species.Count==9,"Wrong private genesis.");
+            checks.Add("one landscape player opens a private nine-species profile with 120 silver, zero worms and no lure equipment");
 
             stage="buying the reusable spoon kit and net";
             await SceneProbeButton(pane,"scene-menu");await Wait(pane,p=>Field(p,"lureShopState")!=null&&(bool)Field(p,"snapshot")["MenuOpen"]);

@@ -18,6 +18,22 @@ static class FloatAnglerLogTests
             new[]{new FloatSpeciesRule("carp",1,9000000,120),new FloatSpeciesRule("spotted-seabass",1,9000000,165)});
         return FloatGameState.CreateNewWithEquipment(t.ProfileId,t.BranchId,t.WalletMinor,100,t.BaitStackId,"worm",12,t.Equipment,rules,t.CommerceCatalog,t.FoodStackId);
     }
+    static FloatGameState FormerPlayer()
+    {
+        var t=BottomOwnedKitTests.New();
+        // Frozen prices and limits from the shipped seven-species genesis.
+        var rules=new FloatGameRules(2,"float-starter","worm",2,100,2,1000000,new[]{
+            new FloatSpeciesRule("carp",100000,10000000,120),new FloatSpeciesRule("crucian",50000,3000000,80),
+            new FloatSpeciesRule("grass-carp",200000,12000000,135),new FloatSpeciesRule("blunt-snout-bream",100000,3500000,105),
+            new FloatSpeciesRule("black-seabream",100000,6000000,175),new FloatSpeciesRule("spotted-seabass",200000,10000000,165),
+            new FloatSpeciesRule("yellowfin-seabream",80000,4300000,155)});
+        return FloatGameState.CreateNewWithEquipment(t.ProfileId,t.BranchId,t.WalletMinor,100,t.BaitStackId,"worm",12,t.Equipment,rules,t.CommerceCatalog,t.FoodStackId);
+    }
+    static FloatGameOwner OpenPlayer(string path,Action<FloatSaveFaultPoint> hook=null)
+    {
+        var inspection=FloatJournalArchive.Inspect(path);
+        return FloatGameOwner.OpenExisting(path,hook,inspection.State.SchemaVersion,null,FloatJournalArchive.BackupBeforeSpeciesExpansion(inspection));
+    }
     static void Write(FloatGameStore store,FloatCommand c)
     {var r=store.Execute(c);Need(r.Written&&r.Committed&&!r.IsReplay,"expected write: "+r.Code);}
     static FloatCommand FloatCast(FloatGameState s)
@@ -125,6 +141,84 @@ static class FloatAnglerLogTests
             }
             var saved=FloatAnglerLog.Build(FloatJournalArchive.Inspect(path).State);
             Need(saved.TotalXp==16&&saved.TotalCaught==1&&saved.Species.Single().Caught==1,"failed write counted");
+        });
+        Test("upgrade appends one frame after old sales and creel entries; both new species settle, sell and replay",()=>{
+            string path=FileName(); Guid originalFish;
+            using(var store=FloatGameStore.CreateNew(path,FormerPlayer())){
+                Write(store,FloatCast(store.State));Write(store,Fish(store.State,"carp",500000));Write(store,Sell(store.State));
+                Write(store,FloatCast(store.State));Write(store,Fish(store.State,"crucian",425000));originalFish=store.State.Creel.Single().Id;
+            }
+            byte[] prefix=File.ReadAllBytes(path);string oldTip=FloatJournalArchive.Inspect(path).TipSha256;
+            using(var owner=OpenPlayer(path)){
+                var s=owner.Snapshot.State;var log=FloatAnglerLog.Build(s);
+                Need(s.Sequence==6&&s.Rules.Species.Count==9&&s.Receipts.Last().Outcome==FloatOutcome.SpeciesCatalogExpanded,"missing revision");
+                Need(s.WalletMinor==12060&&s.Creel.Single().Id==originalFish&&s.Creel.Single().SaleValueMinor==34&&log.TotalCaught==2&&
+                    log.TotalSold==1&&log.SaleMinor==60&&log.TotalXp==26,"historical sale, catch prices or XP changed");
+            }
+            var backup=Directory.GetFiles(folder,Path.GetFileNameWithoutExtension(path)+".before-nine-species.*.fltj").Single();
+            Need(prefix.SequenceEqual(File.ReadAllBytes(backup))&&FloatJournalArchive.Inspect(backup).TipSha256==oldTip&&
+                prefix.SequenceEqual(File.ReadAllBytes(path).Take(prefix.Length)),"rollback copy or original prefix changed");
+            using(var st=FloatGameStore.OpenExisting(path)){
+                Write(st,FloatCast(st.State));Write(st,Fish(st.State,"yellow-catfish",250000));Write(st,Sell(st.State));
+                Write(st,FloatCast(st.State));Write(st,Fish(st.State,"black-rockfish",750000));
+                var sale=Sell(st.State);Write(st,sale);Need(st.Execute(sale).IsReplay,"duplicate sale");
+            }
+            byte[] finished=File.ReadAllBytes(path);
+            using(var owner=OpenPlayer(path)){
+                var s=owner.Snapshot.State;var log=FloatAnglerLog.Build(s);
+                Need(s.Sequence==12&&s.Creel.Count==0&&s.WalletMinor==12272&&log.SaleMinor==272&&log.TotalCasts==4&&
+                    log.TotalCaught==4&&log.TotalSold==4&&log.TotalXp==53&&log.Species.Count==4,"replayed mixed catalogue");
+            }
+            Need(finished.SequenceEqual(File.ReadAllBytes(path)),"reopening expanded twice");
+        });
+        Test("a full creel's pending fish defers expansion and existing custom saves are left unchanged",()=>{
+            string path=FileName();
+            using(var st=FloatGameStore.CreateNew(path,FormerPlayer())){
+                for(int i=0;i<3;i++){Write(st,FloatCast(st.State));Write(st,Fish(st.State,"carp",500000));}
+            }
+            byte[] before=File.ReadAllBytes(path);
+            using(var owner=OpenPlayer(path)){
+                var s=owner.Snapshot.State;Need(s.Session.CapacityBlocked&&s.Rules.Species.Count==7&&s.Session.PendingFish.SaleValueMinor==60,"pending result changed");
+            }
+            Need(before.SequenceEqual(File.ReadAllBytes(path)),"capacity-blocked player was modified");
+            using(var st=FloatGameStore.OpenExisting(path)){
+                var s=st.State;Write(st,new ReleaseCurrentFloatFish(s.ProfileId,s.BranchId,G(),G(),s.Session.Id,s.Sequence,s.Rig.Revision,s.RulesVersion));
+            }
+            using(var owner=OpenPlayer(path)){Need(owner.Snapshot.State.Rules.Species.Count==9,"released player could not upgrade");}
+            string custom=FileName();using(var st=FloatGameStore.CreateNew(custom,New())){}
+            var bytes=File.ReadAllBytes(custom);
+            using(var owner=OpenPlayer(custom)){Need(owner.Snapshot.State.Rules.Species.Count==2,"custom catalog replaced");}
+            Need(bytes.SequenceEqual(File.ReadAllBytes(custom)),"custom journal changed");
+        });
+        Test("an unavailable or stale backup keeps the old rules; retries recover prewrite and after-flush faults",()=>{
+            string path=FileName();using(var st=FloatGameStore.CreateNew(path,FormerPlayer())){}
+            string wrong=FileName();using(var st=FloatGameStore.CreateNew(wrong,FormerPlayer())){}
+            var inspection=FloatJournalArchive.Inspect(path);
+            string backupPath=Path.Combine(folder,Path.GetFileNameWithoutExtension(path)+".before-nine-species."+inspection.Sha256+".fltj");
+            File.Copy(wrong,backupPath);
+            using(var owner=OpenPlayer(path)){Need(owner.Snapshot.State.Sequence==0,"unverified backup allowed expansion");}
+            Need(File.ReadAllBytes(backupPath).SequenceEqual(File.ReadAllBytes(wrong)),"existing backup was overwritten");
+            path=FileName();using(var st=FloatGameStore.CreateNew(path,FormerPlayer())){}
+            inspection=FloatJournalArchive.Inspect(path);
+            var oldTip=FloatJournalArchive.BackupBeforeSpeciesExpansion(inspection);
+            using(var st=FloatGameStore.OpenExisting(path)){Write(st,FloatCast(st.State));Write(st,Recall(st.State));}
+            using(var owner=FloatGameOwner.OpenExisting(path,null,3,null,oldTip)){Need(owner.Snapshot.State.Sequence==2,"stale backup allowed expansion");}
+            foreach(var point in new[]{FloatSaveFaultPoint.BeforeWrite,FloatSaveFaultPoint.AfterFlush}){
+                string faultFile=FileName();using(var st=FloatGameStore.CreateNew(faultFile,FormerPlayer())){}
+                try{using(var owner=OpenPlayer(faultFile,p=>{if(p==point)throw new IOException("private fault");})){}throw new Exception("missing fault");}
+                catch(IOException){}
+                using(var owner=OpenPlayer(faultFile)){var s=owner.Snapshot.State;Need(s.Sequence==1&&s.Rules.Species.Count==9,"fault replay wrote twice or skipped expansion");}
+            }
+            string partial=FileName();using(var st=FloatGameStore.CreateNew(partial,FormerPlayer())){}
+            byte[] clean=File.ReadAllBytes(partial);
+            try{using(var owner=OpenPlayer(partial,p=>{if(p==FloatSaveFaultPoint.AfterPrefix)throw new IOException("private partial frame");})){}throw new Exception("missing partial-frame fault");}
+            catch(FloatSaveUncertainException){}
+            var damaged=File.ReadAllBytes(partial);
+            try{using(var owner=OpenPlayer(partial)){}throw new Exception("partial journal opened");}
+            catch(InvalidDataException){}
+            string rollback=Directory.GetFiles(folder,Path.GetFileNameWithoutExtension(partial)+".before-nine-species.*.fltj").Single();
+            Need(File.ReadAllBytes(partial).SequenceEqual(damaged)&&clean.SequenceEqual(File.ReadAllBytes(rollback))&&
+                FloatJournalArchive.Inspect(rollback).State.Rules.Species.Count==7,"partial write damaged the rollback copy or silently changed the journal");
         });
         return failed==0?0:1;
     }

@@ -20,7 +20,7 @@ $lines|Set-Content -LiteralPath (Join-Path $run 'test-output.txt') -Encoding utf
 $checks=@($lines|Where-Object {$_ -like 'PASS *'})
 $failures=@($lines|Where-Object {$_ -like 'FAIL *'})
 $report=[pscustomobject]@{passed=($testResult -eq 0 -and $checks.Count -eq 11 -and $failures.Count -eq 0);passedCount=$checks.Count;
-    checks=$checks;failures=$failures;waters=3;localSpecies=7;twoDayCycle=$true;personalSaveRead=$false;nativeExecuted=$false;outputDirectory=$run}
+    checks=$checks;failures=$failures;waters=3;localSpecies=9;twoDayCycle=$true;personalSaveRead=$false;nativeExecuted=$false;outputDirectory=$run}
 $report|ConvertTo-Json -Depth 4|Set-Content -LiteralPath (Join-Path $run 'summary.json') -Encoding utf8
 if(-not $report.passed){$lines|Out-Host;throw 'Water condition tests failed.'}
 $report|ConvertTo-Json -Depth 4

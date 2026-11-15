@@ -118,9 +118,9 @@ sealed partial class DualWindowContext
             Require(read.DesktopReadOnly && !read.Ticket.CanControl && !pane.DesktopReadOnly && pane.Opacity==0 && !pane.ShowInTaskbar &&
                 GetForegroundWindow()!=read.Handle && GetForegroundWindow()!=pane.Handle,"Wallpaper or test interaction window took foreground.");
             var s=game.Snapshot.State;
-            Require(s.Sequence==1 && s.Rules.Species.Count==7 && s.BaitCount==12 && s.Stamina==100 &&
-                s.Equipment.Instances.Count==6 && s.WalletMinor==12000,"Wallpaper profile did not start from the private seven-species fixture.");
-            checks.Add("an interactive nonfullscreen native sample permits a private seven-species game with one read-only desktop child and one invisible test control");
+            Require(s.Sequence==1 && s.Rules.Species.Count==9 && s.BaitCount==12 && s.Stamina==100 &&
+                s.Equipment.Instances.Count==6 && s.WalletMinor==12000,"Wallpaper profile did not start from the private nine-species fixture.");
+            checks.Add("an interactive nonfullscreen native sample permits a private nine-species game with one read-only desktop child and one invisible test control");
 
             var binding=desktopLeases[read];var candidate=binding.Candidate;long hwnd=binding.WindowHandle;
             var state=desktopApi.ReadWindow(hwnd);CheckDesktop(read);

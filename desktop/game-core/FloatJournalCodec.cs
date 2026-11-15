@@ -13,7 +13,7 @@ namespace FishingDesktop.GameCore
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
         const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17,EquipmentUpgrade=18,ArchiveEquipment=19,CampReward=20,Clothing=21,BottomKit=22,BottomCast=23,AdditionalBottomKit=24,BankStand=25,BankCast=26,BankEnding=27;
-        const byte LureKit=28,LureCast=29;
+        const byte LureKit=28,LureCast=29,DomesticSevenToNine=30;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -127,6 +127,7 @@ namespace FishingDesktop.GameCore
         }
         static byte Type(FloatCommand command)
         {
+            if(command is ExpandDomesticSpecies)return DomesticSevenToNine;
             if(command is CastFloat)return Cast;if(command is RecallFloat)return Recall;if(command is ReleaseCurrentFloatFish)return Release;
             if(command is BuyBottomKit)return BottomKit;
             if(command is BuyLureKit)return LureKit;
@@ -234,9 +235,13 @@ namespace FishingDesktop.GameCore
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,(reader,schema)=>{
-                byte type=reader.Byte();if(type<Cast||type>LureCast||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(type<Cast||type>DomesticSevenToNine||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
+                if(type==DomesticSevenToNine){
+                    if(session!=Guid.Empty)throw Invalid("Species expansion contains a session.");
+                    return new ExpandDomesticSpecies(profile,branch,request,businessEvent,sequence,rig,rules);
+                }
                 if(type==LureKit){
                     if(session!=Guid.Empty)throw Invalid("Lure kit purchase contains a session.");
                     var kit=new OwnedLureKit(reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid(),reader.Guid());

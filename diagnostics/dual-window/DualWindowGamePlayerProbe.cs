@@ -105,9 +105,9 @@ sealed partial class DualWindowContext
             var pane=windows[true];await Ready(pane);
             var initial=game.Snapshot.State;var lake=FloatFishingAtlas.Find("development-still-water");
             var river=FloatFishingAtlas.Find("river-bend");var coast=FloatFishingAtlas.Find("coastal-bay");
-            Require(!pane.DesktopReadOnly && initial.Sequence==1 && initial.Rules.Species.Count==7 && initial.WalletMinor==12000 &&
+            Require(!pane.DesktopReadOnly && initial.Sequence==1 && initial.Rules.Species.Count==9 && initial.WalletMinor==12000 &&
                 initial.BaitCount==12 && initial.Stamina==100 && initial.Equipment.Instances.Count==6 && initial.Session==null,
-                "Single player did not start from its new private seven-species profile.");
+                "Single player did not start from its new private nine-species profile.");
             // The hidden diagnostic window uses a fixed landscape preview size.
             pane.ClientSize=new Size(1440,900);
             string lease=await Activate(pane);

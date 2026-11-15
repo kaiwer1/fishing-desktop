@@ -113,6 +113,8 @@ namespace FishingDesktop.GameCore
         }
 
         public bool IsFaulted { get { lock (_gate) return _faulted; } }
+        internal bool HasConfirmedTip(string tip)
+        {lock(_gate){return String.Equals(BitConverter.ToString(_lastHash).Replace("-",""),tip,StringComparison.OrdinalIgnoreCase);}}
         public FloatGameState State
         {
             get { lock (_gate) { CheckAvailable(); return _state; } }

@@ -7,15 +7,15 @@ namespace FishingDesktop.GameCore
     internal sealed class FloatFishingSpecies
     {
         internal readonly string Id,Name,AssetId;
-        internal readonly FloatSpeciesRule Rule;
+        internal readonly bool RequiresNineSpeciesCatalog;
         internal readonly long EncounterMinimumMg,EncounterMaximumMg;
 
-        internal FloatFishingSpecies(string id,string name,string assetId,long minimumMg,long maximumMg,long minorPerKg,long encounterMinimumMg,long encounterMaximumMg)
+        internal FloatFishingSpecies(string id,string name,string assetId,long encounterMinimumMg,long encounterMaximumMg,bool requiresNineSpeciesCatalog=false)
         {
-            if(encounterMinimumMg<minimumMg || encounterMaximumMg>maximumMg || encounterMaximumMg<encounterMinimumMg)
+            var rule=FloatDomesticSpeciesCatalog.Nine.Find(id);
+            if(rule==null || encounterMinimumMg<rule.MinimumMassMg || encounterMaximumMg>rule.MaximumMassMg || encounterMaximumMg<encounterMinimumMg)
                 throw new ArgumentOutOfRangeException("encounterMinimumMg");
-            Id=id;Name=name;AssetId=assetId;
-            Rule=new FloatSpeciesRule(id,minimumMg,maximumMg,minorPerKg);
+            Id=id;Name=name;AssetId=assetId;RequiresNineSpeciesCatalog=requiresNineSpeciesCatalog;
             EncounterMinimumMg=encounterMinimumMg;EncounterMaximumMg=encounterMaximumMg;
         }
     }
@@ -56,6 +56,7 @@ namespace FishingDesktop.GameCore
         static bool HasEncounterRange(FloatGameRules rules,FloatFishingSpecies species)
         {
             if(rules==null || (rules.Version!=1 && rules.Version!=FloatFishingAtlas.NewRulesVersion))return false;
+            if(species.RequiresNineSpeciesCatalog && rules.Signature!=FloatDomesticSpeciesCatalog.Nine.Signature)return false;
             var rule=rules.Find(species.Id);
             return rule!=null && rule.MaximumMassMg>=species.EncounterMinimumMg && rule.MinimumMassMg<=species.EncounterMaximumMg;
         }
@@ -94,15 +95,16 @@ namespace FishingDesktop.GameCore
     internal static class FloatFishingAtlas
     {
         internal const long NewRulesVersion=2;
-        static readonly FloatFishingSpecies Carp=new FloatFishingSpecies("carp","鲤鱼","fw_carp",100000,10000000,120,300000,1800000);
-        static readonly FloatFishingSpecies Crucian=new FloatFishingSpecies("crucian","鲫鱼","fw_crucian",50000,3000000,80,100000,650000);
-        static readonly FloatFishingSpecies Grass=new FloatFishingSpecies("grass-carp","草鱼","fw_grass_carp",200000,12000000,135,550000,2400000);
-        static readonly FloatFishingSpecies Bream=new FloatFishingSpecies("blunt-snout-bream","鳊鱼","fw_blunt_snout_bream",100000,3500000,105,220000,1050000);
-        static readonly FloatFishingSpecies Black=new FloatFishingSpecies("black-seabream","黑鲷","sw_black_seabream",100000,6000000,175,330000,1900000);
-        static readonly FloatFishingSpecies Bass=new FloatFishingSpecies("spotted-seabass","花鲈","sw_spotted_seabass",200000,10000000,165,480000,2600000);
-        static readonly FloatFishingSpecies Yellow=new FloatFishingSpecies("yellowfin-seabream","黄鳍鲷","sw_yellowfin_seabream",80000,4300000,155,180000,1300000);
-        internal static readonly ReadOnlyCollection<FloatSpeciesRule> SpeciesRules=Array.AsReadOnly(new[]{
-            Carp.Rule,Crucian.Rule,Grass.Rule,Bream.Rule,Black.Rule,Bass.Rule,Yellow.Rule});
+        static readonly FloatFishingSpecies Carp=new FloatFishingSpecies("carp","鲤鱼","fw_carp",300000,1800000);
+        static readonly FloatFishingSpecies Crucian=new FloatFishingSpecies("crucian","鲫鱼","fw_crucian",100000,650000);
+        static readonly FloatFishingSpecies Grass=new FloatFishingSpecies("grass-carp","草鱼","fw_grass_carp",550000,2400000);
+        static readonly FloatFishingSpecies Bream=new FloatFishingSpecies("blunt-snout-bream","鳊鱼","fw_blunt_snout_bream",220000,1050000);
+        static readonly FloatFishingSpecies Black=new FloatFishingSpecies("black-seabream","黑鲷","sw_black_seabream",330000,1900000);
+        static readonly FloatFishingSpecies Bass=new FloatFishingSpecies("spotted-seabass","花鲈","sw_spotted_seabass",480000,2600000);
+        static readonly FloatFishingSpecies Yellow=new FloatFishingSpecies("yellowfin-seabream","黄鳍鲷","sw_yellowfin_seabream",180000,1300000);
+        static readonly FloatFishingSpecies Catfish=new FloatFishingSpecies("yellow-catfish","黄颡鱼","fw_yellow_catfish",110000,480000,true);
+        static readonly FloatFishingSpecies Rockfish=new FloatFishingSpecies("black-rockfish","许氏平鲉","sw_black_rockfish",300000,1350000,true);
+        internal static readonly ReadOnlyCollection<FloatSpeciesRule> SpeciesRules=FloatDomesticSpeciesCatalog.Nine.Species;
         internal static readonly ReadOnlyCollection<FloatFishingWater> Waters=Array.AsReadOnly(new[]{
             new FloatFishingWater("静水湾","freshwater","近岸芦苇间可寻鲫鱼，塘心深水更常遇到鲤鱼。",
                 FloatStillWaterGeometry.CreateDevelopment(),1800,"芦苇浅滩","塘心深窝",
@@ -111,12 +113,12 @@ namespace FishingDesktop.GameCore
                 new FloatStillWaterGeometry("river-bend","reed-bank",2,0,1500,0,0,-46000,46000,3000,80000,
                     -13000,13000,12000,41000,new[]{new FloatWaterBedKnot(3000,520),new FloatWaterBedKnot(12000,950),
                         new FloatWaterBedKnot(28000,2750),new FloatWaterBedKnot(80000,4650)}),2100,"湾口草滩","回湾深槽",
-                new FloatFishingWater.FishWeight(Grass,5,2),new FloatFishingWater.FishWeight(Bream,4,3),new FloatFishingWater.FishWeight(Carp,1,5)),
+                new FloatFishingWater.FishWeight(Grass,5,2),new FloatFishingWater.FishWeight(Bream,4,3),new FloatFishingWater.FishWeight(Carp,1,5),new FloatFishingWater.FishWeight(Catfish,1,3)),
             new FloatFishingWater("海湾","marine","黄鳍鲷常在近岸沙槽活动，外湾礁坡更容易遇到黑鲷和花鲈。",
                 new FloatStillWaterGeometry("coastal-bay","rock-bank",3,0,1600,0,0,-48000,48000,3000,85000,
                     -14000,14000,13000,42000,new[]{new FloatWaterBedKnot(3000,750),new FloatWaterBedKnot(13000,1500),
                         new FloatWaterBedKnot(30000,3500),new FloatWaterBedKnot(85000,6400)}),2700,"近岸沙槽","外湾礁坡",
-                new FloatFishingWater.FishWeight(Black,3,5),new FloatFishingWater.FishWeight(Bass,1,4),new FloatFishingWater.FishWeight(Yellow,6,1))
+                new FloatFishingWater.FishWeight(Black,3,5),new FloatFishingWater.FishWeight(Bass,1,4),new FloatFishingWater.FishWeight(Yellow,6,1),new FloatFishingWater.FishWeight(Rockfish,1,4))
         });
 
         internal static FloatFishingWater Find(string waterId)

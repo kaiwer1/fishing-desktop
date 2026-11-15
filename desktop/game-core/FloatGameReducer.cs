@@ -19,6 +19,11 @@ namespace FishingDesktop.GameCore
         internal virtual string Detail{get{return "";}}
         internal string Fingerprint{get{return Kind+"|"+ProfileId.ToString("N")+"|"+BranchId.ToString("N")+"|"+EventId.ToString("N")+"|"+SessionId.ToString("N")+"|"+FloatGuard.Number(ExpectedSequence)+"|"+FloatGuard.Number(ExpectedRigRevision)+"|"+FloatGuard.Number(ExpectedRulesVersion)+"|"+Detail;}}
     }
+    internal sealed class ExpandDomesticSpecies : FloatCommand
+    {
+        internal ExpandDomesticSpecies(Guid profile,Guid branch,Guid request,Guid businessEvent,long sequence,long rigRevision,long rulesVersion)
+            :base("expand-domestic-seven-to-nine-v1",profile,branch,request,businessEvent,Guid.Empty,sequence,rigRevision,rulesVersion){}
+    }
     internal sealed class BuyLureKit : FloatCommand
     {
         internal readonly OwnedLureKit Kit;
@@ -400,6 +405,7 @@ namespace FishingDesktop.GameCore
         {switch(outcome){
             case FloatOutcome.BottomKitPurchased:return "bottom-kit-purchase-candidate";
             case FloatOutcome.LureKitPurchased:return "lure-kit-purchase-candidate";
+            case FloatOutcome.SpeciesCatalogExpanded:return "species-catalog-expanded";
             case FloatOutcome.AdditionalBottomKitPurchased:return "additional-bottom-kit-purchase-candidate";
             case FloatOutcome.BankRodStandPurchased:return "bank-rod-stand-purchase-candidate";
             case FloatOutcome.ClothingPurchased:return "clothing-purchase-candidate";
@@ -448,7 +454,12 @@ namespace FishingDesktop.GameCore
             var equipment=state.Equipment;var equipmentOffers=state.EquipmentOffers;var equipmentOrigin=state.EquipmentUpgradeOrigin;FloatEquipmentLossSummary equipmentLoss=null;FloatEquipmentArchiveSummary equipmentArchive=null;
             var bankSessions=new List<FloatSession>(state.BankSessions);
             try{
-                if(command is BuyLureKit){
+                if(command is ExpandDomesticSpecies){
+                    if(!FloatDomesticSpeciesCatalog.CanExpand(state))return Reject("species-catalog-ineligible");
+                    if(command.RequestId==command.EventId||KnownPurchaseIdentity(state,command.RequestId)||KnownPurchaseIdentity(state,command.EventId))
+                        return Reject("species-catalog-identity-invalid");
+                    rules=FloatDomesticSpeciesCatalog.Nine;outcome=FloatOutcome.SpeciesCatalogExpanded;
+                }else if(command is BuyLureKit){
                     if(!OwnedLureKit.Enabled(state))return Reject("lure-kit-unavailable");
                     if(session!=null)return Reject("session-busy");
                     if(state.OwnedLureKit!=null)return Reject("lure-kit-already-owned");

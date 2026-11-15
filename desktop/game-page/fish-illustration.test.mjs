@@ -17,13 +17,13 @@ function fixture() {
     createElement: tag => new Node(tag,doc) };
   return {doc, bank:doc.createElementNS('http://www.w3.org/2000/svg','svg')};
 }
-const species = ['carp','crucian','grass-carp','blunt-snout-bream','black-seabream','yellowfin-seabream','spotted-seabass'];
+const species = ['carp','crucian','grass-carp','blunt-snout-bream','black-seabream','yellowfin-seabream','spotted-seabass','yellow-catfish','black-rockfish'];
 test('each species has an independent body and dorsal shape, local pigments, distinct fins and a reusable accessible plate', () => {
   const {doc,bank} = fixture(); installFishIllustrations(doc,bank); installFishIllustrations(doc,bank);
   const symbols = bank.all('symbol'), bodies=bank.all('clipPath').map(c=>c.children[0].attributes.d);
-  assert.equal(symbols.length,7); assert.equal(new Set(bodies).size,7);
-  assert.equal(new Set(symbols.map(s=>s.children[1].attributes.d)).size,7);
-  assert.equal(new Set(symbols.map(s=>s.attributes.id)).size,7);
+  assert.equal(symbols.length,species.length); assert.equal(new Set(bodies).size,species.length);
+  assert.equal(new Set(symbols.map(s=>s.children[1].attributes.d)).size,species.length);
+  assert.equal(new Set(symbols.map(s=>s.attributes.id)).size,species.length);
   const seabass = symbols.find(s=>s.attributes.id==='fd-fish-spotted-seabass'); assert.ok(seabass.all('ellipse').length >= 20);
   const byId = id => symbols.find(s=>s.attributes.id==='fd-fish-'+id);
   assert.notEqual(byId('black-seabream').children[2].attributes.fill, byId('yellowfin-seabream').children[2].attributes.fill);

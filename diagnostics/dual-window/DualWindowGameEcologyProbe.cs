@@ -104,7 +104,7 @@ sealed partial class DualWindowContext
             var pane=windows[true];await Ready(pane);pane.ClientSize=new Size(1280,800);string lease=await Activate(pane);
             var lake=FloatFishingAtlas.Find("development-still-water");var coast=FloatFishingAtlas.Find("coastal-bay");
             var initial=game.Snapshot.State;string initialDigest=GameShopJournalDigest();
-            Require(initial.Sequence==1&&initial.BaitCount==12&&initial.Stamina==100&&initial.WalletMinor==12000&&initial.Rules.Species.Count==7,
+            Require(initial.Sequence==1&&initial.BaitCount==12&&initial.Stamina==100&&initial.WalletMinor==12000&&initial.Rules.Species.Count==9,
                 "Wrong private ecology starting profile.");
             await EcologyProbeSky(pane,lake);
             long firstMs=gameEcologyTimeMs;await Wait(pane,p=>gameEcologyTimeMs>=firstMs+500);

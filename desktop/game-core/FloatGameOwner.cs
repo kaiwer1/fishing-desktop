@@ -67,7 +67,7 @@ namespace FishingDesktop.GameCore
         // settlement. The already-held writer closes the inspection/open gap.
         internal static FloatGameOwner OpenExisting(string path,Action<FloatSaveFaultPoint> hook,int requiredSchemaVersion)
         { return OpenExisting(path,hook,requiredSchemaVersion,null); }
-        internal static FloatGameOwner OpenExisting(string path,Action<FloatSaveFaultPoint> hook,int requiredSchemaVersion,Action<FloatGameState> preStartupValidation)
+        internal static FloatGameOwner OpenExisting(string path,Action<FloatSaveFaultPoint> hook,int requiredSchemaVersion,Action<FloatGameState> preStartupValidation,string backedUpSpeciesTip=null)
         {
             var owner = new FloatGameOwner(FloatGameStore.OpenExisting(path, hook));
             try
@@ -78,11 +78,28 @@ namespace FishingDesktop.GameCore
                 // writer lock that will settle startup. Rejection cannot write
                 // a Recovery or leave this unopened owner holding the file.
                 if(preStartupValidation!=null)preStartupValidation(owner._store.State);
+                bool expandDomesticSpecies=backedUpSpeciesTip!=null && owner._store.HasConfirmedTip(backedUpSpeciesTip);
                 var recovery = owner.Run(() => FloatGameLifecycle.Startup(owner._store));
                 if (!recovery.Confirmed) throw new InvalidOperationException("Startup settlement was not confirmed: " + recovery.Code);
+                if(expandDomesticSpecies)owner.ExpandPlayerSpecies();
                 return owner;
             }
             catch { owner._store.Dispose(); owner._disposed = true; throw; }
+        }
+
+        void ExpandPlayerSpecies()
+        {
+            var state=_store.State;
+            if(!FloatDomesticSpeciesCatalog.CanExpand(state))return;
+            var budget=_store.SaveBudget;
+            // A header-only expansion frame has the same size as a release.
+            // Leave the final cast and its possible settlements to the player.
+            if(budget.RemainingTransactions<=budget.RequiredCastTransactions ||
+                budget.RemainingBytes<budget.RequiredCastBytes+FloatSaveBudget.ReleaseFrameBytes)return;
+            var command=new ExpandDomesticSpecies(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),
+                state.Sequence,state.Rig.Revision,state.RulesVersion);
+            var commit=Run(()=>_store.Execute(command));
+            if(!commit.Committed)throw new InvalidOperationException("Fish catalogue expansion was not confirmed: "+commit.Code);
         }
 
         void Entry()

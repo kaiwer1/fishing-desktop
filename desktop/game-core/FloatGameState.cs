@@ -92,6 +92,36 @@ namespace FishingDesktop.GameCore
         }
         internal FloatSpeciesRule Find(string key){foreach(var row in Species)if(row.SpeciesKey==key)return row;return null;}
     }
+    // These two immutable price sheets define the historical seven-to-nine
+    // species journal transition. Later catalogues must get a separate event.
+    internal static class FloatDomesticSpeciesCatalog
+    {
+        static FloatGameRules PlayerRules(IEnumerable<FloatSpeciesRule> species)
+        {return new FloatGameRules(2,"float-starter","worm",2,100,2,1000000,species);}
+
+        internal static readonly FloatGameRules Seven=PlayerRules(new[]{
+            new FloatSpeciesRule("carp",100000,10000000,120),
+            new FloatSpeciesRule("crucian",50000,3000000,80),
+            new FloatSpeciesRule("grass-carp",200000,12000000,135),
+            new FloatSpeciesRule("blunt-snout-bream",100000,3500000,105),
+            new FloatSpeciesRule("black-seabream",100000,6000000,175),
+            new FloatSpeciesRule("spotted-seabass",200000,10000000,165),
+            new FloatSpeciesRule("yellowfin-seabream",80000,4300000,155)});
+        internal static readonly FloatGameRules Nine=Expanded();
+        static FloatGameRules Expanded()
+        {
+            var rows=new List<FloatSpeciesRule>(Seven.Species);
+            rows.Add(new FloatSpeciesRule("yellow-catfish",60000,1400000,148));
+            rows.Add(new FloatSpeciesRule("black-rockfish",150000,3500000,188));
+            return PlayerRules(rows);
+        }
+        internal static bool IsPreviousPlayerCatalog(FloatGameState state)
+        {
+            return state.SchemaVersion==3 && state.EquipmentUpgradeOrigin==null && state.Rules.Signature==Seven.Signature;
+        }
+        internal static bool CanExpand(FloatGameState state)
+        {return state.Session==null && state.BankSessions.Count==0 && IsPreviousPlayerCatalog(state);}
+    }
     public sealed class FloatFish
     {
         public readonly Guid Id,SessionId,EncounterId;
@@ -240,7 +270,7 @@ namespace FishingDesktop.GameCore
         internal static bool Enabled(FloatGameState state)
         {return state!=null && state.SchemaVersion==3 && state.RulesVersion==2 && state.EquipmentUpgradeOrigin==null;}
     }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved,BottomKitPurchased,AdditionalBottomKitPurchased,BankRodStandPurchased,LureKitPurchased }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved,BottomKitPurchased,AdditionalBottomKitPurchased,BankRodStandPurchased,LureKitPurchased,SpeciesCatalogExpanded }
     public sealed class FloatEquipmentLossSummary
     {
         public readonly Guid LineId;

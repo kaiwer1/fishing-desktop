@@ -39,9 +39,9 @@ sealed partial class DualWindowContext
             await Activate(pane);
             var ini=game.Snapshot.State;var lake=FloatFishingAtlas.Find("development-still-water");var station=FloatFishingAtlas.Find("coastal-bay");
             await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
-            Require(ini.Sequence==1 && ini.Rules.Species.Count==7 && ini.OwnedNet==null && ini.WalletMinor==12000 &&
+            Require(ini.Sequence==1 && ini.Rules.Species.Count==9 && ini.OwnedNet==null && ini.WalletMinor==12000 &&
                 ini.BaitCount==12 && ini.Stamina==100 && ini.Creel.Count==0,"Unexpected standalone catch profile.");
-            checks.Add("the private landscape player starts with seven eligible species, an empty creel and no net");
+            checks.Add("the private landscape player starts with nine eligible species, an empty creel and no net");
 
             await SceneProbeButton(pane,"scene-menu");
             await Wait(pane,s=>Field(s,"snapshot")!=null && (bool)Field(s,"snapshot")["MenuOpen"]);

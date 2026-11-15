@@ -99,6 +99,23 @@ namespace FishingDesktop.GameCore
             if(replay.Length!=inspection.Length||replay.State.Sequence!=inspection.Sequence||replay.State.ProfileId!=inspection.ProfileId||replay.State.BranchId!=inspection.BranchId||Hex(replay.CopyTipHash())!=inspection.TipSha256)
                 throw new InvalidDataException("Backup replay differs from the inspected snapshot.");
         }
+        // A previous player can open this byte-for-byte copy even though it
+        // does not recognize the newer player's catalogue transaction.
+        internal static string BackupBeforeSpeciesExpansion(FloatJournalInspection source)
+        {
+            if(!FloatDomesticSpeciesCatalog.IsPreviousPlayerCatalog(source.State) ||
+                source.State.HasPendingBankResult || (source.State.Session!=null && source.State.Session.CapacityBlocked))return null;
+            string destination=Path.Combine(Path.GetDirectoryName(source.SourcePath),
+                Path.GetFileNameWithoutExtension(source.SourcePath)+".before-nine-species."+source.Sha256+".fltj");
+            try{
+                if(File.Exists(destination)){
+                    if(Inspect(destination).Sha256!=source.Sha256)return null;
+                }else Backup(source,destination);
+                return source.TipSha256;
+            }catch(InvalidDataException){return null;}
+            catch(IOException){return null;}
+            catch(UnauthorizedAccessException){return null;}
+        }
         public static FloatJournalBackup Backup(FloatJournalInspection inspection,string destinationPath){return Backup(inspection,destinationPath,null);}
         internal static FloatJournalBackup Backup(FloatJournalInspection inspection,string destinationPath,Action<FloatArchiveFaultPoint,Stream> hook)
         {

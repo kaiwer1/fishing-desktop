@@ -55,7 +55,8 @@ sealed partial class DualWindowContext
             var inspection=FloatJournalArchive.Inspect(path);
             if(inspection.State.SchemaVersion!=2&&inspection.State.SchemaVersion!=3)throw new InvalidOperationException("This legacy profile requires an explicit backed-up candidate upgrade; opening did not change it.");
             if(GameLineBreakMode)ValidateGameLineBreakCatalog(inspection.State);
-            game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion,GameLineBreakMode?(Action<FloatGameState>)ValidateGameLineBreakCatalog:null);
+            string backedUpTip=PlayerMode?FloatJournalArchive.BackupBeforeSpeciesExpansion(inspection):null;
+            game=FloatGameOwner.OpenExisting(path,null,inspection.State.SchemaVersion,GameLineBreakMode?(Action<FloatGameState>)ValidateGameLineBreakCatalog:null,backedUpTip);
         }
         else if(GameAtlasMode || gameMode=="new" || GameLineBreakMode || GameWaterSelfTest || GameSceneSelfTest || GameSparesSelfTest || GameCampSelfTest){
             var initial=GameCampSelfTest?CreateGameFixture(0,0,0):CreateGameFixture(wallet:GameMultiRodSelfTest?30000:12000,bait:GameLureSelfTest?0:12,atlas:GameAtlasMode);

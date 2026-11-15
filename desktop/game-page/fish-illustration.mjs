@@ -1,6 +1,17 @@
 // Original lateral studies. Paths are authored in a common 240 × 112 plate,
 // with a separate contour, fin arrangement and pigment pattern per species.
 const fish = {
+  'yellow-catfish': {name:'黄颡鱼',colors:['#48442b','#ab9848','#e0d28d','#71664a'],eye:[38,54],gill:[64,72],
+    body:'M13 61Q18 53 31 48Q55 34 82 32Q107 29 139 37L178 48Q188 51 198 49L201 62Q185 62 168 65Q118 76 86 78Q55 81 28 70L15 67Z',
+    tail:'M188 49Q210 43 233 24Q229 44 211 57L231 87Q207 76 188 63Z',
+    dorsal:'M72 35L91 8Q93 16 104 35ZM138 40Q150 30 162 43L172 47Z',lower:'M110 73Q138 69 160 66L172 78Q157 80 141 83L126 84ZM83 77L94 89L103 77Z',
+    pectoral:'M58 64Q80 66 101 88Q78 82 64 73Z',marks:'M15 64Q25 67 43 62M23 62Q48 58 66 48M25 65Q52 71 78 85M23 68Q38 79 52 84M19 68Q27 77 40 81',texture:'skin' },
+  'black-rockfish': {name:'许氏平鲉',colors:['#313738','#565d59','#959789','#494e4a'],eye:[39,44],gill:[71,73],
+    body:'M14 53Q33 31 61 27Q90 20 115 28Q142 34 166 45Q181 51 193 50L198 66Q178 64 155 69Q127 79 95 83Q63 85 35 70L20 66L11 62Z',
+    tail:'M186 51Q203 49 224 45Q230 54 226 73Q207 70 187 65Z',
+    dorsal:'M64 29L70 14L75 23L82 9L85 22L94 9L97 24L105 12L108 25L117 16L121 27L129 19L132 31L139 24L143 34Q158 29 171 41L178 48Z',
+    lower:'M130 76L135 89L143 82Q162 85 171 73L167 67ZM72 78L83 92L97 82L90 77Z',
+    pectoral:'M66 57Q82 54 96 64Q103 71 99 83Q86 86 68 69Z',marks:'M12 61Q22 69 48 55M20 63Q38 64 53 48M55 46L64 37M61 50L70 44',texture:'mottle' },
   carp: { name:'鲤鱼', colors:['#4d5240','#b09a60','#d9bc89','#91714d'], eye:[40,52], gill:[58,78],
     body:'M17 60Q22 52 29 49C54 26 77 21 111 24S154 40 178 46Q186 49 197 48L199 63Q187 61 179 64C156 71 139 84 103 85Q58 86 32 71L20 68Q14 67 17 60Z',
     tail:'M185 49Q205 46 227 27Q224 45 213 55Q221 65 231 82Q207 75 185 63Z',
@@ -80,12 +91,20 @@ function pigmentation(doc, s, id) {
     scales.push(`M${x.toFixed(1)} ${y.toFixed(1)}q${spacing*.52} 2.4 0 5`);
   }
   const scaleInk=pointPath(doc,scales.join(' '),'none',s.colors[0],s.texture==='large-scales'?1.2:.7);
-  scaleInk.setAttribute('opacity',s.texture==='spots'?'.13':'.34'); group.append(scaleInk);
+  scaleInk.setAttribute('opacity',s.texture==='spots'?'.13':'.34');
+  if (s.texture!=='skin') group.append(scaleInk);
+  if (s.texture==='skin' || s.texture==='mottle'){
+    const count=s.texture==='skin'?4:9;
+    for(let i=0;i<count;i++){
+      const x=61+i*(110/count);
+      group.append(svgNode(doc,'ellipse',{cx:x,cy:41+Math.sin(i*1.8)*4,rx:8,ry:3+i%4,fill:s.colors[0],opacity:'.43'}));
+    }
+  }
   const lateral=pointPath(doc,'M58 53Q117 47 187 55','none',s.colors[2],1.5); lateral.setAttribute('opacity','.64'); group.append(lateral);
   return group;
 }
 
-// Repeated spot, creel and result cards reference the seven shared plates.
+// Spot, creel and result cards reference the same shared plates.
 // All fragment IDs and path data are local constants. Packet text is never SVG.
 export function installFishIllustrations(doc, bank) {
   if (!doc.createElementNS) return;

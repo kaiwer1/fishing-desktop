@@ -37,6 +37,8 @@ namespace FishingDesktop.GameCore
                 case "black-seabream": return WaterId=="coastal-bay"?Rate(deep,-60,125,95,165):0;
                 case "spotted-seabass": return WaterId=="coastal-bay"?Rate(deep,-165,425,180,50):0;
                 case "yellowfin-seabream": return WaterId=="coastal-bay"?Rate(deep,200,75,-150,45):0;
+                case "yellow-catfish": return WaterId=="river-bend"?Rate(deep,-140,230,90,50):0;
+                case "black-rockfish": return WaterId=="coastal-bay"?Rate(deep,-65,160,70,105):0;
                 default:return 0;
             }
         }

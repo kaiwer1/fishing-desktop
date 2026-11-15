@@ -16,7 +16,7 @@ $lines = @(& $executable $runDirectory)
 $exitCode = $LASTEXITCODE
 $lines | Set-Content -LiteralPath (Join-Path $runDirectory 'test-output.txt') -Encoding utf8
 $checks = @($lines | Where-Object {$_ -like 'PASS *'})
-$report = [pscustomobject]@{passed=($exitCode -eq 0 -and $checks.Count -eq 7);checks=$checks;privateJournals=$true;personalSaveRead=$false;outputDirectory=$runDirectory}
+$report = [pscustomobject]@{passed=($exitCode -eq 0 -and $checks.Count -eq 10);checks=$checks;privateJournals=$true;personalSaveRead=$false;outputDirectory=$runDirectory}
 $report | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $runDirectory 'summary.json') -Encoding utf8
 if (-not $report.passed) {$lines | Out-Host;throw 'Angler log checks failed.'}
 $report | ConvertTo-Json -Depth 3

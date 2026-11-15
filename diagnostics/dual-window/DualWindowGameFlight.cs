@@ -94,6 +94,7 @@ sealed partial class DualWindowContext
         Send(pane,new {kind="game-flight-state",documentId=pane.Ticket.DocumentId,revision=checked(++binding.FlightRevision),state=new {
             sessionId=flight==null?null:flight.SessionId.ToString("D"),phase=flight==null?"idle":flight.Phase.ToString().ToLowerInvariant(),
             reason=flight==null?null:flight.Reason,elapsedMilliseconds=flight==null?0:flight.ElapsedMilliseconds,
+            powerPermille=flight==null?0:flight.PowerPermille,
             xMm=FlightMm(flight==null?gameFlightOrigin.Xmm:flight.Xmm),yMm=FlightMm(flight==null?gameFlightOrigin.Ymm:flight.Ymm),zMm=FlightMm(flight==null?gameFlightOrigin.Zmm:flight.Zmm),
             lineUsedMm=flight==null?0:FlightMm(flight.LineUsedMm),origin=new {xMm=FlightMm(gameFlightOrigin.Xmm),yMm=FlightMm(gameFlightOrigin.Ymm),zMm=FlightMm(gameFlightOrigin.Zmm)},waterYmm=FlightMm(gameFlightWater.Ymm),trail=gameFlightTrail.ToArray()}});
         if(flight!=null&&(flight.Phase==FloatFlightPhase.Waiting||flight.Phase==FloatFlightPhase.Invalid))SendGameWater(pane);

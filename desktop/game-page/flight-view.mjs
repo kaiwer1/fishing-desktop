@@ -6,6 +6,7 @@ const point = p => p !== null && typeof p === 'object' && !Array.isArray(p) &&
 const copyPoint = p => ({ xMm: p.xMm, yMm: p.yMm, zMm: p.zMm });
 const copyState = s => ({
   sessionId: s.sessionId, phase: s.phase, reason: s.reason,
+  powerPermille: s.powerPermille ?? 1000,
   elapsedMilliseconds: s.elapsedMilliseconds, xMm: s.xMm, yMm: s.yMm, zMm: s.zMm,
   lineUsedMm: s.lineUsedMm, origin: copyPoint(s.origin), waterYmm: s.waterYmm,
   trail: s.trail.map(copyPoint),
@@ -25,6 +26,7 @@ export class FlightView {
         !Number.isSafeInteger(message.revision) || message.revision <= this.#revision) return false;
     const s = message.state;
     if (!s || !phases.has(s.phase) || !point(s) || !point(s.origin) ||
+        (s.powerPermille !== undefined && !integer(s.powerPermille, 0, 1000)) ||
         !integer(s.waterYmm, -1000000, 1000000) || !integer(s.elapsedMilliseconds, 0, 86400000) ||
         !integer(s.lineUsedMm, 0, 1000000) ||
         !(s.reason === null || (typeof s.reason === 'string' && s.reason.length <= 128)) ||

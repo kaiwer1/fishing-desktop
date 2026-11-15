@@ -39,17 +39,17 @@ export const specimens = {
     chest:.753,pelvis:.523,pectoral:.167
   },
   'black-seabream': {
-    depth:.354,width:.144,head:.705,eye:.844,eyeSize:.020,noseY:-.036,hump:.035,
-    profile:[.26,.25,.39,.66,.9,1,.99,.92,.73,.47,.28,.071],
-    colors:[0x39444c,0x7d8583,0xbac0ad],fin:0x565b56,ventral:0x696b5b,iris:0xb5a878,
-    scales:51,dorsal:[[.73,.40,.119,11,true],[.40,.16,.072,12,false]],anal:[.40,.19,.085,11,false],tail:.141,fork:.62,
-    chest:.691,pelvis:.632,pectoral:.174,bars:true
+    depth:.344,width:.143,head:.707,eye:.852,eyeSize:.0215,noseY:-.033,hump:.029,
+    profile:[.23,.24,.39,.70,.92,1,1,.94,.79,.57,.34,.105],
+    colors:[0x3a4550,0xa2a6a8,0xe4e3d8],fin:0x56606b,ventral:0x737a80,iris:0xada387,
+    scales:48,dorsal:[[.745,.407,.138,11,true],[.407,.15,.069,12,false]],anal:[.39,.17,.072,11,false],tail:.133,fork:.51,
+    chest:.695,pelvis:.637,pectoral:.200,bars:true
   },
   'spotted-seabass': {
-    depth:.238,width:.135,head:.660,eye:.824,eyeSize:.017,noseY:-.004,hump:.013,
-    profile:[.35,.31,.42,.62,.82,.94,1,.95,.83,.62,.39,.055],
-    colors:[0x475e59,0x9ca9a0,0xe1ded1],fin:0x707d73,ventral:0x899082,iris:0xb3b29a,
-    scales:66,dorsal:[[.66,.426,.105,12,true],[.408,.166,.080,14,false]],anal:[.38,.19,.080,10,false],tail:.119,fork:.32,
+    depth:.230,width:.134,head:.678,eye:.834,eyeSize:.0185,noseY:.004,hump:.009,
+    profile:[.32,.33,.48,.66,.84,.95,1,.95,.83,.66,.43,.13],
+    colors:[0x4c615e,0xafb6ac,0xe5e4da],fin:0x758079,ventral:0x92998e,iris:0xb3ab81,
+    scales:67,dorsal:[[.67,.445,.115,12,true],[.392,.142,.089,14,false]],anal:[.39,.18,.068,10,false],tail:.118,fork:.24,
     chest:.681,pelvis:.615,pectoral:.126,spots:true
   },
   'yellowfin-seabream': {

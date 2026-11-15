@@ -76,7 +76,8 @@ sealed partial class DualWindowContext
             "Actual contact did not use the shared water depth and clearance.");
         if(full)Require(Math.Abs(flight.Xmm-gameWaterPlan.Target.Xmm)<.001&&Math.Abs(flight.Zmm-gameWaterPlan.Target.Zmm)<.001,
             "Full charge failed to reach the frozen aim.");
-        await Wait(pane,s=>Field(s,"waterState")!=null&&Field(Field(s,"waterState"),"landing")!=null&&
+        await Wait(pane,s=>Field(s,"flightState")!=null&&Number(Field(s,"flightState"),"powerPermille")==flight.PowerPermille&&
+            Field(s,"waterState")!=null&&Field(Field(s,"waterState"),"landing")!=null&&
             (bool)Field(Field(s,"waterState"),"landing")["accepted"]&&
             Number(Field(Field(s,"waterState"),"landing"),"xMm")==sample.Sample.Xmm&&
             Number(Field(Field(s,"waterState"),"landing"),"zMm")==sample.Sample.Zmm&&

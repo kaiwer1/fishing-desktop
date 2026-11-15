@@ -2,7 +2,14 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Reflection;
 using System.Windows.Forms;
+
+[assembly: AssemblyTitle("钓鱼桌面")]
+[assembly: AssemblyProduct("Fishing Desktop")]
+[assembly: AssemblyDescription("Windows 互动钓鱼动态壁纸启动器")]
+[assembly: AssemblyVersion("0.4.0.0")]
+[assembly: AssemblyFileVersion("0.4.0.0")]
 
 namespace FishingDesktop.Player
 {
@@ -62,7 +69,7 @@ namespace FishingDesktop.Player
             AddChoice("设为桌面", "--player-wallpaper", Color.FromArgb(220, 226, 211), ForeColor);
             AcceptButton = window;
             layout.Controls.Add(new Label {
-                AutoSize = true, Text = "两种模式共用存档。首次操作请看随包的试玩指南。", Margin = Padding.Empty
+                AutoSize = true, Text = "两种模式共用存档。操作说明见随包的 Readme-zh-CN.txt。", Margin = Padding.Empty
             }, 0, 3);
         }
 
@@ -84,7 +91,7 @@ namespace FishingDesktop.Player
             var host = Path.Combine(directory, "DualWindowHost.exe");
             if (!File.Exists(host) || !File.Exists(Path.Combine(directory, "page", "game.html")))
             {
-                MessageBox.Show(this, "找不到游戏文件。请完整解压试玩 ZIP，让 app 文件夹与 FishingDesktop.exe 放在一起，再打开启动器。", Text,
+                MessageBox.Show(this, "找不到游戏文件。请完整解压下载的 ZIP，让 app 文件夹与 FishingDesktop.exe 放在一起，再打开启动器。", Text,
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }

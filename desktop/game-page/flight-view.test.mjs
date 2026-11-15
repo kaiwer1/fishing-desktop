@@ -24,9 +24,10 @@ test('position and elapsed time remain exactly host supplied between snapshots',
 });
 test('fresh page reconstructs current bobber and recent trail from one snapshot', () => {
   const existing = new FlightView('current-document'), reload = new FlightView('replacement-document');
-  const update = packet(15, { trail: [{ ...origin }, { xMm: 0, yMm: 1800, zMm: 1500 }] });
+  const update = packet(15, { powerPermille: 183, trail: [{ ...origin }, { xMm: 0, yMm: 1800, zMm: 1500 }] });
   existing.apply(update); reload.apply({ ...update, documentId: 'replacement-document', revision: 1 });
   assert.deepEqual(reload.diagram(), existing.diagram());
+  assert.equal(reload.state().powerPermille,183);
 });
 test('new session replaces previous trail and position rather than concatenating', () => {
   const view = new FlightView('current-document'); view.apply(packet());
@@ -51,7 +52,7 @@ test('malformed positions, counters, identities and oversized trails do not cons
   for (const invalid of [
     { xMm: NaN }, { yMm: Infinity }, { zMm: 1.5 }, { xMm: 1000001 }, { yMm: -1000001 },
     { elapsedMilliseconds: -1 }, { elapsedMilliseconds: 86400001 }, { lineUsedMm: -1 }, { lineUsedMm: 1000001 },
-    { origin: null }, { waterYmm: undefined }, { reason: 'x'.repeat(129) }, { reason: {} },
+    { origin: null }, { waterYmm: undefined }, { powerPermille: -1 }, { powerPermille: 1001 }, { reason: 'x'.repeat(129) }, { reason: {} },
     { sessionId: null }, { sessionId: '00000000-0000-0000-0000-000000000000' }, { phase: 'caught' },
     { phase: 'idle' }, { trail: Array.from({ length: 33 }, () => ({ ...origin })) }, { trail: [null] },
   ]) assert.equal(view.apply(packet(1, invalid)), false);

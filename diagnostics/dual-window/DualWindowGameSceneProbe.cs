@@ -59,14 +59,30 @@ sealed partial class DualWindowContext
 
     async Task SceneProbeButton(ProbeWindow pane,string id)
     {
-        var point=await SceneProbeScript(pane,@"(()=>{
+        // A committed owner state can arrive before the panel enables its button.
+        // Wait for the real DOM hit target, then issue just one mouse click.
+        string script=@"(()=>{
             const b=document.getElementById("+json.Serialize(id)+@");
-            b.scrollIntoView({block:'center',inline:'nearest'});
+            if(!b)return {ready:false,reason:'missing'};
+            if(b.disabled)return {ready:false,reason:'disabled'};
+            b.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
             const r=b.getBoundingClientRect(), x=Math.round(r.left+r.width/2), y=Math.round(r.top+r.height/2);
-            return !b.disabled && b.contains(document.elementFromPoint(x,y)) ? {x,y} : null;
-        })()");
-        await SceneProbeMouse(pane,point,true);
-        await SceneProbeMouse(pane,point,false);
+            const hit=document.elementFromPoint(x,y);
+            return r.width>0&&r.height>0&&b.contains(hit) ? {ready:true,x,y} :
+                {ready:false,reason:'covered or hidden: '+(hit?.id||hit?.tagName||'none')};
+        })()";
+        var timer=System.Diagnostics.Stopwatch.StartNew();
+        while(true){
+            var point=await SceneProbeScript(pane,script);
+            if((bool)point["ready"]){
+                await SceneProbeMouse(pane,point,true);
+                await SceneProbeMouse(pane,point,false);
+                return;
+            }
+            if(timer.ElapsedMilliseconds>=5000)
+                throw new InvalidOperationException("Button "+id+" unavailable: "+point["reason"]);
+            await Task.Delay(50);
+        }
     }
 
     async Task<int> SceneProbeCapture(ProbeWindow pane)

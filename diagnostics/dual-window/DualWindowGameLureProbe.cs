@@ -81,6 +81,11 @@ sealed partial class DualWindowContext
             Require(gameWater.SpotId=="rock-bank"&&game.Snapshot.State.Sequence==4,"Selecting lure changed wallet or location.");
             checks.Add("the coast menu enables the owned method at the rock bank and returns to the real three-dimensional fishing view");
 
+            pane.ClientSize=new Size(1680,749);
+            await Wait(pane,p=>PlayerProbeDrawn(p,coast)&&Number(SceneProbeRenderer(p),"width")>2.2*Number(SceneProbeRenderer(p),"height"),15000);
+            var canvas=await SceneProbeScript(pane,@"(()=>{const r=document.getElementById('scene-canvas').getBoundingClientRect();return {width:r.width,height:r.height};})()");
+            Require(Number(canvas,"width")>2.2*Number(canvas,"height"),"The actual coastal fishing canvas did not resize to ultrawide.");
+
             stage="retrieving the first cast to shore";
             var shortPoint=await LureProbePoint(pane,true);var first=await LureProbeCast(pane,shortPoint);
             var shortStart=first.Snapshot;

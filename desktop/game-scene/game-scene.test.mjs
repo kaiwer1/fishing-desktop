@@ -70,6 +70,11 @@ test('charge uses host power and flying uses host elapsed milliseconds',()=>{
   const launch=t=>rodPose({flight:{...f,phase:'flying',yMm:700,elapsedMilliseconds:t}});
   assert.ok(launch(0).pitch-launch(190).pitch>1);
   assert.deepEqual(launch(130).end.toArray(),[.55,.7,-13]);
+  for(const powerPermille of [25,450,980]){
+    const load=rodPose({cast:{phase:'prepared',powerPermille}});
+    const release=rodPose({flight:{...f,phase:'flying',elapsedMilliseconds:0,powerPermille}});
+    for(const axis of ['pitch','yaw','roll','flex','shiftX','shiftY'])assert.equal(release[axis],load[axis]);
+  }
 });
 
 test('waiting float uses observed bite increments only for the live session',()=>{

@@ -2,15 +2,15 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 试玩包 0.4.0-preview.8](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.8)**。选择 `FishingDesktop-0.4.0-preview.8-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 离线版 0.4.0](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0)**。选择 `FishingDesktop-0.4.0-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
 ![静水湾正午的水面与岸边](docs/preview-0.4/ecology-day.png)
 
-**看自己钓到的鱼：** 抄鱼入护后按 C，点那一条鱼旁边的「查看鱼体」。按住左键拖动可以从侧面转到正面，滚轮放大看鳞片、鳍条与花纹；按 Esc 回鱼护。已入护的七种鱼均有各自的原创模型。[黑鲷实机画面](docs/preview-0.4/creel-specimen.png) · [七种鱼外形对照](docs/preview-0.4/specimens.png)
+抄鱼入护后按 **C**，点那条鱼旁边的「查看鱼体」。按住左键拖动可以把鱼从侧面转到正面，滚轮放大看鳞片和鳍条，按 Esc 回到鱼护。七种鱼均有各自的原创模型。[0.4.0 黑鲷实机画面](docs/preview-0.4/black-seabream-release.png) · [七种鱼外形对照](docs/preview-0.4/specimens-release.png)
 
 三个钓场都有各自的天气。开局是早上 07:30，实际游玩一分钟，钓场约过去一小时。可以在天还亮时试一次静水湾浅滩，到晚上再钓同一个落点，看鲫鱼和鲤鱼的鱼口怎么变。切换钓场会沿用当前时刻；打开营地菜单时暂停，退出重开则从早上开始。
 
-[同一钓位的午夜](docs/preview-0.4/ecology-night.png) · [海湾亮片收线](docs/preview-0.4/lure-retrieve.png)
+[同一钓位的午夜](docs/preview-0.4/ecology-night.png) · [0.4.0 海湾双手摇轮收线](docs/preview-0.4/coastal-retrieve-hands.png)
 
 [海湾亮片渔获](docs/preview-0.4/lure-catch.png) · [静水湾竿架](docs/preview-0.4/multi-rod-stand.png) · [竿架渔获](docs/preview-0.4/multi-rod-catch.png) · [静水湾岸景](docs/preview-0.4/shore-lake.png) · [江湾滩岸](docs/preview-0.4/shore-river.png) · [海湾礁岸](docs/preview-0.4/shore-coast.png)
 
@@ -54,11 +54,11 @@
 
 ### 试玩版本与素材
 
-- **0.4.0-preview.8** 在岸边按 **O** 打开钓手日志，可以查每种钓法的抛竿次数、入护次数和经验，也能查到已售渔获的个人最大重量和累计收入。[日志实机画面](docs/preview-0.4/angler-log.png) · [第七版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.7)
+- **0.4.0-preview.8** 在岸边按 **O** 打开钓手日志，可以查每种钓法的抛竿次数、入护次数和经验，也能查到已售渔获的个人最大重量和累计收入。[日志实机画面](docs/preview-0.4/angler-log.png) · [第八版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.8)
 
-- **0.4.0-preview.7** 鱼护新增七种原创三维模型与近看操作，使用所选渔获的真实种类、重量，无需联网。[第六版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.6)
+- **0.4.0-preview.7** 鱼护新增七种原创三维模型与近看操作，使用所选渔获的真实种类、重量，无需联网。[第七版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.7)
 
-- **0.4.0-preview.6** 昼夜、当地天气与鱼情接入三个钓场。保持原有存档格式。[第五版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.5)
+- **0.4.0-preview.6** 昼夜、当地天气与鱼情接入三个钓场。保持原有存档格式。[第六版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.6)
 
 - **0.4.0-preview.5** 在海湾岩岸可用单枚下沉亮片钓花鲈。升级前先退出游戏，备份 `%LOCALAPPDATA%\FishingDesktop\Preview\game.fltj`，再将新包解压到独立文件夹。上一版正常退出的进度可继续使用。购买路亚套装或用亮片抛竿后，请用第五版读取这些新记录；若要降级，退出游戏后恢复更新前的备份。
 - **0.4.0-preview.4** 静水湾开放三槽竿架和两套可逐次购买的备用底竿。[第四版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.4)
@@ -66,7 +66,21 @@
 - **0.4.0-preview.2** 加入沿岸走位。静水湾岸土、江湾卵石和海湾礁石分别使用 Poly Haven 的 Forest Ground 04、Floor Pebbles 01 和 Rock 01 三款 CC0 材质。三张贴图随包提供，游玩时从本地读取。[第二版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.2) · [素材作者、原图与许可](desktop/game-scene/assets/SCENE-ASSET-CREDITS.txt)
 - **0.4.0-preview.1** 首次提供单竿浮漂、三处钓场、鱼护和营地商店的 Windows 试玩。[第一版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.1) · [第一版海湾](docs/preview-0.4/player-coast.png) · [鱼护画面](docs/preview-0.4/game-catch.png)
 
-玩法参考《俄罗斯钓鱼4》。钓组、水域和鱼护插画由项目独立制作，当前七种中国内陆与海洋鱼类的渔获以二维插画显示。其他拟饵钓法、36 种三维鱼模型以及不同硬件的性能验收仍列在后续计划中。[操作与存档](desktop/player/Readme-zh-CN.txt) · [建模交接清单](docs/ASSET_MODEL_BRIEF.md) · [开发日志](DEVLOG.md)
+玩法参考《俄罗斯钓鱼4》。七种鱼均有原创鱼护插画与可旋转的三维模型。现有三座岸钓钓场，计划中的 36 个鱼种包括已经可钓的七种。其他鱼种、船钓与后续钓法的进度见开发计划。[操作与存档](desktop/player/Readme-zh-CN.txt) · [资产清单](docs/ASSET_REFERENCE_CATALOG.md) · [开发日志](DEVLOG.md)
+
+### 从源码构建 Windows 版
+
+在 Windows x64 安装 Node.js 22.12 或更高版本，并准备 NuGet 包 `Microsoft.Web.WebView2` 版本 `1.0.3405.78`。下面的 PowerShell 命令从仓库根目录运行。`$sdk` 指向已解包且包含 `lib/net462` 的目录，示例使用 NuGet 默认缓存。输出目录放在仓库旁边，打包时选择尚未存在的 ZIP 文件名。
+
+```powershell
+npm ci
+$sdk = Join-Path $env:USERPROFILE '.nuget/packages/microsoft.web.webview2/1.0.3405.78'
+$output = (New-Item -ItemType Directory -Force -Path '../fishing-windows-build').FullName
+$build = & ./diagnostics/dual-window/build.ps1 -Game -SdkDirectory $sdk -OutputDirectory $output
+& ./scripts/package-game-preview.ps1 -BuildDirectory $build.outputDirectory -ArchivePath (Join-Path $output 'FishingDesktop-0.4.0-win-x64.zip')
+```
+
+运行 `diagnostics/dual-window/test-webviews.ps1` 并指定同一组 `-SdkDirectory` 和 `-OutputDirectory`，加上 `-GameSpecimen` 可验证从抛竿到看鱼、卖鱼的流程，加上 `-GameWallpaper` 可单独验证壁纸挂载。每次选择其中一项。
 
 ## 开发记录（按条目日期阅读）
 
@@ -78,7 +92,7 @@
 
 2026-10-28 新进度：[漂相与提竿](desktop/game-core/BITE_MODEL.md)已接宿主活动时间与页面右键，包含稳定、搜索、试探、有效提竿、空提和错过鱼口。29项模型、41项页面、28项隐藏WebView联动和原17项暂停回归通过。中鱼保持同一目标，不自动入护；下一步收线、泄力和抄鱼。当前仍是开发示意页，尚非最终写实画面或完整可玩发行版。
 
-参考图准备见[全量资产清单](docs/ASSET_REFERENCE_CATALOG.md)：36种中国内陆/海洋鱼类与100项其他资产参考任务分批交接ZCode，含已存在的18鱼参考。3D付费生成仍暂停；这份规划不是模型完成数量。
+参考图库覆盖 36 种中国淡水与近海鱼类、100 项装备与环境物件。部分文件名与画面内容不符，选图与建模时按实物外形核对。现有可玩鱼种见上方钓场表。[参考图清单与核对记录](docs/ASSET_REFERENCE_CATALOG.md)
 
 2026-10-28 飞行进展：[简化轨迹与落水](desktop/game-core/FLIGHT_MODEL.md)已接入现有宿主，按力度计算射程、检查水域和线跨度，落水才进入等待。26项飞行、26项页面及22项真实隐藏WebView检查通过；页面仅为固定平面示意，咬钩/遛鱼与正式场景尚未接入。
 

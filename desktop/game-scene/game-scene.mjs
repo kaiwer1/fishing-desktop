@@ -19,6 +19,10 @@ export function createGameScene(canvas,{onFault}={}) {
   renderer.setPixelRatio(1);
   const scene=new THREE.Scene();scene.background=new THREE.Color(0xc7c5ad);scene.fog=new THREE.FogExp2(0xc4c7b9,.0068);
   const camera=new THREE.PerspectiveCamera(47,1,.022,700);camera.layers.enable(1);
+  // Soft sky fill at arm's length keeps the thumb and crank readable over dark rocks.
+  // The reflection camera excludes layer 1; the fill falls off before it reaches the water.
+  const gripFill=new THREE.PointLight(0xdce7ed,2.8,1.65,2);
+  gripFill.layers.set(1);gripFill.position.set(-.21,.16,-.14);camera.add(gripFill);scene.add(camera);
   const skyLight=new THREE.HemisphereLight(0xfff1d6,0x79795c,1.77);scene.add(skyLight);
   const sun=new THREE.DirectionalLight(0xffdfae,2.15);sun.position.set(-47,23,-100);scene.add(sun);
   const lighting=createWeatherLighting(scene,sun,skyLight);
@@ -46,7 +50,7 @@ export function createGameScene(canvas,{onFault}={}) {
     elapsed+=dt;
     if(pendingImpact){lake.impact(pendingImpact,elapsed);pendingImpact=null;}
     lake.animate(elapsed);
-    rodPhase=tackle.animate(views,elapsed,dt,viewYaw);
+    rodPhase=tackle.animate(views,elapsed,dt,viewYaw,camera.fov);
     lake.lure(tackle.spoon.visible&&tackle.group.visible?tackle.spoon:null);
     renderer.render(scene,camera);frames++;
   },onError(){fault('webgl-render-failed');}});
@@ -97,6 +101,10 @@ export function createGameScene(canvas,{onFault}={}) {
       if(Object.hasOwn(data,'canAim')){canAim=data.canAim===true;if(!canAim)hideAim();}
       if(Object.hasOwn(data,'water'))resetLake(data.water);
       lighting.update(views.weather??null,lake);
+      if(Object.hasOwn(data,'weather')||Object.hasOwn(data,'water')){
+        const light=views.weather?.waterId===lake?.waterId ? views.weather?.lightPermille : null;
+        gripFill.intensity=.05+2.75*(Number.isFinite(light)?THREE.MathUtils.clamp(light/1000,0,1):1);
+      }
       if(key!==oldWaterKey&&!Object.hasOwn(data,'stand'))views.stand=null;
       if(key!==oldWaterKey&&!Object.hasOwn(data,'lure'))views.lure=null;
       if(Object.hasOwn(data,'stand')||Object.hasOwn(data,'water')){

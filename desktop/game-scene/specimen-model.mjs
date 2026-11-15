@@ -34,7 +34,7 @@ function pointAt(p,t,yFraction,side){
     s.z+side*s.width*Math.sqrt(Math.max(0,1-yFraction*yFraction))];
 }
 function jawOffset(p,t,vertical){
-  return (p.spots ? .021 : p.whiskers ? .009 : 0)*smooth(.87,1,t)*Math.max(0,-vertical);
+  return (p.spots ? .029 : p.whiskers ? .009 : 0)*smooth(.87,1,t)*Math.max(0,-vertical);
 }
 function hash(i,j){
   let h=Math.imul(i+17,374761393)+Math.imul(j+29,668265263);
@@ -55,17 +55,22 @@ function skin(THREE,p){
       const scaleX=u*p.scales+(row&1)*.5,cell=Math.floor(scaleX);
       const arc=.31-.49*Math.sqrt(Math.max(0,1-(v/.59)**2)),dist=fract(scaleX-arc+.5)-.5;
       const edge=Math.exp(-dist*dist*160),glint=Math.exp(-125*(dist-.095)**2);
-      const poreY=.007+.108*u-.065*Math.sin(Math.PI*u);
+      const poreY=.007+.108*u-.065*Math.sin(Math.PI*u)+(p.spots ? .105*smooth(.35,.78,u) : 0);
       const pore=Math.exp(-1920*((vert-poreY)*shape)**2)*scale;
       const scaleShade=(glint*9-edge*16+(hash(cell,row)-.5)*12)*scale;
       let pigment=0;
-      if(p.spots&&u>.06&&u<.84&&vert>-.06){
-        const a=u*19,b=(vert+.08)*3.3,ix=Math.floor(a),iy=Math.floor(b),s=side>0?3:29;
+      if(p.spots&&u>.06&&u<.84&&vert>-.12){
+        const a=u*26,b=(vert+.12)*4.1+.19*Math.sin(u*18),ix=Math.floor(a),iy=Math.floor(b),s=side>0?3:29;
         const dx=fract(a)-(.2+.60*hash(ix+s,iy+31)),dy=fract(b)-(.18+.64*hash(ix+17,iy+s));
-        const radius=.10+.14*hash(ix+s+8,iy);
-        if(hash(ix+s,iy+12)>.13)pigment-=69*(1-smooth(radius*.55,radius,Math.hypot(dx,dy*1.03)))*smooth(-.06,.09,vert);
+        const radius=.072+.14*hash(ix+s+8,iy);
+        if(hash(ix+s,iy+12)>.18)pigment-=74*(1-smooth(radius*.50,radius,Math.hypot(dx,dy*1.15)))*smooth(-.12,.06,vert);
       }
-      if(p.bars)pigment-=17*Math.pow(.5+.5*Math.cos(u*tau*5.3+vert*.96),5)*smooth(-.7,.18,vert)*scale;
+      if(p.bars){
+        const bar=Math.pow(.5+.5*Math.cos(u*tau*7.15+vert*.83+.16*Math.sin(vert*7)),3);
+        const darkScaleRow=Math.pow(.5+.5*Math.cos(tau*(rows+.12*Math.sin(u*9))),5);
+        pigment-=32*bar*smooth(-.68,.52,vert)*scale;
+        pigment-=11*darkScaleRow*scale*(1-smooth(.78,1,Math.abs(vert)));
+      }
       if(p.bars||p.yellow){
         const spotX=(u-.69)/.017,spotY=(vert-.18)/.10;pigment-=33*Math.exp(-spotX*spotX-spotY*spotY);
       }
@@ -151,7 +156,10 @@ function fins(THREE,p){
       let profile=(smooth(0,spiny ? .20 : .11,u)*(1-.60*u)+(spiny ? .18 : .12)*(1-u))*(1-.63*smooth(.78,1,u));
       const joined=up&&p.dorsal.length===2&&!p.spots;
       if(joined)profile=spiny?lerp(profile,.36,smooth(.73,1,u)):lerp(.58,profile,smooth(0,.16,u));
-      const rise=height*(profile*(1-(spiny ? .30 : .065)*scallop)+.06);
+      if(p.bars&&spiny)profile*=1-.38*smooth(.35,.94,u);
+      if(p.spots&&up&&!spiny)profile=.06+.88*Math.sin(Math.PI*u)**.76;
+      const notch=spiny ? (p.bars ? .43 : .30) : .065;
+      const rise=height*(profile*(1-notch*scallop)+.06);
       const sweep=joined ? .026 : .018+.029*u;
       return [[s.x,base,s.z],[s.x-sweep,base+sgn*rise,s.z-.003*Math.sin(u*Math.PI)]];
     });
@@ -166,7 +174,7 @@ function fins(THREE,p){
   function paired(rootT,yFrac,reach,colour,pelvic){
     for(const side of [-1,1])fan(pelvic?9:15,colour,(u,scallop)=>{
       const a=pointAt(p,rootT-.009*u,yFrac-.12*u,side);
-      const angle=(pelvic ? .29 : .13)+u*.70;
+      const angle=(pelvic ? .29 : p.bars ? -.03 : .13)+u*(p.bars&&!pelvic ? .49 : .70);
       const fanLength=reach*(.82+.18*Math.sin(Math.PI*u))*(1-.49*u*u)*(1-.025*scallop);
       return [a,[a[0]-fanLength*Math.cos(angle),a[1]-fanLength*Math.sin(angle),
         a[2]+side*(pelvic ? .035 : .045)*(.50+.50*Math.sin(Math.PI*(.28+.59*u)))]];
@@ -205,9 +213,18 @@ function face(THREE,p,group){
     const h=p.head;
     edge('opercular-rim',[[h+.055,.68],[h+.015,.45],[h-.012,.17],[h-.020,-.13],[h+.002,-.37],[h+.044,-.58]],.00135,crease);
     edge('opercular-reflection',[[h+.026,.43],[h-.001,.16],[h-.009,-.12],[h+.012,-.32]],.00115,bone,.0011);
-    const gape=p.spots ? .825 : .906;
-    edge('jaw-opening',[[gape,-.22],[gape+.035,-.26],[.969,-.19],[.989,-.09],[.999,.01]],p.spots ? .0026 : .00185,mouth);
-    edge('lower-lip',[[gape+.027,-.31],[.965,-.31],[.989,-.20],[.999,-.03]],.00165,rim);
+    const gape=p.spots ? .785 : .906;
+    if(p.spots){
+      edge('jaw-opening',[[gape,-.18],[.818,-.34],[.869,-.42],[.935,-.24],[.973,-.02],[.999,.16]],.0029,mouth);
+      edge('lower-lip',[[.80,-.29],[.868,-.50],[.935,-.35],[.976,-.14],[.998,.035]],.0024,bone);
+    }else{
+      edge('jaw-opening',[[gape,-.22],[gape+.035,-.26],[.969,-.19],[.989,-.09],[.999,.01]],.00185,mouth);
+      edge('lower-lip',[[gape+.027,-.31],[.965,-.31],[.989,-.20],[.999,-.03]],.00165,rim);
+    }
+    if(p.spots||p.bars){
+      edge('preopercular-fold',[[h+.085,.29],[h+.057,.03],[h+.045,-.22],[h+.075,-.45],[h+.108,-.48]],.00125,rim);
+      edge('cheek-plate',[[h+.05,-.42],[h+.08,-.56],[h+.125,-.62],[h+.155,-.52]],.0015,bone);
+    }
     const a=sidePoint(p.eye,p.spots ? .40 : .34),r=p.eyeSize;
     lens('orbital-rim',a,r*1.20,r*.27,rim,side);
     const b=[a[0],a[1],a[2]+side*r*.24];

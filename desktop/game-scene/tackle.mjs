@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createAnglerHands } from './angler-hands.mjs';
 import { disposeGroup, toWorld } from './water-space.mjs';
 
 const fightPhases = new Set(['fighting','landing-eligible','landing-pending','capacity-blocked','failure-pending']);
@@ -6,6 +7,12 @@ const endedFights = new Set(['landed','escaped','faulted','ended']);
 const bottomPhases = new Set(['sinking','settling','settled','touch','bite','hooked','missed','retrieve-required','retrieved']);
 const clamp = THREE.MathUtils.clamp;
 function smooth(t) { t = clamp(t,0,1); return t * t * (3 - 2 * t); }
+
+function loadedGrip(powerPermille) {
+  const load=smooth(powerPermille/1000);
+  return {pitch:.31+load*1.02,yaw:.12-load*.48,roll:-.12-load*.25,
+    flex:-.08-load*.29,shiftX:.06*load,shiftY:.11*load};
+}
 
 function bottomLineEnd(point, water) {
   const bounds=water?.waterBounds;
@@ -22,10 +29,7 @@ export function rodPose({water,cast,flight,bite,fight,bottom,lureSelected,lure},
   const pose = {phase:'idle', pitch:.115, yaw:.16, roll:-.1, flex:.04,
     shiftX:0, shiftY:0, reeling:false, reelLevel:0, end:null, float:false, spoon:false, bottomTipPermille:null};
   if (cast?.phase === 'charging' || cast?.phase === 'prepared') {
-    const load = smooth((cast.powerPermille || 0) / 1000);
-    pose.phase='charging'; pose.pitch=.31+load*1.02; pose.yaw=.12-load*.48;
-    pose.roll=-.12-load*.25;pose.flex=-.08-load*.29;pose.shiftX=.06*load;
-    pose.shiftY=.11*load;return pose;
+    return Object.assign(pose,{phase:'charging'},loadedGrip(cast.powerPermille||0));
   }
   if (!f || (hooked && endedFights.has(hooked.phase))) return pose;
   const bottomHere=bottom?.sessionId===f.sessionId && bottomPhases.has(bottom.phase) &&
@@ -53,11 +57,16 @@ export function rodPose({water,cast,flight,bite,fight,bottom,lureSelected,lure},
   }
   if (f.phase==='flying') {
     const t=f.elapsedMilliseconds/1000;
-    const sweep=smooth(t/.19), recoil=Math.exp(-Math.max(0,t-.19)*6)*Math.sin(Math.max(0,t-.19)*17);
-    pose.phase='casting';pose.pitch=1.28-(1.26*sweep)+recoil*.17;
-    pose.yaw=-.32+sweep*.49;pose.roll=-.37+.32*sweep;
-    pose.flex=-.28+Math.sin(sweep*Math.PI)*.87+recoil*.22;
-    pose.shiftY=.09*(1-sweep)-.03*sweep;
+    const power=f.powerPermille??1000, start=loadedGrip(power), effort=clamp(power/1000,0,1);
+    const stroke=.13+.085*effort, sweep=smooth(t/stroke), settle=Math.max(0,t-stroke);
+    const recoil=Math.exp(-settle*8)*Math.sin(settle*20);
+    pose.phase='casting';
+    pose.pitch=THREE.MathUtils.lerp(start.pitch,.035,sweep)+recoil*(.055+.11*effort);
+    pose.yaw=THREE.MathUtils.lerp(start.yaw,.17,sweep);
+    pose.roll=THREE.MathUtils.lerp(start.roll,-.05,sweep);
+    pose.flex=THREE.MathUtils.lerp(start.flex,.04,sweep)+Math.sin(sweep*Math.PI)*(.17+.48*effort)+recoil*(.07+.12*effort);
+    pose.shiftX=start.shiftX*(1-sweep);
+    pose.shiftY=THREE.MathUtils.lerp(start.shiftY,-.02,sweep);
     if([f.xMm,f.yMm,f.zMm].every(Number.isFinite)){pose.end=toWorld(f);pose.spoon=isLure;pose.float=!isLure;}
     return pose;
   }
@@ -104,41 +113,21 @@ function createReel(grip, black, steel, gunmetal, amber, thread) {
   wire(grip,gunmetal,[[0,-.014,.006],[0,-.048,.006],[0,-.085,-.02],[0,-.098,-.055]],.009);
   rounded(grip,gunmetal,0,-.103,-.05,.038,.04,.068);
   const rotor=new THREE.Group();rotor.position.set(0,-.105,-.094);grip.add(rotor);
+  const spool=new THREE.Group();spool.position.copy(rotor.position);grip.add(spool);
+  spool.name='line-spool';
   axial(rotor,gunmetal,0,.033,.044,.039);
-  axial(rotor,amber,-.034,.013,.042,.04);
-  axial(rotor,thread,-.048,.019,.036);
-  axial(rotor,steel,-.062,.005,.042);
-  for(let i=0;i<5;i++)axial(rotor,steel,-.037-i*.004,.001,.0366);
+  axial(spool,amber,-.034,.013,.042,.04);
+  axial(spool,thread,-.048,.019,.036);
+  axial(spool,steel,-.062,.005,.042);
+  axial(spool,black,-.068,.008,.024,.022);
+  for(let i=0;i<5;i++)axial(spool,steel,-.037-i*.004,.001,.0366);
   for(const side of [-1,1])wire(rotor,gunmetal,[[side*.03,0,.012],[side*.048,0,-.006],[side*.049,.004,-.05]],.0045,8);
   wire(rotor,steel,[[-.049,.004,-.05],[-.043,.031,-.068],[0,.054,-.082],[.042,.035,-.069],[.049,.004,-.05]],.002,24);
-  const crank=new THREE.Group();crank.position.set(-.031,-.108,-.047);grip.add(crank);
+  const crank=new THREE.Group();crank.name='reel-crank';crank.position.set(-.031,-.108,-.047);grip.add(crank);
   wire(crank,steel,[[0,0,0],[-.03,0,0],[-.048,-.02,.02],[-.054,-.04,.046]],.0046,10);
-  rounded(crank,black,-.066,-.04,.046,.019,.012,.012);
-  return {rotor,crank};
-}
-
-function anglerGrip(root) {
-  const fabric=finish(0x526451,0,.94), glove=finish(0x514a3c,0,.86), cuff=finish(0x42433c,0,.94);
-  const wrist=new THREE.Vector3(.057,-.03,.104);
-  const elbow=new THREE.Vector3(.237,-.163,.281);
-  const axis=elbow.clone().sub(wrist), length=axis.length();axis.normalize();
-  const sleeve=new THREE.Group();
-  sleeve.position.copy(wrist);sleeve.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),axis);root.add(sleeve);
-  const folds=[[.001,.035],[.012,.036],[.018,.039],[.026,.04],[.029,.047],[.045,.041],
-    [.056,.049],[.067,.045],[.102,.053],[.118,.055],[.127,.051],[.155,.056],[length,.069]];
-  const cloth=part(sleeve,new THREE.LatheGeometry(folds.map(([y,r])=>new THREE.Vector2(r,y)),18),fabric,0,0,0);
-  cloth.scale.z=.86;
-  part(sleeve,new THREE.CylinderGeometry(.038,.034,.019,18),cuff,0,.008,0);
-  for(const y of [.005,.01,.015])part(sleeve,new THREE.TorusGeometry(.0358,.0013,5,18),cuff,0,y,0).rotation.x=Math.PI/2;
-  // A single gloved hand circles the cork handle. The separate thumb crosses
-  // the four fingers and remains attached through the wrist's casting arc.
-  const palm=rounded(root,glove,.034,-.013,.066,.032,.039,.057);palm.rotation.x=-.26;
-  for(let i=0;i<4;i++){
-    const z=.025+i*.019, reach=.036-i*.001;
-    wire(root,glove,[[.043,-.022,z],[.014,-.037,z-.002],[-.018,-.029,z-.005],[-reach,-.002,z-.006]],.0098-i*.00055,12);
-  }
-  wire(root,glove,[[.047,.006,.086],[.037,.025,.064],[.018,.033,.045],[-.008,.028,.034]],.012,15);
-  return fabric;
+  const knob=rounded(crank,black,-.066,-.04,.046,.019,.012,.012);
+  knob.name='crank-grip';
+  return {rotor,crank,spool,knob};
 }
 
 export function createTackle() {
@@ -153,7 +142,7 @@ export function createTackle() {
   axial(root,cork,-.139,.081,.022,.018);
   axial(root,steel,-.1,.008,.024);axial(root,amber,-.182,.007,.019);
   const reel=createReel(root,black,steel,gunmetal,amber,thread);
-  const sleeve=anglerGrip(root);
+  const hands=createAnglerHands(root,reel.crank,reel.knob);
   const sections=[], l=.252, segmentCount=9;
   const quiverStart=segmentCount-3;
   const quiverPaint=carbon.clone(),quiverWrap=amber.clone();
@@ -194,7 +183,7 @@ export function createTackle() {
   // displacement, increasing towards the tip. No wave or local bite clock.
   const tipShares=[.12,.33,.55];
   return {group, root, float, spoon, line, tip,
-    animate(views, time, dt, viewYaw=0) {
+    animate(views, time, dt, viewYaw=0, verticalFov=60) {
       const pose=rodPose(views,time,viewYaw);
       const isBottom=pose.bottomTipPermille!==null;
       if (isBottom!==(bottomTipPermille!==null)) {
@@ -204,11 +193,14 @@ export function createTackle() {
       }
       bottomTipPermille=pose.bottomTipPermille;
       const color=typeof views.sleeveColor==='string'&&/^#[0-9a-f]{6}$/i.test(views.sleeveColor)?views.sleeveColor:null;
-      if(color!==shownColor){sleeve.color.set(color??0x526451);shownColor=color;}
+      if(color!==shownColor){hands.dress(color);shownColor=color;}
       const approach=previousPhase===null?1:1-Math.exp(-dt*(pose.phase==='casting'?31:17));
       const a=views.water.anchor;
       const gripX=.215+pose.shiftX,gripZ=-.74,c=Math.cos(viewYaw),s=Math.sin(viewYaw);
-      root.position.set(a.xMm/1000+gripX*c+gripZ*s,a.yMm/1000-.105+pose.shiftY,-a.zMm/1000+.5-gripX*s+gripZ*c);
+      // The wider shoreline view has a narrower vertical field. Raise the
+      // near-field grip enough to keep the palm in frame at the crank's low point.
+      const gripLift=.075*smooth((60-verticalFov)/13);
+      root.position.set(a.xMm/1000+gripX*c+gripZ*s,a.yMm/1000-.105+gripLift+pose.shiftY,-a.zMm/1000+.5-gripX*s+gripZ*c);
       anchorXmm=a.xMm;
       root.rotation.order='YXZ';
       root.rotation.x=THREE.MathUtils.lerp(root.rotation.x,pose.pitch,approach);
@@ -230,7 +222,13 @@ export function createTackle() {
           sections[i].rotation.x=THREE.MathUtils.lerp(sections[i].rotation.x,base,approach);
         }
       }
-      if(pose.reeling){const spin=dt*(2.5+.88*pose.reelLevel);reel.crank.rotation.x+=spin;reel.rotor.rotation.z+=spin*3.8;}
+      if(pose.reeling){
+        const spin=dt*(2.5+.88*pose.reelLevel);
+        reel.crank.rotation.x+=spin;
+        reel.rotor.rotation.z+=spin*3.8;
+        reel.spool.position.z=reel.rotor.position.z-.006*Math.sin(reel.crank.rotation.x*.7);
+      }
+      hands.update(pose,views.flight,dt);
       previousPhase=pose.phase;
       line.visible=Boolean(pose.end);float.visible=Boolean(pose.float);spoon.visible=pose.spoon;
       if(pose.end){

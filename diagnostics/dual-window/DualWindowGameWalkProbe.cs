@@ -9,7 +9,7 @@ using FishingDesktop.GameCore;
 
 sealed partial class DualWindowContext
 {
-    bool GameWalkSelfTest {get{return gameMode=="walk-self-test";}}
+    bool GameWalkSelfTest {get{return gameMode=="walk-self-test"||GameShoreSelfTest;}}
 
     async Task WalkProbeKey(ProbeWindow pane,string key,string code,int vk,bool down,bool shift=false)
     {
@@ -35,6 +35,7 @@ sealed partial class DualWindowContext
             Require(GameWalkSelfTest && windows.Count==1 && windows.ContainsKey(true),"Walk test requires one private player window.");
             var pane=windows[true];await Ready(pane);pane.ClientSize=new Size(1280,800);
             string lease=await Activate(pane),digest=GameShopJournalDigest();var binding=gameViews[pane];
+            if(GameShoreSelfTest){await RunGameShoreProbe(pane);return;}
             var lake=FloatFishingAtlas.Find("development-still-water");var coast=FloatFishingAtlas.Find("coastal-bay");
             var first=await Wait(pane,p=>PlayerProbeDrawn(p,lake) && WalkProbeStopped(p),30000);
             long initialBuilds=Number(SceneProbeRenderer(first),"sceneBuilds");

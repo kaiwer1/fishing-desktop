@@ -97,21 +97,22 @@ sealed partial class DualWindowContext
 
             string lease=await Activate(pane);await GameMenu(pane,lease,true);
             string journal=GameShopJournalDigest();
-            GameCode(await WaterProbeWire(read,AtlasProbeSelect(read,lease,coast,1)),"control-required",false);
-            var extra=AtlasProbeSelect(pane,lease,river,1);extra["depthMm"]=2000;
+            long startVersion=gameWater.Version;
+            GameCode(await WaterProbeWire(read,AtlasProbeSelect(read,lease,coast,startVersion)),"control-required",false);
+            var extra=AtlasProbeSelect(pane,lease,river,startVersion);extra["depthMm"]=2000;
             GameCode(await WaterProbeWire(pane,extra),"invalid-intent",false);
-            GameCode(await WaterProbeWire(pane,AtlasProbeSelect(pane,lease,"absent-station",1)),"spot-unavailable",false);
-            GameCode(await WaterProbeWire(pane,AtlasProbeSelect(pane,lease,start,1)),"spot-unchanged",false);
+            GameCode(await WaterProbeWire(pane,AtlasProbeSelect(pane,lease,"absent-station",startVersion)),"spot-unavailable",false);
+            GameCode(await WaterProbeWire(pane,AtlasProbeSelect(pane,lease,start,startVersion)),"spot-unchanged",false);
             Require(GameShopJournalDigest()==journal && gameWater.WaterId==start,"Denied or unchanged station request mutated a save.");
             checks.Add("observer requests, extra client data, unknown stations and selecting the current station leave the journal unchanged");
 
             string previousLease=lease;Revoke(pane);await Wait(pane,s=>s["lease"]==null);lease=await Activate(pane);
-            GameCode(await WaterProbeWire(pane,AtlasProbeSelect(pane,previousLease,coast,1)),"control-required",false);
+            GameCode(await WaterProbeWire(pane,AtlasProbeSelect(pane,previousLease,coast,startVersion)),"control-required",false);
             Require(GameShopJournalDigest()==journal && gameFishingWater.Id==start,"An expired grant moved the player.");
             checks.Add("a revoked control grant cannot change station after the same pane is authorized again");
 
             await AtlasProbeSwitch(pane,read,river);
-            GameCode(await WaterProbeWire(pane,AtlasProbeSelect(pane,lease,coast,1)),"spot-stale",false);
+            GameCode(await WaterProbeWire(pane,AtlasProbeSelect(pane,lease,coast,startVersion)),"spot-stale",false);
             Require(gameWater.WaterId==river && GameShopJournalDigest()==journal,"Stale selection moved the player.");
             checks.Add("clicking the river station updates both pages and a delayed selection for the starting geometry is rejected");
             await GameMenu(pane,lease,false);

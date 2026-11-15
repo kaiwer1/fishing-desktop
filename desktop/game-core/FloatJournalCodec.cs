@@ -13,7 +13,7 @@ namespace FishingDesktop.GameCore
         internal const int MaximumPayloadBytes=65536;
         const int MaximumStringBytes=256,MaximumSpecies=128,MaximumSaleIds=4096;
         const byte Genesis=1,Command=2,Cast=1,Recall=2,Release=3,Sale=4,HostFish=5,Recovery=6,Upgrade=7,Purchase=8,Equip=9,Food=10,Unhooked=11,ReplaceSlot=12,MoveLine=13,EquipmentCast=14,TerminalLoss=15,ConfigureOffers=16,BuyEquipment=17,EquipmentUpgrade=18,ArchiveEquipment=19,CampReward=20,Clothing=21,BottomKit=22,BottomCast=23,AdditionalBottomKit=24,BankStand=25,BankCast=26,BankEnding=27;
-        const byte LureKit=28,LureCast=29,DomesticSevenToNine=30,BaitAction=31;
+        const byte LureKit=28,LureCast=29,DomesticSevenToNine=30,BaitAction=31,SteadyStrike=32;
         static readonly byte[] Magic={0x46,0x4c,0x54,0x4a}; // FLTJ
         static readonly UTF8Encoding Utf8=new UTF8Encoding(false,true);
         static InvalidDataException Invalid(string message){return new InvalidDataException(message);}
@@ -132,6 +132,7 @@ namespace FishingDesktop.GameCore
             if(command is BuyBottomKit)return BottomKit;
             if(command is BuyLureKit)return LureKit;
             if(command is ManageFloatBait)return BaitAction;
+            if(command is LearnSteadyStrike)return SteadyStrike;
             if(command is CastLureWithEquipment)return LureCast;
             if(command is BuyAdditionalBottomKit)return AdditionalBottomKit;
             if(command is BuyBankRodStand)return BankStand;
@@ -150,6 +151,15 @@ namespace FishingDesktop.GameCore
         static FloatCommerceCatalog Catalog(Reader reader)
         {return new FloatCommerceCatalog(reader.I64(),reader.Text(),reader.Text(),reader.Text(),reader.I64(),reader.I32(),reader.I64(),reader.I64(),reader.I32(),reader.I32(),reader.I32(),reader.I32());}
         internal static int CommandSchema(byte[] payload){using(var reader=new Reader(payload))return Header(reader,Command);}
+        static bool SupportsCommand(int schema,byte type)
+        {
+            // A skill transaction only needs confirmed catch receipts, available in all three file formats.
+            if(type==SteadyStrike)return true;
+            if(type<Cast||type>BaitAction)return false;
+            if(schema==1)return type<=Recovery;
+            if(schema==2)return type<=Unhooked;
+            return schema==3&&type!=Cast&&type!=Upgrade;
+        }
         static void SaleIds(IList<Guid> ids)
         {
             if(ids.Count<1||ids.Count>MaximumSaleIds)throw Invalid("Sale identity count is invalid.");
@@ -166,9 +176,7 @@ namespace FishingDesktop.GameCore
         {
             return Encode(Command,schema,writer=>{
                 if(command==null)throw Invalid("Missing journal command.");byte type=Type(command);
-                if(schema==1&&type>Recovery)throw Invalid("This command requires schema2.");
-                if(schema<3&&type>Unhooked)throw Invalid("This command requires schema3.");
-                if(schema==3&&(type==Cast||type==Upgrade))throw Invalid("Legacy cast and upgrade cannot use schema3.");
+                if(!SupportsCommand(schema,type))throw Invalid("This journal format cannot store the command.");
                 writer.Byte(type);writer.Guid(command.ProfileId);writer.Guid(command.BranchId);writer.Guid(command.RequestId);writer.Guid(command.EventId);writer.Guid(command.SessionId);
                 writer.I64(command.ExpectedSequence);writer.I64(command.ExpectedRigRevision);writer.I64(command.ExpectedRulesVersion);
                 if(type==BaitAction){
@@ -238,9 +246,13 @@ namespace FishingDesktop.GameCore
         internal static FloatCommand DecodeCommand(byte[] payload)
         {
             return Decode(payload,Command,(reader,schema)=>{
-                byte type=reader.Byte();if(type<Cast||type>BaitAction||(schema==1&&type>Recovery)||(schema<3&&type>Unhooked)||(schema==3&&(type==Cast||type==Upgrade)))throw Invalid("Unknown journal command type.");
+                byte type=reader.Byte();if(!SupportsCommand(schema,type))throw Invalid("Unknown journal command type.");
                 Guid profile=reader.Guid(),branch=reader.Guid(),request=reader.Guid(),businessEvent=reader.Guid(),session=reader.Guid();
                 long sequence=reader.I64(),rig=reader.I64(),rules=reader.I64();
+                if(type==SteadyStrike){
+                    if(session!=Guid.Empty)throw Invalid("Skill learning contains a session.");
+                    return new LearnSteadyStrike(profile,branch,request,businessEvent,sequence,rig,rules);
+                }
                 if(type==DomesticSevenToNine){
                     if(session!=Guid.Empty)throw Invalid("Species expansion contains a session.");
                     return new ExpandDomesticSpecies(profile,branch,request,businessEvent,sequence,rig,rules);

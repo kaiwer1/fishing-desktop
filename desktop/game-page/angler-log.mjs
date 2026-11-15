@@ -19,6 +19,10 @@ function validLog(s) {
     methods.add(row.id); casts += row.casts; caught += row.caught; xp += BigInt(row.xp);
   }
   if (casts !== s.totalCasts || caught !== s.totalCaught || xp !== BigInt(s.totalXp)) return false;
+  const skill=s.steadyStrike;
+  if (skill !== undefined && (!skill || typeof skill.learned !== 'boolean' ||
+      ![skill.requiredXp,skill.baseMs,skill.bonusMs].every(n=>Number.isSafeInteger(n)&&n>0&&n<=100000) ||
+      skill.learned && BigInt(s.methods.find(m=>m.id==='float').xp)<BigInt(skill.requiredXp))) return false;
   let speciesCaught = 0;
   const species = new Set();
   for (const row of s.species) {
@@ -30,8 +34,10 @@ function validLog(s) {
 }
 
 function copyLog(s) {
+  const skill=s.steadyStrike;
   return { rulesVersion:1, sequence:s.sequence, totalCasts:s.totalCasts, totalCaught:s.totalCaught,
     totalSold:s.totalSold, saleMinor:s.saleMinor, totalXp:s.totalXp,
+    ...(skill ? {steadyStrike:{learned:skill.learned,requiredXp:skill.requiredXp,baseMs:skill.baseMs,bonusMs:skill.bonusMs}} : {}),
     methods:s.methods.map(({id,casts,caught,xp}) => ({id,casts,caught,xp})),
     species:s.species.map(({id,caught,maxMassMg}) => ({id,caught,maxMassMg})) };
 }
@@ -50,10 +56,10 @@ export class AnglerLog {
   }
 }
 
-export function createAnglerLogPanel(doc,log,canOpen) {
+export function createAnglerLogPanel(doc,log,canOpen,studyState,onLearn) {
   const get = id => doc.getElementById(id);
   const dialog = get('angler-log-dialog'), dismiss = get('angler-log-close');
-  let drawn = 0;
+  let drawn = 0, lastState;
   function element(tag,text) {
     const node = doc.createElement(tag); node.textContent = text; return node;
   }
@@ -67,8 +73,19 @@ export function createAnglerLogPanel(doc,log,canOpen) {
     name.scope = 'row'; row.append(name,...values.map(value => element('td',value))); return row;
   }
   function render() {
+    const s = drawn===log.revision ? lastState : (lastState=log.state());
+    const skill=s.steadyStrike, learn=get('learn-steady-strike');
+    get('steady-strike').hidden=!skill;
+    if (skill) {
+      const xp=s.methods.find(row=>row.id==='float').xp, enough=BigInt(xp)>=BigInt(skill.requiredXp);
+      const phase=studyState(), available=enough && (phase==='ready'||phase==='retry');
+      const status=skill.learned?'已学会':!enough?'未解锁':phase==='pending'?'正在保存':phase==='retry'?'上次未保存，可重试':available?'可学习':'暂不能学习';
+      if(drawn!==log.revision)get('steady-strike-effect').textContent=`鱼漂沉水后的提竿时间从 ${skill.baseMs/1000} 秒延长至 ${(skill.baseMs+skill.bonusMs)/1000} 秒。`;
+      const detail=`${status} · 浮漂经验 ${xp} / ${skill.requiredXp} · 学习不消耗经验`;
+      if(get('steady-strike-status').textContent!==detail)get('steady-strike-status').textContent=detail;
+      learn.hidden=skill.learned;learn.disabled=skill.learned||!available;
+    }
     if (drawn === log.revision) return;
-    const s = log.state();
     get('angler-log-summary').replaceChildren(metric('累计抛竿','totalCasts',s.totalCasts),metric('渔获入护','totalCaught',s.totalCaught),
       metric('已售渔获','totalSold',s.totalSold),metric('售鱼收入 · 银币','saleMinor',formatMinor(s.saleMinor)),metric('累计经验','totalXp',s.totalXp));
     get('angler-log-methods').replaceChildren(...s.methods.map(m => {
@@ -101,6 +118,9 @@ export function createAnglerLogPanel(doc,log,canOpen) {
     }
   }
   dismiss.addEventListener('click',close);
+  get('learn-steady-strike').addEventListener('click',()=>{
+    if(dialog.open && canOpen() && !doc.hidden && doc.hasFocus() && !get('learn-steady-strike').disabled)onLearn();
+  });
   dialog.addEventListener('cancel',e => { e.preventDefault(); close(); });
   dialog.addEventListener('keydown',key); dialog.addEventListener('keyup',key);
   return { open, close, get shown() { return Boolean(dialog.open); }, reconcile() {

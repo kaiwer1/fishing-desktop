@@ -38,6 +38,13 @@ static class FloatPageCommandsTests
     }
     static int Main()
     {
+        Test("learning requests carry no session, experience, bonus, or other client facts",()=>{
+            var s=New();var intent=Intent(s,"learn-steady-strike");Invalid(intent,s);
+            intent["sessionId"]="";Need(Parse(JsonRoundTrip(intent),s) is LearnSteadyStrike,"wrong learning request");
+            foreach(string field in new[]{"xp","learned","bonusMs","fishIds"}){
+                var invalid=new Dictionary<string,object>(intent);invalid.Add(field,100);Invalid(JsonRoundTrip(invalid),s);
+            }
+        });
         foreach(string action in new[]{"cast","recall","release-current","sell"}){
             string name=action;Test("real JSON "+name+" converts to its exact typed command",()=>{var state=New();var intent=JsonRoundTrip(Intent(state,name));var command=Parse(intent,state);var expected=Expected(intent,state);Need(command.GetType()==expected.GetType()&&command.Fingerprint==expected.Fingerprint&&command.ProfileId==state.ProfileId&&command.BranchId==state.BranchId,"Conversion changed typed facts or context identities.");});
         }

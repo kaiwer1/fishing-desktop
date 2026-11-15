@@ -49,7 +49,8 @@ sealed partial class DualWindowContext
                 if(gameFishingPool==null)return;
                 environmentForBite=gameFishingPool.Environment;
             }
-            gameBite=new FloatBiteSimulation(session,seed,new FloatBiteRules(20,20,30,80),environmentForBite);
+            int strikeSteps=FloatFishingExperience.StrikeWindowMs(state.SteadyStrikeLearned)/FloatBiteSimulation.StepMilliseconds;
+            gameBite=new FloatBiteSimulation(session,seed,new FloatBiteRules(20,20,30,strikeSteps),environmentForBite);
             gameBiteMillisecondRemainder=0;
             // Landing consumed this activity sample. Start at step zero and do
             // not give the same elapsed interval to two successive phases.

@@ -13,7 +13,7 @@ import { CampPanel } from './camp-panel.mjs';
 import { WaterView } from './water-view.mjs';
 import { pickAim } from './water-aim.mjs';
 import { ScenePresentation } from './scene-presentation.mjs';
-import { SpotMenu } from './spot-menu.mjs';
+import { SpotMenu, stationBearing, stationWater } from './spot-menu.mjs';
 import { Wardrobe, wardrobeMessages } from './wardrobe.mjs';
 import { fishName, fishFigure, installFishIllustrations, newCreelCatch } from './fish-illustration.mjs';
 import { createSpecimenView } from './specimen-view.mjs';
@@ -33,6 +33,7 @@ const authority = new LeaseSession(documentId);
 let snapshot = null, revision = 0, hostPolicy = null, lastReply = null;
 let lastActivation = null, lastActivationReply = null, lastRevoke = null;
 let inflight = null, readOnly = true;
+let studyRequest = null;
 let spotRequest = null;
 let campOpening = null, campOpenShown = false;
 let castState = null, castRevision = 0;
@@ -229,13 +230,16 @@ function reconcileSpot() {
     spotRequest = null;
   }
 }
+let activeShoreSpot = null, stationMarksKey = '';
 function renderSpotLocation() {
   const atlas = spotMenu.state(), active = atlas?.spots.find(s => s.id === atlas.activeId);
+  activeShoreSpot = active;
   $('scene-spot-name').textContent = active?.name ?? '岸边钓位';
   $('scene-spot-region').textContent = active?.region ?? '';
   $('camp-location').textContent = active?.name ?? '';
   document.body.dataset.campWater = active?.id ?? '';
   $('map-spot-name').textContent = active ? `${active.name} · 俯视钓位` : '钓鱼桌面 · 俯视钓位';
+  renderStationMarks(waterView.state());
 }
 let visualPaused = false;
 const scene = new ScenePresentation({ canvas: $('scene-canvas'), load: () => import('./game-scene.mjs'),
@@ -325,6 +329,13 @@ function renderSceneHud() {
   if (bank) {
     const side = bank.xMm < 0 ? '左侧' : '右侧';
     $('bank-position').textContent = bank.xMm === 0 ? '岸线中央' : `岸线${side} ${(Math.abs(bank.xMm) / 1000).toFixed(1)} 米`;
+  }
+  const guide = $('bank-stations'), stations = bank && activeShoreSpot?.id === bank.waterId ? activeShoreSpot.stations : null;
+  guide.hidden = !stations?.length;
+  if (!guide.hidden) {
+    const lines = stations.map(s => `${s.name} · ${stationBearing(s.xMm, bank.xMm)}\n${stationWater(s)}${s.fish.length ? ' · ' + s.fish.join('、') : ''}`);
+    const text = lines.join('\n');
+    if (guide.textContent !== text) guide.textContent = text;
   }
   let action = '对准水面', hint = '按住左键蓄力，松开抛竿。', cue = 'quiet';
   if (bank && !bankWalk.canCast(waterView.state())) { action = '沿岸走位'; hint = '松开走位键，站稳后按住水面抛竿。'; }
@@ -448,9 +459,29 @@ function renderCast() {
   $('cast-target').setAttribute('aria-disabled', String(!canPrepare() && !strikeContext().allowed && !bottomStrike.available && !(currentLure() && lureContext().allowed) && !fightContext().allowed));
   renderWater();
 }
+function renderStationMarks(water) {
+  const stations = water?.enabled && activeShoreSpot?.id === water.waterId ? activeShoreSpot.stations ?? [] : [];
+  const b = water?.bounds, key = stations.length ? JSON.stringify([b, stations]) : '';
+  if (key === stationMarksKey) return;
+  stationMarksKey = key;
+  const group = $('water-station-marks'); group.replaceChildren();
+  for (const s of stations) {
+    if (s.targetXmm < b.minXmm || s.targetXmm > b.maxXmm || s.targetZmm < b.minZmm || s.targetZmm > b.maxZmm) continue;
+    const x = (s.targetXmm-b.minXmm)*480/(b.maxXmm-b.minXmm);
+    const y = (b.maxZmm-s.targetZmm)*280/(b.maxZmm-b.minZmm);
+    const svg = tag => document.createElementNS('http://www.w3.org/2000/svg', tag);
+    const mark = svg('g'), pin = svg('circle'), label = svg('text'), title = svg('title');
+    mark.setAttribute('data-station', s.id); mark.setAttribute('transform', `translate(${x} ${y})`); pin.setAttribute('r', '4');
+    label.setAttribute('text-anchor', x < 55 ? 'start' : x > 425 ? 'end' : 'middle');
+    label.setAttribute('y', y < 26 ? '20' : '-9'); label.textContent = s.name;
+    title.textContent = `${s.name} · ${s.habitat} · ${stationWater(s)} · ${s.fish.join('、')}`;
+    mark.append(title, pin, label); group.append(mark);
+  }
+}
 function renderWater() {
   const state = waterView.state(), graph = waterView.diagram(), enabled = state?.enabled === true;
   $('cast-legacy').hidden = enabled; $('water-aim-panel').hidden = !enabled;
+  renderStationMarks(state);
   if (!enabled) return;
   const metres = value => (value / 1000).toFixed(2);
   $('water-far').textContent = `远端 ${metres(state.bounds.maxZmm)} 米`;
@@ -458,7 +489,8 @@ function renderWater() {
   $('water-horizontal').textContent = `横向 ${metres(state.bounds.minXmm)} 至 ${metres(state.bounds.maxXmm)} 米`;
   const depths = state.bed.map(row => row.depthMm);
   const methodDepth = bottomMethod() ? '铅坠沉至底部后观察竿尖' : `漂深 ${metres(state.floatDepthMm)} 米 · 最低净空 ${metres(state.clearanceMm)} 米`;
-  $('water-depth').textContent = `已配置河床水深 ${metres(Math.min(...depths))}–${metres(Math.max(...depths))} 米 · ${methodDepth}`;
+  const lateralDepths = state.crossBed?.map(row => row.extraDepthMm) ?? [0];
+  $('water-depth').textContent = `河床水深 ${metres(Math.min(...depths) + Math.min(...lateralDepths))}–${metres(Math.max(...depths) + Math.max(...lateralDepths))} 米 · ${methodDepth}`;
   const direction = { near: '近岸方向', far: '远岸方向', left: '左侧', right: '右侧' };
   const outside = p => p?.visible === false ? ` · 图外（${p.outside.map(value => direction[value]).join('、')}）` : '';
   const position = p => `横向 ${metres(p.xMm)} 米，离岸 ${metres(p.zMm)} 米，${p.depthMm === 0 ? '无有效水深' : `水深 ${metres(p.depthMm)} 米`}`;
@@ -628,7 +660,7 @@ function updateButtons() {
   sparesPanel.render();
   campPanel.render();
   $('spot-menu').hidden = !snapshot?.MenuOpen || !spotMenu.revision;
-  if (!$('spot-menu').hidden) spotMenu.render();
+  if (!$('spot-menu').hidden) spotMenu.render(bankWalk.forWater(waterView.state()));
   $('wardrobe').hidden = !snapshot?.MenuOpen || !wardrobe.revision;
   if (!$('wardrobe').hidden) wardrobe.render();
   if (scene.visible) renderSceneHud();
@@ -693,8 +725,15 @@ const campAreas = { map: 'spot-menu', creel: 'creel-section', log:'angler-log-di
 const campKeys = { KeyM: 'map', KeyC: 'creel', KeyO:'log', KeyI: 'gear', KeyT: 'food' };
 const campTitles = {home:'岸边营地',map:'选择水域',creel:'鱼护',gear:'钓组与背包',tackle:'渔具店',food:'食品补给',clothes:'服装商店',work:'营地帮工'};
 const playerCamp = () => !readOnly && spotMenu.revision > 0 && scene.state().enabled;
+function studyState() {
+  if (studyRequest) return 'pending';
+  if (!canControl() || !snapshot.MenuOpen || snapshot.SessionId || String(anglerLog.sequence)!==snapshot.Sequence || inflight ||
+      !canUseShop() || !canUseCamp() || shopInput.state().quote || sparesInput.state().quote ||
+      document.hidden || !document.hasFocus() || visualPaused || hostPolicy?.canRun===false) return 'busy';
+  return lastReply?.code==='skill-not-written' ? 'retry' : 'ready';
+}
 const logPanel = createAnglerLogPanel(document,anglerLog,() => playerCamp() && canControl() &&
-  snapshot.MenuOpen && !document.hidden && !visualPaused && hostPolicy?.canRun !== false);
+  snapshot.MenuOpen && !document.hidden && !visualPaused && hostPolicy?.canRun !== false,studyState,()=>intent('learn-steady-strike'));
 function areaAvailable(area) {
   switch (area) {
     case 'map': return Boolean(spotMenu.activeId);
@@ -763,13 +802,16 @@ function revoke(reason) {
 }
 function intent(action) {
   if (!canControl() || inflight || spotRequest || gearBusy() || wardrobe.busy || shopBusy() || equipmentBusy() || sparesBusy() || campBusy() || campEngaged() || action === 'recall' && failurePending()) return;
-  if (bankKit.selected && (action === 'sell' ? occupiedBank() : !handReady() || !heldSession())) return;
+  const learn=action==='learn-steady-strike';
+  if (learn && (!logPanel.shown || !['ready','retry'].includes(studyState()))) return;
+  if (bankKit.selected && (action === 'sell' || learn ? occupiedBank() : !handReady() || !heldSession())) return;
   if(action==='recall' && !canRecallLure())return;
   lureInput.reset();
   fightInput.cancel();
-  const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' ? '' : heldSession(),
+  const command = { action, requestId: crypto.randomUUID(), eventId: crypto.randomUUID(), sessionId: action === 'sell' || learn ? '' : heldSession(),
     expectedSequence: snapshot.Sequence, rigRevision: snapshot.RigRevision, rulesVersion: snapshot.RulesVersion };
   const transportId = crypto.randomUUID();
+  if (learn) studyRequest = {transportId};
   if (action === 'sell') {
     if (!snapshot.MenuOpen || snapshot.SessionId || document.hidden || !document.hasFocus()) return;
     command.fishIds = creel.begin(transportId,snapshot.Sequence);
@@ -781,6 +823,7 @@ function intent(action) {
 }
 const codes = { 'cast-candidate': '这一竿已保存，已使用一份鱼饵。', 'recall-candidate': '已收回，扣饵保持。', 'released-candidate': '当前鱼已放流。', 'sale-candidate': '出售已确认。', 'menu-updated': '菜单状态已更新。', 'control-required': '请重新开启交互。', 'invalid-intent': '请求未识别。', 'version-conflict': '进度已更新，请重新操作。', 'bait-empty': '鱼饵已用完。', 'stamina-insufficient': '体力不足。', 'session-busy': '请先结束当前一竿。' };
 Object.assign(codes, { 'bread-bait-prepared': '已用 1 份面包揉成 3 份面饵。', 'float-bait-selected': '已更换浮漂钩饵。', 'float-bait-unchanged': '当前已挂这种饵。', 'bread-recipe-unavailable': '这份存档尚未开放面饵制作。' });
+Object.assign(codes,{'steady-strike-learned':'已学会稳手提竿。','steady-strike-known':'已经学过稳手提竿。','float-xp-required':'浮漂经验不足，请先把渔获收入鱼护。','skill-menu-busy':'请先完成或取消当前柜台操作。','skill-not-written':'技能还未保存，请再次点击学习。'});
 Object.assign(codes, { 'bottom-kit-purchased':'底钓套装购买已确认。', 'bottom-method-selected':'钓法已切换。',
   'bottom-hooked':'底钓已中鱼，请手动收线。', 'bottom-shop-busy':'请先结束当前一竿或菜单操作。', 'bottom-shop-stale':'存档进度已变化，请重新选择。',
   'bottom-unavailable':'当前未开放底钓。', 'bottom-kit-not-owned':'请先购买底钓套装。', 'bottom-kit-owned':'已经拥有底钓套装。',
@@ -844,7 +887,10 @@ window.chrome.webview.addEventListener('message', event => {
     return;
   }
   if (m.kind === 'game-angler-log') {
-    if (anglerLog.apply(m)) { logPanel.reconcile(); renderCampNavigation(); }
+    if (anglerLog.apply(m)) {
+      if(anglerLog.state().steadyStrike?.learned)studyRequest=null;
+      logPanel.reconcile(); renderCampNavigation();
+    }
     return;
   }
   if(m.kind==='game-lure-shop-state'){if(lureShop.apply(m))render();return;}
@@ -963,6 +1009,7 @@ window.chrome.webview.addEventListener('message', event => {
     const caught = newCreelCatch(snapshot, m.snapshot); snapshot = m.snapshot; revision = m.revision; showCatch(caught);
   }
   if (m.kind === 'game-reply') {
+    if(studyRequest?.transportId===m.transportId && m.code!=='steady-strike-learned')studyRequest=null;
     creel.reply(m);
     const walkReply = bankWalk.reply(m);
     if (['walk-updated','walk-stopped'].includes(m.code)) { if (walkReply) updateButtons(); return; }

@@ -270,7 +270,18 @@ namespace FishingDesktop.GameCore
         internal static bool Enabled(FloatGameState state)
         {return state!=null && state.SchemaVersion==3 && state.RulesVersion==2 && state.EquipmentUpgradeOrigin==null;}
     }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved,BottomKitPurchased,AdditionalBottomKitPurchased,BankRodStandPurchased,LureKitPurchased,SpeciesCatalogExpanded,BreadBaitPrepared,FloatBaitSelected }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved,BottomKitPurchased,AdditionalBottomKitPurchased,BankRodStandPurchased,LureKitPurchased,SpeciesCatalogExpanded,BreadBaitPrepared,FloatBaitSelected,SteadyStrikeLearned }
+
+    internal static class FloatFishingExperience
+    {
+        internal const int SteadyStrikeRequiredXp=10,BaseStrikeMs=4000,SteadyStrikeBonusMs=750;
+        internal static long CatchXp(long massMg)
+        {
+            if(massMg<=0)throw new ArgumentOutOfRangeException("massMg");
+            return checked(10+(massMg/1000000)*6+((massMg%1000000)*6+500000)/1000000);
+        }
+        internal static int StrikeWindowMs(bool learned){return BaseStrikeMs+(learned?SteadyStrikeBonusMs:0);}
+    }
     public sealed class FloatEquipmentLossSummary
     {
         public readonly Guid LineId;
@@ -383,6 +394,8 @@ namespace FishingDesktop.GameCore
         public readonly int SchemaVersion,FoodCount;
         internal readonly int BreadBaitCount;
         internal readonly bool BreadBaitSelected;
+        internal readonly long FloatXp;
+        internal readonly bool SteadyStrikeLearned;
         internal int SelectedFloatBaitCount {get{return BreadBaitSelected?BreadBaitCount:BaitCount;}}
         internal bool BreadRecipeAvailable {get{return SchemaVersion==3&&CommerceCatalog.FoodDefinitionKey=="bread"&&BaitDefinitionKey=="worm";}}
         public readonly Guid FoodStackId,EquippedNetId;
@@ -423,6 +436,7 @@ namespace FishingDesktop.GameCore
             var requests=new HashSet<Guid>();var events=new HashSet<Guid>();var casts=new HashSet<Guid>();var terminals=new HashSet<Guid>();
             var archivedItems=new HashSet<Guid>();var archivedOwners=new HashSet<Guid>();var reservedArchiveIds=new HashSet<Guid>();long archivedLine=0;
             var clothingIds=new List<string>();string wearing=null;
+            Guid floatCast=Guid.Empty;
             var kits=new List<BottomOwnedKit>();
             var bankCasts=new Dictionary<Guid,Guid>();
             var lureCasts=new HashSet<Guid>();
@@ -487,6 +501,16 @@ namespace FishingDesktop.GameCore
                     archivedLine=checked(archivedLine+archived.LineMm);
                 }
                 if(row.Outcome==FloatOutcome.CastCommitted&&!casts.Add(row.SessionId))throw new ArgumentException("Repeated cast session.");
+                // Only one float rod can be active. Bottom-stand sessions use their own session IDs.
+                if(row.Outcome==FloatOutcome.CastCommitted&&row.CastMethod=="float")floatCast=row.SessionId;
+                if(row.Terminal&&row.SessionId==floatCast){
+                    if(row.Outcome==FloatOutcome.Landed)FloatXp=checked(FloatXp+FloatFishingExperience.CatchXp(row.LandedMassMg));
+                    floatCast=Guid.Empty;
+                }
+                if(row.Outcome==FloatOutcome.SteadyStrikeLearned){
+                    if(SteadyStrikeLearned||FloatXp<FloatFishingExperience.SteadyStrikeRequiredXp)throw new ArgumentException("Invalid float skill receipt.");
+                    SteadyStrikeLearned=true;
+                }
                 if(row.Terminal&&!terminals.Add(row.SessionId))throw new ArgumentException("Repeated terminal session.");
                 if(row.BankRigId!=Guid.Empty){
                     if(row.Outcome==FloatOutcome.CastCommitted)bankCasts.Add(row.SessionId,row.BankRigId);

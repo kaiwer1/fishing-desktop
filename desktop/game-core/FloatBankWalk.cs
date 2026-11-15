@@ -48,7 +48,7 @@ namespace FishingDesktop.GameCore
             if(next==Xmm)return false;
             var g=BaseGeometry;
             Geometry=next==g.AnchorXmm?g:new FloatStillWaterGeometry(g.WaterId,g.SpotId,g.Version,next,g.AnchorYmm,g.AnchorZmm,g.SurfaceYmm,
-                g.MinimumXmm,g.MaximumXmm,g.MinimumZmm,g.MaximumZmm,g.AimMinimumXmm,g.AimMaximumXmm,g.AimMinimumZmm,g.AimMaximumZmm,g.BedKnots);
+                g.MinimumXmm,g.MaximumXmm,g.MinimumZmm,g.MaximumZmm,g.AimMinimumXmm,g.AimMaximumXmm,g.AimMinimumZmm,g.AimMaximumZmm,g.BedKnots,g.ShelfDepthMm);
             PoseRevision=checked(PoseRevision+1);return true;
         }
     }

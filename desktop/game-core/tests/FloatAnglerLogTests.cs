@@ -47,6 +47,8 @@ static class FloatAnglerLogTests
     {return new RecallFloat(s.ProfileId,s.BranchId,G(),G(),s.Session.Id,s.Sequence,s.Rig.Revision,s.RulesVersion);}
     static SellFloatFish Sell(FloatGameState s)
     {return new SellFloatFish(s.ProfileId,s.BranchId,G(),G(),s.Creel.Select(f=>f.Id),s.Sequence,s.Rig.Revision,s.RulesVersion);}
+    static LearnSteadyStrike Learn(FloatGameState s)
+    {return new LearnSteadyStrike(s.ProfileId,s.BranchId,G(),G(),s.Sequence,s.Rig.Revision,s.RulesVersion);}
     static void BuyBottom(FloatGameStore store)
     {
         var s=store.State;
@@ -67,6 +69,75 @@ static class FloatAnglerLogTests
             return 0;
         }
         folder=args[0];
+        foreach(int schema in new[]{1,2,3})Test("schema "+schema+" existing float catch can learn once after sale and reopen without rewriting its prefix",()=>{
+            string path=FileName();var start=schema==3?FormerPlayer():BottomOwnedKitTests.New(schema,1);
+            using(var st=FloatGameStore.CreateNew(path,start)){
+                Need(st.Execute(Learn(st.State)).Code=="float-xp-required","empty log learned skill");
+                Write(st,FloatCast(st.State));Write(st,Fish(st.State,"carp",500000));Write(st,Sell(st.State));
+            }
+            var prefix=File.ReadAllBytes(path);long balance;FloatCommand learn;
+            using(var st=FloatGameStore.OpenExisting(path)){
+                var prior=st.State;balance=prior.WalletMinor;learn=Learn(prior);
+                Need(prior.FloatXp==13&&!prior.SteadyStrikeLearned&&prior.Sequence==3,"old fish/skill not preserved");
+                Write(st,learn);Need(st.Execute(learn).IsReplay&&st.Execute(Learn(st.State)).Code=="steady-strike-known","repeated learning");
+            }
+            using(var st=FloatGameStore.OpenExisting(path)){
+                var s=st.State;Need(s.SteadyStrikeLearned&&s.Sequence==4&&s.FloatXp==13&&s.WalletMinor==balance&&
+                    s.Creel.Count==0&&st.Execute(learn).IsReplay&&FloatAnglerLog.Build(s).Methods[0].Xp==13,"skill or cost replay");
+            }
+            Need(prefix.SequenceEqual(File.ReadAllBytes(path).Take(prefix.Length)),"old history rewritten");
+        });
+        Test("bottom and lure catches cannot unlock float skill; paid active casts cannot learn it",()=>{
+            using(var st=FloatGameStore.CreateNew(FileName(),New())){
+                BuyBottom(st);Write(st,CastBottomKitWithEquipment.Create(st.State,15000));Write(st,Fish(st.State,"carp",1000000));var s=st.State;
+                Write(st,new BuyLureKit(s.ProfileId,s.BranchId,G(),G(),new OwnedLureKit(G(),G(),G(),G(),G(),G()),s.Sequence,s.Rig.Revision,s.RulesVersion));
+                Write(st,CastLureWithEquipment.Create(st.State,15000));Write(st,Fish(st.State,"spotted-seabass",1500000));
+                Need(FloatAnglerLog.Build(st.State).TotalXp>10&&st.State.FloatXp==0&&st.Execute(Learn(st.State)).Code=="float-xp-required","cross-method points");
+                Write(st,FloatCast(st.State));Write(st,Fish(st.State,"carp",500000));Write(st,FloatCast(st.State));
+                Need(st.Execute(Learn(st.State)).Code=="session-busy"&&!st.State.SteadyStrikeLearned,"active cast modified");
+            }
+        });
+        Test("same seed, mass, encounter and 4.25 second strike miss normally and hook with trained float window",()=>{
+            var id=G();var env=new FloatBiteEnvironment(1000,new[]{new FloatBiteCandidate("carp",1,200000,1200000)});
+            FloatBiteSnapshot first=null;
+            foreach(bool learned in new[]{false,true}){
+                int steps=FloatFishingExperience.StrikeWindowMs(learned)/FloatBiteSimulation.StepMilliseconds;
+                var sim=new FloatBiteSimulation(id,101,new FloatBiteRules(20,20,30,steps),env);
+                for(int tick=0;sim.Snapshot.Phase!=FloatBitePhase.Strikeable&&tick<500;tick++)sim.Advance(id,50);
+                var opened=sim.Snapshot;Need(opened.Phase==FloatBitePhase.Strikeable&&opened.CloseStep-opened.OpenStep==(learned?95:80),"opening/closing");
+                if(first==null)first=opened;else Need(first.Target.SpeciesId==opened.Target.SpeciesId&&first.Target.MassMg==opened.Target.MassMg&&first.OpenStep==opened.OpenStep&&first.EncounterId==opened.EncounterId,"skill changed the encounter");
+                for(int i=0;i<17;i++)sim.Advance(id,250);
+                var strike=sim.Strike(id,opened.EncounterId);Need(strike.ShouldStartFight==learned&&(learned?strike.Snapshot.Phase==FloatBitePhase.Hooked:strike.Snapshot.Reason=="bite-missed"),"wrong result at 4250 ms");
+            }
+        });
+        Test("only the current interactive document can learn in an open menu, including duplicate requests",()=>{
+            string file=FileName();using(var st=FloatGameStore.CreateNew(file,New())){
+                Write(st,FloatCast(st.State));Write(st,Fish(st.State,"carp",500000));
+            }
+            using(var owner=FloatGameOwner.OpenExisting(file)){
+                var learn=Learn(owner.Snapshot.State);var control=owner.OpenView(FloatViewRole.Interaction);
+                var doc=owner.AttachDocument(control);owner.SetHostPaused(false);var lease=owner.GrantControl(control,doc);
+                Need(owner.ExecuteUser(control,doc,lease,learn).Code=="menu-required","learned on bank");
+                owner.SetMenuOpen(true);var observer=owner.OpenView(FloatViewRole.Observer);var read=owner.AttachDocument(observer);
+                Need(owner.ExecuteUser(observer,read,lease,learn).Code=="control-required","observer learned");
+                Need(owner.ExecuteUser(control,doc,lease,learn).Written,"authorized user could not learn");
+                owner.RevokeControl(lease);Need(owner.ExecuteUser(control,doc,lease,learn).Code=="control-required"&&owner.Snapshot.State.Sequence==3,"expired lease could replay learning");
+            }
+        });
+        Test("unwritten study can be retried after reopening; uncertain flushed write replays as a single skill",()=>{
+            foreach(var point in new[]{FloatSaveFaultPoint.BeforeWrite,FloatSaveFaultPoint.AfterFlush}){
+                string file=FileName();using(var st=FloatGameStore.CreateNew(file,New())){
+                    Write(st,FloatCast(st.State));Write(st,Fish(st.State,"carp",500000));
+                }
+                FloatCommand learn;
+                using(var st=FloatGameStore.OpenExisting(file,p=>{if(p==point)throw new IOException("private skill fault");})){
+                    learn=Learn(st.State);try{st.Execute(learn);throw new Exception("fault missing");}catch(IOException){}
+                }
+                using(var st=FloatGameStore.OpenExisting(file)){
+                    var r=st.Execute(learn);Need((point==FloatSaveFaultPoint.BeforeWrite?r.Written:r.IsReplay)&&st.State.Sequence==3&&st.State.SteadyStrikeLearned&&st.State.FloatXp==13,"retry wrote twice");
+                }
+            }
+        });
         Test("original catch XP rounds half a point up and handles the largest representable mass",()=>{
             foreach(long mass in new[]{1L,249999,250000,250001,1000000,1999999,Int64.MaxValue})
                 Need(FloatAnglerLog.CatchXp(mass)==10+(long)Decimal.Round(6m*mass/1000000m,0,MidpointRounding.AwayFromZero),"mass rounding");

@@ -24,6 +24,14 @@ body[data-scene-mode=loading] #scene-stage{visibility:hidden;pointer-events:none
 .scene-place strong{display:block;font:600 clamp(21px,2.3vw,34px)/1.15 system-ui,"Microsoft YaHei",sans-serif}
 .scene-place small{font-size:12px;color:#e4e8d8}
 #bank-position{display:block;font-variant-numeric:tabular-nums}#bank-position[hidden]{display:none}
+#bank-stations{display:block;white-space:pre-line;font-size:12px;line-height:1.45;font-variant-numeric:tabular-nums;margin-top:3px}
+#bank-stations[hidden]{display:none}
+.shore-stations{list-style:none;padding:0;margin:0 0 14px;width:100%;font-variant-numeric:tabular-nums}
+.shore-stations li{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;padding:7px 0;border-top:1px solid #69765b66}
+.shore-stations li strong{font-size:14px}.shore-stations li span{font-size:12px;text-align:right;color:#d7e3ad}
+.shore-stations li small{grid-column:1/-1;line-height:1.4}
+#water-station-marks{pointer-events:none}#water-station-marks circle{fill:#abc9b3;stroke:#162e2b;stroke-width:1.5}
+#water-station-marks text{fill:#e5eddc;stroke:#304d50;stroke-width:3;paint-order:stroke;font-size:12px}
 #water-conditions,#map-weather{display:block;margin:3px 0 0;color:#e6eadf;font:500 12px/1.45 system-ui,"Microsoft YaHei",sans-serif;font-variant-numeric:tabular-nums}#water-conditions[hidden],#map-weather[hidden]{display:none}
 .scene-actions{right:clamp(14px,3vw,42px);top:clamp(10px,3vh,30px);display:flex;gap:6px}
 .scene-readout{bottom:clamp(12px,4vh,42px);left:clamp(14px,3vw,42px);max-width:min(30em,76vw);color:#fff;font-size:14px;line-height:1.45;text-shadow:0 1px 3px #101811,0 0 5px #101811}
@@ -67,6 +75,8 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 #angler-log-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 22px;background:#263028;border-bottom:1px solid #515e4e}
 #angler-log-head h2,#angler-log-close{margin:0}
 #angler-log-body{padding:14px 22px 20px;font-variant-numeric:tabular-nums}
+#steady-strike{border-top:1px solid #59634f;padding:12px 0 0;margin-top:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 15px}
+#steady-strike[hidden]{display:none}#steady-strike h3{font-size:16px;margin:0}#steady-strike p{margin:3px 0}#steady-strike button{margin:0}#steady-strike-status{color:#dce79b;font-size:14px}
 #angler-log-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:8px 12px;margin:0}
 #angler-log-summary div{padding:4px 8px;border-left:2px solid #a6b67e}
 #angler-log-summary dt{font-size:13px;color:#c1cbb6}#angler-log-summary dd{margin:0;font-size:19px;overflow-wrap:anywhere}
@@ -79,7 +89,7 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <aside id="catch-card" role="status" aria-live="polite" hidden><small>渔获已入护</small><div id="catch-art"></div><strong id="catch-name"></strong><span id="catch-mass"></span></aside>
 <div id="scene-stage" hidden>
 <canvas id="scene-canvas" tabindex="-1" aria-label="钓场水面，按住鼠标左键蓄力，松开抛竿"></canvas>
-<div class="scene-hud"><div class="scene-place"><strong id="scene-spot-name">岸边钓位</strong><small id="scene-spot-region"></small><small id="bank-position" hidden></small><small id="water-conditions" aria-label="钓场时间与天气" hidden></small></div>
+<div class="scene-hud"><div class="scene-place"><strong id="scene-spot-name">岸边钓位</strong><small id="scene-spot-region"></small><small id="bank-position" hidden></small><small id="water-conditions" aria-label="钓场时间与天气" hidden></small><small id="bank-stations" aria-label="沿岸钓位" hidden></small></div>
 <div class="scene-actions"><button id="scene-help-toggle" aria-expanded="false" aria-controls="scene-help-sheet">操作 <kbd>F1</kbd></button><button id="scene-menu">钓点与补给</button><button id="scene-to-map">俯视瞄准</button>
 <div id="scene-help-sheet" role="region" aria-label="岸边操作" hidden><dl>
 <dt>抛竿</dt><dd>对准水面，按住左键蓄力，松开抛出。右键取消蓄力。</dd>
@@ -103,12 +113,13 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <section id="casting"><h2>抛竿准备</h2><p id="cast-status" role="status">尚未蓄力</p><progress id="cast-power" max="1000" value="0" aria-label="宿主确认的蓄力"></progress><span id="cast-percent">0%</span>
 <div id="cast-target" class="interactive" role="group" aria-label="抛竿操作区">
 <div id="cast-legacy"><strong>临时抛竿操作区</strong><p>左键按住蓄力，松开出手。准备时右键取消；落水后右键提竿；中鱼后左键按住收线。</p><p class="muted">固定朝向的简化水域，尚无真实场景。</p></div>
-<div id="water-aim-panel" hidden><strong>水面瞄准 · 单钓位俯视图</strong><p>在图内按住左键蓄力，松开出手；右键取消。中鱼后左键按住收线。图中仅显示当前瞄准范围。</p>
+<div id="water-aim-panel" hidden><strong>水面瞄准 · 钓场俯视图</strong><p>在图内按住左键蓄力，松开出手；右键取消。中鱼后左键按住收线。图中仅显示当前瞄准范围。</p>
 <svg id="water-aim-svg" viewBox="0 0 480 280" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="water-aim-title water-aim-description">
-<title id="water-aim-title">单钓位水面瞄准图</title><desc id="water-aim-description">上方较远，下方较近。圆环为宿主目标，菱形为预计落点，实心点为实际落点；图外落点只用文字说明。</desc>
+<title id="water-aim-title">钓场水面瞄准图</title><desc id="water-aim-description">上方较远，下方较近。带钓位名称的小圆点是推荐抛投位置。圆环为瞄准目标，菱形为预计落点，实心点为实际落点。</desc>
 <rect x="0" y="0" width="480" height="280" fill="#304d50"/>
 <path d="M120 0V280M240 0V280M360 0V280M0 70H480M0 140H480M0 210H480" stroke="#507879" fill="none"/>
 <text id="water-far" x="240" y="18" text-anchor="middle">远端 —</text><text id="water-near" x="240" y="267" text-anchor="middle">近端 —</text>
+<g id="water-station-marks"></g>
 <g id="water-target-mark" visibility="hidden"><circle r="10" fill="none" stroke="#e8d788" stroke-width="2"/><path d="M-15 0H15M0 -15V15" stroke="#e8d788"/></g>
 <g id="water-prediction-mark" visibility="hidden"><path d="M0 -7L7 0L0 7L-7 0Z" fill="#9cd3e4" stroke="#e2f0e7"/></g>
 <g id="water-landing-mark" visibility="hidden"><circle id="water-landing-circle" r="5" fill="#a8c37d" stroke="#fff" stroke-width="1.5"/></g>
@@ -247,6 +258,9 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <dialog id="angler-log-dialog" aria-labelledby="angler-log-title">
 <div id="angler-log-head"><h2 id="angler-log-title">钓手日志</h2><button type="button" id="angler-log-close">返回营地 · Esc</button></div>
 <div id="angler-log-body"><dl id="angler-log-summary"></dl>
+<section id="steady-strike" hidden aria-labelledby="steady-strike-title"><div><h3 id="steady-strike-title">稳手提竿 · 一级</h3>
+<p id="steady-strike-effect"></p><p id="steady-strike-status" role="status"></p></div>
+<button id="learn-steady-strike" type="button" aria-describedby="steady-strike-effect steady-strike-status" disabled>学习技能</button></section>
 <div id="angler-log-columns"><div><h3>各钓法成绩</h3><table aria-label="各钓法成绩"><thead><tr><th>钓法</th><th>抛竿</th><th>入护</th><th>经验</th></tr></thead><tbody id="angler-log-methods"></tbody></table></div>
 <div><h3>个人鱼种纪录</h3><p id="angler-log-empty" class="muted">还没有入护的鱼。用抄网把第一条鱼收入鱼护后，这里会记录它的种类和重量。</p>
 <table id="angler-log-records" aria-label="个人鱼种纪录" hidden><thead><tr><th>鱼种</th><th>入护</th><th>最大重量</th></tr></thead><tbody id="angler-log-species"></tbody></table></div></div>

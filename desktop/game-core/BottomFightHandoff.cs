@@ -58,7 +58,7 @@ namespace FishingDesktop.GameCore
             for(int i=0;i<z.Length;i++){
                 var knot=geometry.BedKnots[i];z[i]=knot.Zmm/1000.0;y[i]=(geometry.SurfaceYmm-knot.DepthMm)/1000.0;
             }
-            var bed=new FloatFightBed(z,y);
+            var bed=new FloatFightBed(z,y,geometry.ShelfStartXmm/1000.0,geometry.ShelfEndXmm/1000.0,Math.Abs(geometry.ShelfDepthMm)/1000.0);
             return new FloatFightWater(geometry.SurfaceYmm/1000.0,bed.MinimumY,
                 patch.MinimumXmm/1000.0,patch.MaximumXmm/1000.0,patch.MinimumZmm/1000.0,patch.MaximumZmm/1000.0,bed);
         }

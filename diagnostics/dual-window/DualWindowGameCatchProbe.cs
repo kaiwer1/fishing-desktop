@@ -216,6 +216,18 @@ sealed partial class DualWindowContext
                 "!document.querySelector('#creel [data-specimen-id]')&&!document.querySelector('#specimen-dialog[open]')&&!dualProbe.state().specimenState.open")=="true",
                 "The sold specimen remained available for viewing.");
             object anglerLog=GameAnglerLogSelfTest?await AnglerProbeReopen(pane,fish,name):null;
+            if(GameFloatSkillSelfTest){
+                long lateMs=await AnglerProbeLateStrike(pane);var saved=game.Snapshot.State;
+                Require(saved.Sequence==9&&saved.SteadyStrikeLearned&&saved.FloatXp==AnglerProbeXp(fish)&&saved.WalletMinor==final.WalletMinor&&
+                    saved.BaitCount==10&&saved.Stamina==96,"Late skill strike accounting changed.");
+                PrepareGameShutdown();Require(gameShutdownCode=="no-active-session"&&ExitCode==0,"Skill probe did not close cleanly.");
+                checks.Add("the player voluntarily learns in the journal, reopens, and right-clicks a natural bite after the old deadline");
+                File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new {passed=true,checks=checks.ToArray(),anglerLog,
+                    skillLearned=saved.SteadyStrikeLearned,experience=saved.FloatXp,sequence=saved.Sequence,value=saved.WalletMinor,
+                    speciesId=fish.SpeciesKey,massMg=fish.MassMg,lateStrikeMs=lateMs,oldWindowMs=4000,newWindowMs=4750,controlledBiteTime=false,
+                    devToolsMouseInput=true,personalSaveRead=false}),Encoding.UTF8);
+                Shutdown();return;
+            }
             PrepareGameShutdown();Require(gameShutdownCode=="no-active-session" && ExitCode==0,"The completed sale left an unpaid session.");
             checks.Add("one real sale click credits the saved price exactly once and leaves an empty creel, the equipped net and no active session");
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new {

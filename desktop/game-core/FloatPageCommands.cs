@@ -33,7 +33,8 @@ namespace FishingDesktop.GameCore
             object raw;string action=null;
             foreach(var row in intent)if(row.Key=="action")action=row.Value as string;
             bool sale=action=="sell";
-            if(action!="cast"&&action!="recall"&&action!="release-current"&&!sale)return false;
+            bool learn=action=="learn-steady-strike";
+            if(action!="cast"&&action!="recall"&&action!="release-current"&&!sale&&!learn)return false;
             if(intent.Count!=(sale?8:7))return false;
             foreach(var row in intent)if(!Key(row.Key,sale))return false;
             Guid request,businessEvent,session;
@@ -41,6 +42,10 @@ namespace FishingDesktop.GameCore
             if(!intent.TryGetValue("requestId",out raw)||!Id(raw,out request)||!intent.TryGetValue("eventId",out raw)||!Id(raw,out businessEvent))return false;
             if(!intent.TryGetValue("expectedSequence",out raw)||!Number(raw,false,out sequence)||!intent.TryGetValue("rigRevision",out raw)||!Number(raw,true,out rig)||!intent.TryGetValue("rulesVersion",out raw)||!Number(raw,true,out rules))return false;
             if(!intent.TryGetValue("sessionId",out raw))return false;
+            if(learn){
+                if(!(raw is string)||(string)raw!="")return false;
+                command=new LearnSteadyStrike(context.ProfileId,context.BranchId,request,businessEvent,sequence,rig,rules);return true;
+            }
             if(sale){
                 if(!(raw is string)||(string)raw!="")return false;
                 object items;if(!intent.TryGetValue("fishIds",out items))return false;

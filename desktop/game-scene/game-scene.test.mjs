@@ -187,6 +187,26 @@ test('the coastal bay opens to a scenic horizon beyond the surveyed bed',()=>{
   }finally{coast.dispose();}
 });
 
+test('the visible bed and surface soundings agree with left, right and mid-slope landings',()=>{
+  const coast={...water,waterId:'coastal-bay',geometryVersion:6,waterBounds:{minXmm:-48000,maxXmm:48000,minZmm:3000,maxZmm:85000},
+    bed:[{zMm:3000,depthMm:750},{zMm:13000,depthMm:1500},{zMm:30000,depthMm:3500},{zMm:85000,depthMm:6400}],
+    crossBed:[{xMm:-48000,extraDepthMm:0},{xMm:1000,extraDepthMm:0},{xMm:6000,extraDepthMm:620},{xMm:48000,extraDepthMm:620}]};
+  assert.ok(validWater(coast));assert.ok(!validWater({...coast,crossBed:[...coast.crossBed].reverse()}));
+  assert.notEqual(waterGeometryKey(coast),waterGeometryKey({...coast,crossBed:[]}));
+  const lake=createLake(coast),bed=lake.group.getObjectByName('surveyed-bed'),surface=lake.group.getObjectByName('surveyed-surface');
+  try{
+    lake.group.updateMatrixWorld(true);
+    for(const [x,depthMm] of [[-6,2205],[1,2205],[3.5,2515],[6,2825],[15,2825]]){
+      const ray=new THREE.Raycaster(new THREE.Vector3(x,5,-19),new THREE.Vector3(0,-1,0));
+      const [bottom]=ray.intersectObject(bed),[top]=ray.intersectObject(surface);
+      assert.ok(Math.abs(bottom.point.y*1000+depthMm)<1);
+      const samples=surface.geometry.attributes.sounding,face=top.face,bary=top.barycoord;
+      const sounding=samples.getX(face.a)*bary.x+samples.getX(face.b)*bary.y+samples.getX(face.c)*bary.z;
+      assert.ok(Math.abs(sounding+bottom.point.y)<1e-6);
+    }
+  }finally{lake.dispose();}
+});
+
 test('confirmed clothing changes the sleeve cloth only and can return to the default',()=>{
   const rig=createTackle();
   try{

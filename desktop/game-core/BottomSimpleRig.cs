@@ -120,8 +120,8 @@ namespace FishingDesktop.GameCore
             var knots=Geometry.BedKnots;
             for(int i=1;i<knots.Count;i++){
                 var a=knots[i-1];var b=knots[i];
-                if(a.Zmm<=z&&z<=b.Zmm)sinkerY=BedY(a,b,z);
-                if(a.Zmm<=baitZ&&baitZ<=b.Zmm)baitY=BedY(a,b,baitZ);
+                if(a.Zmm<=z&&z<=b.Zmm)sinkerY=Geometry.SurfaceYmm-Geometry.SoundingMm(a,b,x,z);
+                if(a.Zmm<=baitZ&&baitZ<=b.Zmm)baitY=Geometry.SurfaceYmm-Geometry.SoundingMm(a,b,x,baitZ);
                 if(a.Zmm<z&&b.Zmm>baitZ&&Math.Abs((long)b.DepthMm-a.DepthMm)*100>(long)(b.Zmm-a.Zmm)*12)
                     return "bed-too-steep";
             }
@@ -130,13 +130,6 @@ namespace FishingDesktop.GameCore
             if(availableLineMm<line)return "line-insufficient";
             contact=new BottomContact(x,z,sinkerY.Value,baitZ,baitY.Value,line);
             return null;
-        }
-        // The same survey knots and nonnegative depth rounding used by the
-        // water atlas, without its float-specific hook clearance requirement.
-        int BedY(FloatWaterBedKnot a,FloatWaterBedKnot b,int z)
-        {
-            long depth=((long)a.DepthMm*(b.Zmm-z)+(long)b.DepthMm*(z-a.Zmm))/(b.Zmm-a.Zmm);
-            return checked(Geometry.SurfaceYmm-(int)depth);
         }
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using FishingDesktop.GameCore;
 
 sealed partial class DualWindowContext
@@ -8,6 +9,18 @@ sealed partial class DualWindowContext
     FloatGameState gameAnglerLogSource;
     object gameAnglerLogData;
 
+    void LearnGameSteadyStrike(ProbeWindow pane,GameBinding binding,string transport,FloatCommand command)
+    {
+        if(binding.Shop!=null||binding.Spares!=null||binding.Equipment!=null){
+            GameReply(pane,transport,"skill-menu-busy");return;
+        }
+        try{
+            var result=game.ExecuteUser(binding.View,binding.Document,binding.Lease,command);
+            GameReply(pane,transport,result.Code,result);
+        }catch(FloatSaveUncertainException){ExitCode=4;GameReply(pane,transport,"save-outcome-unknown");}
+        catch(IOException){GameReply(pane,transport,"skill-not-written");}
+        Broadcast();
+    }
     static object GameAnglerLogData(FloatGameState state)
     {
         var log=FloatAnglerLog.Build(state);
@@ -18,7 +31,9 @@ sealed partial class DualWindowContext
             maxMassMg=row.MaxMassMg.ToString(CultureInfo.InvariantCulture)});
         return new {rulesVersion=FloatAnglerLog.RulesVersion,sequence=log.Sequence,totalCasts=log.TotalCasts,totalCaught=log.TotalCaught,
             totalSold=log.TotalSold,saleMinor=log.SaleMinor.ToString(CultureInfo.InvariantCulture),
-            totalXp=log.TotalXp.ToString(CultureInfo.InvariantCulture),methods=methods.ToArray(),species=species.ToArray()};
+            totalXp=log.TotalXp.ToString(CultureInfo.InvariantCulture),methods=methods.ToArray(),species=species.ToArray(),
+            steadyStrike=new {learned=state.SteadyStrikeLearned,requiredXp=FloatFishingExperience.SteadyStrikeRequiredXp,
+                baseMs=FloatFishingExperience.BaseStrikeMs,bonusMs=FloatFishingExperience.SteadyStrikeBonusMs}};
     }
     void SendGameAnglerLog(ProbeWindow pane)
     {

@@ -7,7 +7,7 @@ using FishingDesktop.GameCore;
 
 sealed partial class DualWindowContext
 {
-    bool GameAnglerLogSelfTest {get{return gameMode=="angler-log-self-test";}}
+    bool GameAnglerLogSelfTest {get{return gameMode=="angler-log-self-test"||catalogSpecies!=null;}}
     bool gameLogReopening;
 
     static long AnglerProbeXp(FloatFish fish)

@@ -10,6 +10,8 @@ using Microsoft.Web.WebView2.Core;
 
 sealed partial class DualWindowContext
 {
+    readonly string catalogSpecies;
+    readonly uint catchSeed;
     async Task<Dictionary<string,object>> CatchProbeShop(ProbeWindow pane,string button,string expected,bool committed)
     {
         var before=Field(await GameShopReady(pane),"lastReply");
@@ -78,8 +80,9 @@ sealed partial class DualWindowContext
             Require(GameCatchSelfTest && windows.Count==1 && windows.ContainsKey(true),"Catch test requires the private standalone player.");
             var pane=windows[true];await Ready(pane);pane.ClientSize=new Size(1280,800);
             await Activate(pane);
-            var ini=game.Snapshot.State;var lake=FloatFishingAtlas.Find("development-still-water");var station=FloatFishingAtlas.Find("coastal-bay");
+            var ini=game.Snapshot.State;var lake=FloatFishingAtlas.Find("development-still-water");
             if(gameMode=="bread-bait-self-test"){await RunBreadBaitProbe(pane,lake);return;}
+            var station=FloatFishingAtlas.Find(catalogSpecies=="yellow-catfish"?"river-bend":"coastal-bay");
             await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
             Require(ini.Sequence==1 && ini.Rules.Species.Count==9 && ini.OwnedNet==null && ini.WalletMinor==12000 &&
                 ini.BaitCount==12 && ini.Stamina==100 && ini.Creel.Count==0,"Unexpected standalone catch profile.");
@@ -108,12 +111,12 @@ sealed partial class DualWindowContext
             await Wait(pane,s=>game.Snapshot.State.Sequence==4 && gameFlightEmissions==1);
             var flight=await WaterProbeLanding(pane,false);
             Require(gameFishingWater==station && gameWaterLanding.Sample.WaterId==station.Id && game.Snapshot.State.BaitCount==11 &&
-                game.Snapshot.State.Stamina==98 && game.Snapshot.State.WalletMinor==9600,"Coastal cast changed unexpected resources.");
-            checks.Add("a mouse cast from the coast scene reaches real water and charges a single bait and two stamina");
+                game.Snapshot.State.Stamina==98 && game.Snapshot.State.WalletMinor==9600,"Cast changed unexpected resources.");
+            checks.Add("a mouse cast at "+station.Id+" reaches real water and charges a single bait and two stamina");
 
             await GameWaitForBite(pane,FloatBitePhase.Strikeable);
-            var bite=gameBite.Snapshot;var pool=gameFishingPool;
-            Require(pool!=null && bite.Target!=null && pool.Environment.ContainsTarget(bite.Target.SpeciesId),"Biting fish is outside the real coastal pool.");
+            var bite=gameBite.Snapshot;var pool=gameFishingPool;long poolTime=gameFishingPoolTimeMs;
+            Require(pool!=null && bite.Target!=null && pool.Environment.ContainsTarget(bite.Target.SpeciesId),"Biting fish is outside the local pool.");
             foreach(bool down in new[]{true,false}){
                 await pane.View.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",json.Serialize(new {
                     type=down?"mousePressed":"mouseReleased",x=Number(point,"x"),y=Number(point,"y"),button="right",buttons=down?2:0,clickCount=1}));
@@ -215,7 +218,8 @@ sealed partial class DualWindowContext
                 saleVerified=true,devToolsMouseInput=true,devToolsKeyboardInput=true,nativePhysicalMouse=false,rawGameCommandInjected=false,
                 privateModelSeeds=true,controlledFishFacts=false,controlledFightTime=false,personalSaveRead=false,desktopLayer=false,observerOpened=false,
                 schemaVersion=final.SchemaVersion,sequence=final.Sequence,value=final.WalletMinor,netPriceMinor=2400,saleValueMinor=fish.SaleValueMinor,
-                speciesId=fish.SpeciesKey,speciesName=name,massMg=fish.MassMg,coastalPool=pool.Id,baitCount=final.BaitCount,stamina=final.Stamina,
+                speciesId=fish.SpeciesKey,speciesName=name,massMg=fish.MassMg,waterId=station.Id,habitat=pool.Id,
+                coastalPool=station.Id=="coastal-bay"?pool.Id:null,catalogSpecies,catchSeed,poolTimeMs=poolTime,baitCount=final.BaitCount,stamina=final.Stamina,
                 creelCount=final.Creel.Count,equipmentInstances=final.Equipment.Instances.Count,remainingLineMm=final.Equipment.RemainingLineMm,
                 gameFlightEmissions,gameHookedEmissions,gameNaturalLandings,shutdown=gameShutdownCode}),Encoding.UTF8);
             Shutdown();

@@ -103,9 +103,9 @@ sealed partial class DualWindowContext : ApplicationContext
     public int ExitCode {get;private set;}
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
 
-    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false,bool sceneViewport=false,bool sceneContext=false,bool sceneFaultSelfTest=false,string sceneWatchdogCase=null,string gameMode=null)
+    internal DualWindowContext(bool automated,bool desktopMode,bool visibleDesktopTest,bool policySelfTest,bool nativePolicySelfTest,bool rendererSelfTest,bool wallpaperPolicySelfTest,int soakSeconds,bool displayOnlySelfTest,int manualSeconds=0,bool manualUnattended=false,bool startupPreparation=false,bool nativeOperatorStart=false,bool threeScene=false,bool sceneViewport=false,bool sceneContext=false,bool sceneFaultSelfTest=false,string sceneWatchdogCase=null,string gameMode=null,string catalogSpecies=null,uint catchSeed=1)
     {
-        this.gameMode=gameMode;
+        this.gameMode=gameMode;this.catalogSpecies=catalogSpecies;this.catchSeed=catchSeed;
         if(PlayerMode){root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"FishingDesktop","Preview");Directory.CreateDirectory(root);}
         this.manualSeconds=manualSeconds;this.manualUnattended=manualUnattended;this.startupPreparation=startupPreparation;this.nativeOperatorStart=nativeOperatorStart;this.threeScene=threeScene;this.sceneViewport=sceneViewport;this.sceneContext=sceneContext;this.sceneFaultSelfTest=sceneFaultSelfTest;this.sceneWatchdogCase=sceneWatchdogCase;
         this.automated=automated;this.desktopMode=desktopMode;this.visibleDesktopTest=visibleDesktopTest;this.policySelfTest=policySelfTest;
@@ -389,7 +389,8 @@ sealed partial class DualWindowContext : ApplicationContext
     }
     [STAThread] static int Main(string[] args)
     {
-        string gameMode=null;
+        string gameMode=null,catalogSpecies=null;
+        uint catchSeed=1;
         if(args.Length==1){if(args[0]=="--game-new")gameMode="new";else if(args[0]=="--game-open")gameMode="open";else if(args[0]=="--game-self-test")gameMode="self-test";else if(args[0]=="--game-spares-self-test")gameMode="spares-self-test";else if(args[0]=="--game-camp-self-test")gameMode="camp-self-test";else if(args[0]=="--game-line-break-self-test")gameMode="line-break-self-test";else if(args[0]=="--game-scene-self-test")gameMode="scene-self-test";else if(args[0]=="--game-water-self-test")gameMode="water-self-test";else if(args[0]=="--game-line-break-new")gameMode="line-break-new";else if(args[0]=="--game-line-break-open")gameMode="line-break-open";}
         if(args.Length==1 && args[0]=="--game-walk-self-test")gameMode="walk-self-test";
         if(args.Length==1 && args[0]=="--game-ecology-self-test")gameMode="ecology-self-test";
@@ -401,6 +402,10 @@ sealed partial class DualWindowContext : ApplicationContext
         if(args.Length==1 && args[0]=="--game-catch-self-test")gameMode="catch-self-test";
         if(args.Length==1 && args[0]=="--game-bread-bait-self-test")gameMode="bread-bait-self-test";
         if(args.Length==1 && args[0]=="--game-specimen-self-test")gameMode="specimen-self-test";
+        if(args.Length==3 && args[0]=="--game-species-self-test"){
+            if((args[1]!="yellow-catfish"&&args[1]!="black-rockfish")||!UInt32.TryParse(args[2],out catchSeed))return 5;
+            gameMode="specimen-self-test";catalogSpecies=args[1];
+        }
         if(args.Length==1 && args[0]=="--game-angler-log-self-test")gameMode="angler-log-self-test";
         if(args.Length==1 && args[0]=="--game-wardrobe-self-test")gameMode="wardrobe-self-test";
         if(args.Length==1 && args[0]=="--game-player-self-test")gameMode="player-self-test";
@@ -448,7 +453,7 @@ sealed partial class DualWindowContext : ApplicationContext
                 if(!guard.IsOwner){if(gameMode=="player-window"||gameMode=="player-wallpaper")MessageBox.Show("钓鱼桌面已经在运行。请先从托盘打开交互窗口，或退出后切换模式。","钓鱼桌面");return 2;}
                 if(restartCheck)return DualWindowContext.VerifySceneFaultRestart();
                 Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene,sceneViewport,sceneContext,sceneFaultSelfTest,sceneWatchdogCase,gameMode)){Application.Run(context);return context.ExitCode;}
+                using(var context=new DualWindowContext(automated,desktop,visibleDesktop,policy,nativePolicy,renderer,wallpaperPolicy,soak,displayOnly,manualSeconds,manualUnattended,startup,operatorStart,threeScene,sceneViewport,sceneContext,sceneFaultSelfTest,sceneWatchdogCase,gameMode,catalogSpecies,catchSeed)){Application.Run(context);return context.ExitCode;}
             }
         }catch(Exception error){
             if(gameMode=="player-window"||gameMode=="player-wallpaper")MessageBox.Show("启动失败。请确认 WebView2 运行时可用、当前用户目录可写，并保留原有存档。","钓鱼桌面",MessageBoxButtons.OK,MessageBoxIcon.Information);

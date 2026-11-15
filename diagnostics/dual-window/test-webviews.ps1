@@ -1,7 +1,24 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait,[ValidateSet('yellow-catfish','black-rockfish')][string]$GameSpecies,[uint32]$GameSampleSeed)
 $ErrorActionPreference='Stop'
 if($GameSpecimen -and $GameAnglerLog){throw 'Run the separate creel and angler log checks individually.'}
-if($GameBreadBait -and ($GameSpecimen -or $GameAnglerLog)){throw 'Run bread bait on its own private save.'}
+if($GameBreadBait -and ($GameSpecimen -or $GameAnglerLog -or $GameSpecies)){throw 'Run bread bait on its own private save.'}
+if($PSBoundParameters.ContainsKey('GameSampleSeed') -and -not $GameSpecies){throw 'A sample seed requires a catalog fish.'}
+if($GameSpecies){
+  if(-not $PSBoundParameters.ContainsKey('GameSampleSeed')){
+    # Earn every result in an isolated save. Weather progresses on the live
+    # clock, so a nearby seed can draw another eligible fish. Retry only after
+    # validating its complete cast, inspection, sale and reopened journal.
+    $catalogSeeds=if($GameSpecies -eq 'yellow-catfish'){@(1188997,584645,304332)}else{@(779167,39524,212325,333982,760291,43)}
+    $sampleArguments=@{}+$PSBoundParameters
+    foreach($candidateSeed in $catalogSeeds){
+      $sampleArguments['GameSampleSeed']=$candidateSeed
+      try { & $PSCommandPath @sampleArguments; return }
+      catch {if($_.Exception.Data['FishingCatalogMiss'] -ne $true){throw}}
+    }
+    throw "The natural catches from the selected location did not include $GameSpecies."
+  }
+  $GameSpecimen=$true;$GameAnglerLog=$true
+}
 if($GameSpecimen -or $GameAnglerLog -or $GameBreadBait){$GameCatch=$true}
 if($GameLineBreak -and ($GameSpares -or $GameCamp)){throw 'Run line-break integration separately.'}
 if($GameWater -and ($GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run water integration separately.'}
@@ -121,6 +138,7 @@ try{
   if($GameSpecimen){$taskMode='--game-specimen-self-test'}
   if($GameAnglerLog){$taskMode='--game-angler-log-self-test'}
   if($GameBreadBait){$taskMode='--game-bread-bait-self-test'}
+  if($GameSpecies){$taskMode="--game-species-self-test $GameSpecies $GameSampleSeed"}
   if($GameWardrobe){$taskMode='--game-wardrobe-self-test'}
   if($GamePlayer){$taskMode='--game-player-self-test'}
   if($GameAtlas){$taskMode='--game-atlas-self-test'}
@@ -192,7 +210,7 @@ try{
   }elseif($GameBreadBait){
     if(-not $taskReport.passed -or $taskReport.sequence -ne 6 -or $taskReport.value -ne 11980 -or $taskReport.breadBaitCount -ne 2 -or $taskReport.baitCount -ne 12 -or -not $taskReport.reopened -or -not $taskReport.naturalBite){throw 'Bread bait cast or journal verification failed.'}
   }elseif($GameCatch){
-    $taskCatchChecks=if($GameSpecimen -or $GameAnglerLog){11}else{8}
+    $taskCatchChecks=if($GameSpecies){14}elseif($GameSpecimen -or $GameAnglerLog){11}else{8}
     if($GameAnglerLog){
       $taskLog=$taskReport.anglerLog
       $taskExpectedXp=10+[Math]::Round(([decimal]$taskReport.massMg*6)/1000000,0,[MidpointRounding]::AwayFromZero)
@@ -203,6 +221,13 @@ try{
     if($taskReport.sequence -ne 6 -or $taskReport.saleValueMinor -le 0 -or $taskReport.value -ne (9600+$taskReport.saleValueMinor) -or $taskReport.gameNaturalLandings -ne 1 -or $taskReport.creelCount -ne 0 -or $taskReport.gameFlightEmissions -ne 1 -or $taskReport.gameHookedEmissions -ne 1 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.remainingLineMm -ne 50000 -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'game-catch.png') -PathType Leaf)){throw 'Catch sale accounting mismatch.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Catch shutdown was not confirmed.'}
+    if($GameSpecies){
+      $expectedWater=if($GameSpecies -eq 'yellow-catfish'){'river-bend'}else{'coastal-bay'}
+      if($taskReport.waterId -ne $expectedWater -or $taskReport.catalogSpecies -ne $GameSpecies -or $taskReport.catchSeed -ne $GameSampleSeed -or $taskReport.habitat -notin @('shallow','deep') -or -not $taskReport.naturalBite -or $taskReport.controlledFishFacts -or $taskReport.personalSaveRead){throw 'The natural encounter, location or private sample does not match.'}
+      if($taskReport.speciesId -ne $GameSpecies){
+        $catalogMiss="Sample $GameSampleSeed naturally landed $($taskReport.speciesId) at $expectedWater."
+      }
+    }
   }elseif($GameWardrobe){
     if(-not $taskReport.passed -or $taskReport.checks.Count -ne 9 -or -not $taskReport.wardrobeConnected -or -not $taskReport.visibleSleeveChanged -or $taskReport.blueSleevePixels -lt 35 -or $taskReport.confirmedPurchases -ne 2 -or $taskReport.ownedClothing -ne 2 -or $taskReport.wornClothing -ne 'coast-jacket' -or -not $taskReport.reloadVerified -or -not $taskReport.closedJournalVerified){throw 'Wardrobe/visible sleeve validation mismatch.'}
     if($taskReport.sequence -ne 8 -or $taskReport.value -ne 7600 -or $taskReport.baitCount -ne 12 -or $taskReport.stamina -ne 100 -or $taskReport.remainingLineMm -ne 50000){throw 'Wardrobe resource mismatch.'}
@@ -332,9 +357,16 @@ if($taskFailure){
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $taskRun 'failure-summary.json') -Encoding utf8
   throw $taskFailure
 }
+if($catalogMiss){
+  $miss=[System.IO.InvalidDataException]::new($catalogMiss)
+  $miss.Data['FishingCatalogMiss']=$true
+  throw $miss
+}
 [pscustomobject]@{passed=$true;checks=$taskReport.checks;value=$taskReport.value;sequence=$taskReport.sequence;failureBoundary=$taskReport.failureBoundary;expectedExitCode=$taskExpectedExit;reopened=$taskReport.reopened;sourcePreserved=$taskReport.sourcePreserved;privateCopyReopen=$taskReport.privateCopyReopen;documentReloadTested=$taskReport.documentReloadTested;secondHostProcessTested=$false;realDiskFailureTested=$false;
   lineBreakConnected=$taskReport.lineBreakConnected;physicalOverload=$taskReport.physicalOverload;gameLineBreakConfirmations=$taskReport.gameLineBreakConfirmations;
   atlasConnected=$taskReport.atlasConnected;mapCount=$taskReport.mapCount;speciesCount=$taskReport.speciesCount;
+  catalogSpecies=$taskReport.catalogSpecies;caughtSpecies=$taskReport.speciesId;catchWater=$taskReport.waterId;catchMassMg=$taskReport.massMg;
+  inspectedSpecimen=$taskReport.specimenInspectionVerified;anglerLogReopened=$taskReport.anglerLog.profileReopened;sampleSeed=$taskReport.catchSeed;
   gameSceneConnected=$taskReport.gameSceneConnected;actualWebGL=$taskReport.actualWebGL;rendererName=$taskReport.rendererName;softwareRendererObserved=$taskReport.softwareRendererObserved;
   waterAimConnected=$taskReport.waterAimConnected;sharedWaterGeometry=$taskReport.sharedWaterGeometry;devToolsMouseInput=$taskReport.devToolsMouseInput;realHostFlight=$taskReport.realHostFlight;
   campWorkConnected=$taskReport.campWorkConnected;campRewardConfirmations=$taskReport.campRewardConfirmations;controlledCampTime=$taskReport.controlledCampTime;realFullMinute=$taskReport.realFullMinute;sparesMenuConnected=$taskReport.sparesMenuConnected;controlledTerminalLoss=$taskReport.controlledTerminalLoss;terminalLossConfirmations=$taskReport.terminalLossConfirmations;initialLineMm=$taskReport.initialLineMm;lostLineMm=$taskReport.lostLineMm;

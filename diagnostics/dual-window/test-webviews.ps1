@@ -1,7 +1,8 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait)
 $ErrorActionPreference='Stop'
 if($GameSpecimen -and $GameAnglerLog){throw 'Run the separate creel and angler log checks individually.'}
-if($GameSpecimen -or $GameAnglerLog){$GameCatch=$true}
+if($GameBreadBait -and ($GameSpecimen -or $GameAnglerLog)){throw 'Run bread bait on its own private save.'}
+if($GameSpecimen -or $GameAnglerLog -or $GameBreadBait){$GameCatch=$true}
 if($GameLineBreak -and ($GameSpares -or $GameCamp)){throw 'Run line-break integration separately.'}
 if($GameWater -and ($GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run water integration separately.'}
 if($GameScene -and ($GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run scene integration separately.'}
@@ -119,6 +120,7 @@ try{
   if($GameCatch){$taskMode='--game-catch-self-test'}
   if($GameSpecimen){$taskMode='--game-specimen-self-test'}
   if($GameAnglerLog){$taskMode='--game-angler-log-self-test'}
+  if($GameBreadBait){$taskMode='--game-bread-bait-self-test'}
   if($GameWardrobe){$taskMode='--game-wardrobe-self-test'}
   if($GamePlayer){$taskMode='--game-player-self-test'}
   if($GameAtlas){$taskMode='--game-atlas-self-test'}
@@ -187,6 +189,8 @@ try{
     if(-not $taskDesktopReport.passed -or $taskDesktopReport.attachments -ne 1 -or $taskDesktopReport.detachments -ne 1 -or $taskDesktopReport.remainingLeases -ne 0 -or $taskReport.sequence -ne 1 -or $taskReport.value -ne 12000 -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'game-wallpaper.png') -PathType Leaf)){throw 'Desktop layer or clean wallpaper exit mismatch.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Wallpaper shutdown was not confirmed.'}
+  }elseif($GameBreadBait){
+    if(-not $taskReport.passed -or $taskReport.sequence -ne 6 -or $taskReport.value -ne 11980 -or $taskReport.breadBaitCount -ne 2 -or $taskReport.baitCount -ne 12 -or -not $taskReport.reopened -or -not $taskReport.naturalBite){throw 'Bread bait cast or journal verification failed.'}
   }elseif($GameCatch){
     $taskCatchChecks=if($GameSpecimen -or $GameAnglerLog){11}else{8}
     if($GameAnglerLog){

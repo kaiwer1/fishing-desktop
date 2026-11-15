@@ -125,7 +125,8 @@ function failurePending() {
 function shopContext() {
   const shop = shopView.state();
   return { lease: authority.state().lease, allowed: canControl() && !inflight && Boolean(snapshot.MenuOpen) && !snapshot.SessionId && shop?.available === true,
-    schemaVersion: shop?.schemaVersion, netOwned: shop?.netOwned, netEquipped: shop?.netEquipped, foodCount: shop?.foodCount, maxPacks: shop?.maxPacks };
+    schemaVersion: shop?.schemaVersion, netOwned: shop?.netOwned, netEquipped: shop?.netEquipped, foodCount: shop?.foodCount, maxPacks: shop?.maxPacks,
+    breadRecipe: shop?.breadRecipe, breadSelected: shop?.breadSelected, breadBaitCount: shop?.breadBaitCount, baitCount: shop?.baitCount };
 }
 const shopInput = new ShopInput({ readContext: shopContext, post: send, newTransportId: () => crypto.randomUUID() });
 function shopBusy() { const s = shopInput.state(); return Boolean(s.inflight || s.awaitingState); }
@@ -362,7 +363,8 @@ function render() {
     $('stats').replaceChildren(); $('session').textContent = '尚无可确认的游戏进度'; $('creel').replaceChildren(); $('capacity').textContent = '';
   } else {
     $('stats').replaceChildren(...[
-      `银币 ${decimal(snapshot.WalletMinor)}`, `体力 ${snapshot.Stamina}`, `${names[snapshot.BaitDefinitionKey] ?? snapshot.BaitDefinitionKey} ${snapshot.BaitCount} 份`,
+      `银币 ${decimal(snapshot.WalletMinor)}`, `体力 ${snapshot.Stamina}`, !bottomMethod() && !bankKit.selected && !lureMethod() && shopView.state()?.breadSelected
+        ? `面饵 ${shopView.state().breadBaitCount} 份` : `${names[snapshot.BaitDefinitionKey] ?? snapshot.BaitDefinitionKey} ${snapshot.BaitCount} 份`,
     ].map(text => { const span = document.createElement('span'); span.textContent = text; return span; }));
     const pending = snapshot.PendingFish;
     $('session').textContent = snapshot.PendingResult && pending ? `鱼护已满：${fishName(pending.SpeciesKey) ?? pending.SpeciesKey} · ${decimal(pending.MassMg, 6)} kg 已保留，需明确放流后才能继续。` : heldSession() ? (lureMethod() ? '亮片已出手，入水后按住左键匀收。' : bottomMethod() ? '底钓钓组已出手，请观察竿尖。' : '这一竿已出手，请观察轨迹与浮漂。') : bankKit.selected && !stand.state()?.heldRig ? '请先从竿架取竿。' : '可以出手';
@@ -505,6 +507,8 @@ function renderShop() {
   $('shop-bait-count').textContent = `现有 ${state?.baitCount ?? 0} 份`;
   $('shop-food-price').textContent = `${formatMinor(state?.foodPriceMinor)} 银币 / 份${state?.foodStaminaRestore ? ` · 每份恢复最多 ${state.foodStaminaRestore} 体力` : ''}`;
   $('shop-food-count').textContent = `现有 ${state?.foodCount ?? 0} 份`;
+  $('bread-recipe').hidden = !state?.breadRecipe;
+  $('bread-stock').textContent = state?.breadRecipe ? `面饵 ${state.breadBaitCount} 份 · 蚯蚓 ${state.baitCount} 份 · 当前浮漂钩饵：${state.breadSelected ? '面饵' : '蚯蚓'}` : '';
   for (const id of ['bait-packs', 'food-packs']) $(id).max = String(state?.maxPacks || 1);
   $('shop-quote').hidden = !input.quote;
   if (input.quote) {
@@ -512,7 +516,7 @@ function renderShop() {
     $('shop-quote-text').textContent = `${product} · ${q.packs} ${q.product === 'bait' ? '包' : '份'}（共 ${q.units} ${q.product === 'net' ? '件' : '份'}）· 合计 ${formatMinor(q.totalPriceMinor)} 银币。确认后才购买。`;
   } else $('shop-quote-text').textContent = '';
   $('shop-retry').hidden = !input.retry;
-  $('shop-retry-text').textContent = input.retry ? `上次${{ buy: '购买', equip: '装备调整', eat: '食用' }[input.retry.action]}确认未写入；重试沿用原操作，不会换成新的购买。` : '';
+  $('shop-retry-text').textContent = input.retry ? `上次${{ buy: '购买', equip: '装备调整', eat: '食用', 'prepare-bread': '揉制面饵', 'select-bread': '挂面饵', 'select-worm': '挂蚯蚓' }[input.retry.action]}尚未保存，可以重试。` : '';
   $('shop-cancel').hidden = !input.quote && !input.retry;
 }
 function updateButtons() {
@@ -559,6 +563,9 @@ function updateButtons() {
   $('net-equip').disabled = !newShopAction || !shop.netOwned || shop.netEquipped;
   $('net-unequip').disabled = !newShopAction || !shop.netOwned || !shop.netEquipped;
   $('food-eat').disabled = !newShopAction || shop.foodCount < 1;
+  $('prepare-bread').disabled = !newShopAction || !shop.breadRecipe || shop.foodCount < 1;
+  $('select-bread').disabled = !newShopAction || !shop.breadRecipe || shop.breadSelected || shop.breadBaitCount < 1;
+  $('select-worm').disabled = !newShopAction || !shop.breadRecipe || !shop.breadSelected || shop.baitCount < 1;
   $('shop-buy').disabled = !shopping || !shopState.quote;
   $('shop-retry-confirm').disabled = !shopping || !shopState.retry;
   $('shop-cancel').disabled = !shopping || !shopState.quote && !shopState.retry;
@@ -697,6 +704,7 @@ function intent(action) {
   render();
 }
 const codes = { 'cast-candidate': '这一竿已保存，已使用一份鱼饵。', 'recall-candidate': '已收回，扣饵保持。', 'released-candidate': '当前鱼已放流。', 'sale-candidate': '出售已确认。', 'menu-updated': '菜单状态已更新。', 'control-required': '请重新开启交互。', 'invalid-intent': '请求未识别。', 'version-conflict': '进度已更新，请重新操作。', 'bait-empty': '鱼饵已用完。', 'stamina-insufficient': '体力不足。', 'session-busy': '请先结束当前一竿。' };
+Object.assign(codes, { 'bread-bait-prepared': '已用 1 份面包揉成 3 份面饵。', 'float-bait-selected': '已更换浮漂钩饵。', 'float-bait-unchanged': '当前已挂这种饵。', 'bread-recipe-unavailable': '这份存档尚未开放面饵制作。' });
 Object.assign(codes, { 'bottom-kit-purchased':'底钓套装购买已确认。', 'bottom-method-selected':'钓法已切换。',
   'bottom-hooked':'底钓已中鱼，请手动收线。', 'bottom-shop-busy':'请先结束当前一竿或菜单操作。', 'bottom-shop-stale':'存档进度已变化，请重新选择。',
   'bottom-unavailable':'当前未开放底钓。', 'bottom-kit-not-owned':'请先购买底钓套装。', 'bottom-kit-owned':'已经拥有底钓套装。',
@@ -965,6 +973,7 @@ for (const [id, action] of [
   ['quote-net', () => requestShopQuote('net')], ['quote-bait', () => requestShopQuote('bait')], ['quote-food', () => requestShopQuote('food')],
   ['shop-buy', () => shopInput.buy()], ['shop-cancel', () => shopInput.cancel()], ['shop-retry-confirm', () => shopInput.retry()],
   ['net-equip', () => shopInput.equip(true)], ['net-unequip', () => shopInput.equip(false)], ['food-eat', () => shopInput.eat()],
+  ['prepare-bread', () => shopInput.bait('prepare-bread')], ['select-bread', () => shopInput.bait('select-bread')], ['select-worm', () => shopInput.bait('select-worm')],
 ]) {
   $(id).addEventListener('click', event => { if (event.detail > 1 || !canUseShop()) return; action(); renderShop(); updateButtons(); });
   $(id).addEventListener('keydown', event => { if (event.repeat && ['Space', 'Enter'].includes(event.code)) event.preventDefault(); });

@@ -43,6 +43,7 @@ sealed partial class DualWindowContext
             // durations/rate/target ranges and the actual activity clock.
             uint seed=GameSelfTest?1u:BitConverter.ToUInt32(session.ToByteArray(),0);
             var environmentForBite=new FloatBiteEnvironment(.18,pool);
+            if(gameFishingWater==null&&state.BreadBaitSelected)environmentForBite=environmentForBite.WithBreadPaste();
             if(gameFishingWater!=null){
                 gameFishingPool=BuildGameFishingPool(gameWaterLanding.Sample);
                 if(gameFishingPool==null)return;

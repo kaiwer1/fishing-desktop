@@ -240,7 +240,7 @@ namespace FishingDesktop.GameCore
         internal static bool Enabled(FloatGameState state)
         {return state!=null && state.SchemaVersion==3 && state.RulesVersion==2 && state.EquipmentUpgradeOrigin==null;}
     }
-    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved,BottomKitPurchased,AdditionalBottomKitPurchased,BankRodStandPurchased,LureKitPurchased }
+    public enum FloatOutcome { CastCommitted,Recalled,Landed,CapacityRejected,Released,Sold,Recovered,ProfileUpgraded,SuppliesPurchased,NetEquipped,FoodUsed,Unhooked,SlotReplaced,LineMoved,TerminalLost,EquipmentOffersConfigured,EquipmentPurchased,EquipmentProfileUpgraded,EquipmentArchived,CampWorkRewarded,ClothingPurchased,ClothingWorn,ClothingRemoved,BottomKitPurchased,AdditionalBottomKitPurchased,BankRodStandPurchased,LureKitPurchased,BreadBaitPrepared,FloatBaitSelected }
     public sealed class FloatEquipmentLossSummary
     {
         public readonly Guid LineId;
@@ -351,16 +351,23 @@ namespace FishingDesktop.GameCore
         public readonly ReadOnlyCollection<FloatFish> Creel;
         public readonly ReadOnlyCollection<FloatReceipt> Receipts;
         public readonly int SchemaVersion,FoodCount;
+        internal readonly int BreadBaitCount;
+        internal readonly bool BreadBaitSelected;
+        internal int SelectedFloatBaitCount {get{return BreadBaitSelected?BreadBaitCount:BaitCount;}}
+        internal bool BreadRecipeAvailable {get{return SchemaVersion==3&&CommerceCatalog.FoodDefinitionKey=="bread"&&BaitDefinitionKey=="worm";}}
         public readonly Guid FoodStackId,EquippedNetId;
         public readonly FloatOwnedNet OwnedNet;
         public readonly FloatCommerceCatalog CommerceCatalog;
         public readonly FloatUpgradeOrigin UpgradeOrigin;
         internal readonly FloatUpgradeOrigin EquipmentUpgradeOrigin;
         internal readonly FloatGameRules Rules;
-        internal FloatGameState(Guid profile,Guid branch,long sequence,long wallet,int stamina,Guid baitStack,string baitDefinition,int baitCount,FixedFloatRig rig,FloatSession session,IEnumerable<FloatFish> creel,IEnumerable<FloatReceipt> receipts,FloatGameRules rules,int schemaVersion=1,FloatCommerceCatalog catalog=null,Guid foodStack=default(Guid),int foodCount=0,FloatOwnedNet ownedNet=null,Guid equippedNet=default(Guid),FloatUpgradeOrigin origin=null,FloatEquipmentLedger equipment=null,FloatEquipmentOffers equipmentOffers=null,FloatUpgradeOrigin equipmentOrigin=null,IEnumerable<FloatSession> bankSessions=null)
+        internal FloatGameState(Guid profile,Guid branch,long sequence,long wallet,int stamina,Guid baitStack,string baitDefinition,int baitCount,FixedFloatRig rig,FloatSession session,IEnumerable<FloatFish> creel,IEnumerable<FloatReceipt> receipts,FloatGameRules rules,int schemaVersion=1,FloatCommerceCatalog catalog=null,Guid foodStack=default(Guid),int foodCount=0,FloatOwnedNet ownedNet=null,Guid equippedNet=default(Guid),FloatUpgradeOrigin origin=null,FloatEquipmentLedger equipment=null,FloatEquipmentOffers equipmentOffers=null,FloatUpgradeOrigin equipmentOrigin=null,IEnumerable<FloatSession> bankSessions=null,int breadBaitCount=0,bool breadBaitSelected=false)
         {
             FloatGuard.Id(profile,"profile");FloatGuard.Id(branch,"branch");FloatGuard.Id(baitStack,"baitStack");
             if(rules==null||creel==null||receipts==null)throw new ArgumentNullException("state component");
+            if(breadBaitCount<0||((breadBaitCount!=0||breadBaitSelected)&&(sequence==0||schemaVersion!=3||catalog==null||
+                catalog.FoodDefinitionKey!="bread"||baitDefinition!="worm"||breadBaitCount>catalog.MaximumBaitCount)))throw new ArgumentException("Invalid prepared bread bait.");
+            BreadBaitCount=breadBaitCount;BreadBaitSelected=breadBaitSelected;
             if(schemaVersion==3){
                 if(rig!=null||equipment==null||(origin!=null&&equipmentOrigin==null))throw new ArgumentException("Schema3 requires one equipment owner and an explicit upgrade origin for legacy history.");
                 if(equipmentOrigin!=null&&(equipmentOrigin.SourceBranchId==branch||equipmentOrigin.SourceSequence>=sequence))throw new ArgumentException("Invalid equipment upgrade origin.");

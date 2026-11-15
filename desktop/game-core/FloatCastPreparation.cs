@@ -102,7 +102,7 @@ namespace FishingDesktop.GameCore
                 if(bottomRig&&!budget.CanStartBottomCast){code="save-settlement-reserve";return false;}
                 if(lureRig&&!budget.CanStartLureCast){code="save-settlement-reserve";return false;}
             }
-            if(!lureRig&&state.BaitCount<1){code="bait-empty";return false;}
+            if(!lureRig&&(bottomRig?state.BaitCount:state.SelectedFloatBaitCount)<1){code="bait-empty";return false;}
             if(state.Stamina<(lureRig?OwnedLureKit.CastStaminaCost:state.Rules.CastStaminaCost)){code="stamina-insufficient";return false;}
             if(!bottomRig&&!lureRig&&state.Rig.DefinitionKey!=state.Rules.RigDefinitionKey){code="rig-invalid";return false;}
             // This revision is the fixed slice's rule version. Future geometry
@@ -118,7 +118,7 @@ namespace FishingDesktop.GameCore
                 if(checkTarget.RequiredLineMm>kitLine.RemainingLineMm){code="line-insufficient";return false;}
             }else if(state.SchemaVersion==3){
                 if(checkTarget.RequiredLineMm>FloatEquipmentGuard.MaximumLineMm){code="target-invalid";return false;}
-                var check=state.Equipment.EvaluateCastReadiness(FloatEquipmentGate.Idle,checkTarget.RequiredLineMm,state.BaitCount,state.Stamina,state.Rules.CastStaminaCost);
+                var check=state.Equipment.EvaluateCastReadiness(FloatEquipmentGate.Idle,checkTarget.RequiredLineMm,state.SelectedFloatBaitCount,state.Stamina,state.Rules.CastStaminaCost);
                 if(!check.Valid){code=check.Issues[0].Code;return false;}
             }else if(!state.Rig.LineLengthMm.HasValue||state.Rig.LineLengthMm.Value<=0){code="rig-invalid";return false;}
             else if(checkTarget.RequiredLineMm>state.Rig.LineLengthMm.Value){code="line-insufficient";return false;}

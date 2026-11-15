@@ -138,7 +138,7 @@ namespace FishingDesktop.GameCore
           return (bankEnd!=null && (bankEnd.Ending==BankRodEnding.Recall||bankEnd.Ending==BankRodEnding.Release)) ||
             command is CastFloat || command is CastFloatWithEquipment || command is CastBottomKitWithEquipment || command is CastLureWithEquipment || command is ReplaceFloatSlot || command is MoveFloatLine || command is BuyFloatEquipment || command is ArchiveLostFloatEquipment || MenuGearCommand(command) || command is RecallFloat || command is ReleaseCurrentFloatFish || command is SellFloatFish || command is BuyFloatSupply || command is EquipFloatNet || command is UseFloatFood; }
         static bool MenuGearCommand(FloatCommand command)
-        { return command is ChangeFloatClothing || command is BuyBottomKit || command is BuyAdditionalBottomKit || command is BuyBankRodStand || command is BuyLureKit; }
+        { return command is ChangeFloatClothing || command is BuyBottomKit || command is BuyAdditionalBottomKit || command is BuyBankRodStand || command is BuyLureKit || command is ManageFloatBait; }
         bool HasRecordedRequest(FloatCommand command)
         {
             if (command == null) return false;

@@ -153,7 +153,7 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <button id="camp-go-log" type="button" aria-haspopup="dialog"><strong>钓手日志</strong><kbd>O</kbd><small>钓法成绩与个人纪录</small></button>
 <button id="camp-go-gear" type="button"><strong>钓组与背包</strong><kbd>I</kbd><small>装配渔具和鱼线</small></button>
 <button id="camp-go-tackle" type="button"><strong>渔具店</strong><small>抄网、鱼饵与备件</small></button>
-<button id="camp-go-food" type="button"><strong>食品补给</strong><kbd>T</kbd><small>面包与体力</small></button>
+<button id="camp-go-food" type="button"><strong>食品补给</strong><kbd>T</kbd><small>购买面包与制作面饵</small></button>
 <button id="camp-go-clothes" type="button"><strong>服装商店</strong><small>购买、换上钓鱼服</small></button>
 <button id="camp-go-work" type="button"><strong>营地帮工</strong><small>完成帮工领取银币</small></button>
 </nav></section>
@@ -180,7 +180,11 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <article id="shop-bait"><h3>蚯蚓鱼饵</h3><p id="shop-bait-price">— 银币 / 包</p><p id="shop-bait-count">现有 — 份</p>
 <div class="interactive"><label>包数<input id="bait-packs" type="number" min="1" max="100" step="1" value="1" disabled></label><button id="quote-bait" disabled>获取鱼饵报价</button></div></article>
 <article id="shop-food"><h3>面包</h3><p id="shop-food-price">— 银币 / 份</p><p id="shop-food-count">现有 — 份</p>
-<div class="interactive"><label>份数<input id="food-packs" type="number" min="1" max="100" step="1" value="1" disabled></label><button id="quote-food" disabled>获取食品报价</button><button id="food-eat" disabled>食用一份</button></div></article>
+<div class="interactive"><label>份数<input id="food-packs" type="number" min="1" max="100" step="1" value="1" disabled></label><button id="quote-food" disabled>获取食品报价</button><button id="food-eat" disabled>食用一份</button></div>
+<div id="bread-recipe" hidden>
+<h3>浮漂钩饵</h3><p>1 份面包可揉成 3 份面饵。在淡水钓点，面饵更偏向鲤鱼和鲫鱼。</p>
+<p id="bread-stock" role="status"></p>
+<div class="interactive"><button id="prepare-bread" disabled>揉制 3 份面饵</button><button id="select-bread" disabled>挂面饵</button><button id="select-worm" disabled>挂蚯蚓</button></div></div></article>
 </div>
 <div id="shop-quote" hidden><p id="shop-quote-text"></p><button id="shop-buy" class="interactive" disabled>确认购买</button></div>
 <div id="shop-retry" hidden><p id="shop-retry-text"></p><button id="shop-retry-confirm" class="interactive" disabled>重试原操作</button></div>

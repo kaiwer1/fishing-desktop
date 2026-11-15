@@ -14,8 +14,13 @@ sealed partial class DualWindowContext
     {
         if(gameFishingWater==null||game==null||game.Snapshot.State==null)return null;
         gameFishingPoolTimeMs=gameEcologyTimeMs;
-        return GameEcologyEnabled?gameClimate.CreatePool(gameFishingWater,sample,game.Snapshot.State.Rules,gameFishingPoolTimeMs):
-            gameFishingWater.CreatePool(sample,game.Snapshot.State.Rules);
+        var state=game.Snapshot.State;
+        var pool=GameEcologyEnabled?gameClimate.CreatePool(gameFishingWater,sample,state.Rules,gameFishingPoolTimeMs):
+            gameFishingWater.CreatePool(sample,state.Rules);
+        var session=state.Session;
+        if(pool!=null&&gameFishingWater.Kind=="freshwater"&&session!=null&&!session.IsBottom&&!session.IsLure&&state.BreadBaitSelected)
+            return new FloatFishingPool(pool.Id,pool.Name,pool.Environment.WithBreadPaste());
+        return pool;
     }
     void AdvanceGameEcology(double activeSeconds)
     {

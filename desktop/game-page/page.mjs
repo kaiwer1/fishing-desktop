@@ -13,7 +13,7 @@ import { CampPanel } from './camp-panel.mjs';
 import { WaterView } from './water-view.mjs';
 import { pickAim } from './water-aim.mjs';
 import { ScenePresentation } from './scene-presentation.mjs';
-import { SpotMenu } from './spot-menu.mjs';
+import { SpotMenu, stationBearing, stationWater } from './spot-menu.mjs';
 import { Wardrobe, wardrobeMessages } from './wardrobe.mjs';
 import { fishName, fishFigure, installFishIllustrations, newCreelCatch } from './fish-illustration.mjs';
 import { createSpecimenView } from './specimen-view.mjs';
@@ -229,13 +229,16 @@ function reconcileSpot() {
     spotRequest = null;
   }
 }
+let activeShoreSpot = null, stationMarksKey = '';
 function renderSpotLocation() {
   const atlas = spotMenu.state(), active = atlas?.spots.find(s => s.id === atlas.activeId);
+  activeShoreSpot = active;
   $('scene-spot-name').textContent = active?.name ?? '岸边钓位';
   $('scene-spot-region').textContent = active?.region ?? '';
   $('camp-location').textContent = active?.name ?? '';
   document.body.dataset.campWater = active?.id ?? '';
   $('map-spot-name').textContent = active ? `${active.name} · 俯视钓位` : '钓鱼桌面 · 俯视钓位';
+  renderStationMarks(waterView.state());
 }
 let visualPaused = false;
 const scene = new ScenePresentation({ canvas: $('scene-canvas'), load: () => import('./game-scene.mjs'),
@@ -302,6 +305,13 @@ function renderSceneHud() {
   if (bank) {
     const side = bank.xMm < 0 ? '左侧' : '右侧';
     $('bank-position').textContent = bank.xMm === 0 ? '岸线中央' : `岸线${side} ${(Math.abs(bank.xMm) / 1000).toFixed(1)} 米`;
+  }
+  const guide = $('bank-stations'), stations = bank && activeShoreSpot?.id === bank.waterId ? activeShoreSpot.stations : null;
+  guide.hidden = !stations?.length;
+  if (!guide.hidden) {
+    const lines = stations.map(s => `${s.name} · ${stationBearing(s.xMm, bank.xMm)}\n${stationWater(s)}${s.fish.length ? ' · ' + s.fish.join('、') : ''}`);
+    const text = lines.join('\n');
+    if (guide.textContent !== text) guide.textContent = text;
   }
   let action = '对准水面', hint = '按住左键蓄力，松开抛竿。', cue = 'quiet';
   if (bank && !bankWalk.canCast(waterView.state())) { action = '沿岸走位'; hint = '松开走位键，站稳后按住水面抛竿。'; }
@@ -425,9 +435,29 @@ function renderCast() {
   $('cast-target').setAttribute('aria-disabled', String(!canPrepare() && !strikeContext().allowed && !bottomStrike.available && !(currentLure() && lureContext().allowed) && !fightContext().allowed));
   renderWater();
 }
+function renderStationMarks(water) {
+  const stations = water?.enabled && activeShoreSpot?.id === water.waterId ? activeShoreSpot.stations ?? [] : [];
+  const b = water?.bounds, key = stations.length ? JSON.stringify([b, stations]) : '';
+  if (key === stationMarksKey) return;
+  stationMarksKey = key;
+  const group = $('water-station-marks'); group.replaceChildren();
+  for (const s of stations) {
+    if (s.targetXmm < b.minXmm || s.targetXmm > b.maxXmm || s.targetZmm < b.minZmm || s.targetZmm > b.maxZmm) continue;
+    const x = (s.targetXmm-b.minXmm)*480/(b.maxXmm-b.minXmm);
+    const y = (b.maxZmm-s.targetZmm)*280/(b.maxZmm-b.minZmm);
+    const svg = tag => document.createElementNS('http://www.w3.org/2000/svg', tag);
+    const mark = svg('g'), pin = svg('circle'), label = svg('text'), title = svg('title');
+    mark.setAttribute('data-station', s.id); mark.setAttribute('transform', `translate(${x} ${y})`); pin.setAttribute('r', '4');
+    label.setAttribute('text-anchor', x < 55 ? 'start' : x > 425 ? 'end' : 'middle');
+    label.setAttribute('y', y < 26 ? '20' : '-9'); label.textContent = s.name;
+    title.textContent = `${s.name} · ${s.habitat} · ${stationWater(s)} · ${s.fish.join('、')}`;
+    mark.append(title, pin, label); group.append(mark);
+  }
+}
 function renderWater() {
   const state = waterView.state(), graph = waterView.diagram(), enabled = state?.enabled === true;
   $('cast-legacy').hidden = enabled; $('water-aim-panel').hidden = !enabled;
+  renderStationMarks(state);
   if (!enabled) return;
   const metres = value => (value / 1000).toFixed(2);
   $('water-far').textContent = `远端 ${metres(state.bounds.maxZmm)} 米`;
@@ -435,7 +465,8 @@ function renderWater() {
   $('water-horizontal').textContent = `横向 ${metres(state.bounds.minXmm)} 至 ${metres(state.bounds.maxXmm)} 米`;
   const depths = state.bed.map(row => row.depthMm);
   const methodDepth = bottomMethod() ? '铅坠沉至底部后观察竿尖' : `漂深 ${metres(state.floatDepthMm)} 米 · 最低净空 ${metres(state.clearanceMm)} 米`;
-  $('water-depth').textContent = `已配置河床水深 ${metres(Math.min(...depths))}–${metres(Math.max(...depths))} 米 · ${methodDepth}`;
+  const lateralDepths = state.crossBed?.map(row => row.extraDepthMm) ?? [0];
+  $('water-depth').textContent = `河床水深 ${metres(Math.min(...depths) + Math.min(...lateralDepths))}–${metres(Math.max(...depths) + Math.max(...lateralDepths))} 米 · ${methodDepth}`;
   const direction = { near: '近岸方向', far: '远岸方向', left: '左侧', right: '右侧' };
   const outside = p => p?.visible === false ? ` · 图外（${p.outside.map(value => direction[value]).join('、')}）` : '';
   const position = p => `横向 ${metres(p.xMm)} 米，离岸 ${metres(p.zMm)} 米，${p.depthMm === 0 ? '无有效水深' : `水深 ${metres(p.depthMm)} 米`}`;
@@ -605,7 +636,7 @@ function updateButtons() {
   sparesPanel.render();
   campPanel.render();
   $('spot-menu').hidden = !snapshot?.MenuOpen || !spotMenu.revision;
-  if (!$('spot-menu').hidden) spotMenu.render();
+  if (!$('spot-menu').hidden) spotMenu.render(bankWalk.forWater(waterView.state()));
   $('wardrobe').hidden = !snapshot?.MenuOpen || !wardrobe.revision;
   if (!$('wardrobe').hidden) wardrobe.render();
   if (scene.visible) renderSceneHud();

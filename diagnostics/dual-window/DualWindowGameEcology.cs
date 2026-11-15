@@ -7,7 +7,7 @@ sealed partial class DualWindowContext
     long gameEcologyTimeMs,gameFishingPoolTimeMs;
     double gameEcologyRemainder;
     bool GameEcologyEnabled {get{return gameFishingWater!=null&&(PlayerMode||GameEcologySelfTest||GameCatchSelfTest||
-        GameMultiRodSelfTest||GameBottomSelfTest||GameLureSelfTest||GameWallpaperSelfTest||GamePlayerSelfTest);}}
+        GameMultiRodSelfTest||GameBottomSelfTest||GameLureSelfTest||GameWallpaperSelfTest||GamePlayerSelfTest||GameShoreSelfTest);}}
 
     ChinaWaterConditionSnapshot SampleGameConditions(){return gameClimate.Sample(gameFishingWater,gameEcologyTimeMs);}
     FloatFishingPool BuildGameFishingPool(FloatWaterSample sample)

@@ -1,5 +1,6 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait,[ValidateSet('yellow-catfish','black-rockfish')][string]$GameSpecies,[uint32]$GameSampleSeed)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait,[ValidateSet('yellow-catfish','black-rockfish')][string]$GameSpecies,[uint32]$GameSampleSeed,[switch]$GameShoreStations)
 $ErrorActionPreference='Stop'
+if($GameShoreStations){$GameWalk=$true}
 if($GameSpecimen -and $GameAnglerLog){throw 'Run the separate creel and angler log checks individually.'}
 if($GameBreadBait -and ($GameSpecimen -or $GameAnglerLog -or $GameSpecies)){throw 'Run bread bait on its own private save.'}
 if($PSBoundParameters.ContainsKey('GameSampleSeed') -and -not $GameSpecies){throw 'A sample seed requires a catalog fish.'}
@@ -129,6 +130,7 @@ try{
   if($GameSpares){$taskMode='--game-spares-self-test'}
   if($GameCamp){$taskMode='--game-camp-self-test'}
   if($GameWalk){$taskMode='--game-walk-self-test'}
+  if($GameShoreStations){$taskMode='--game-shore-stations-self-test'}
   if($GameEcology){$taskMode='--game-ecology-self-test'}
   if($GameLure){$taskMode='--game-lure-self-test'}
   if($GameMultiRod){$taskMode='--game-multi-rod-self-test'}
@@ -194,6 +196,18 @@ try{
     }
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Bottom fishing shutdown was not confirmed.'}
+  }elseif($GameShoreStations){
+    if(-not $taskReport.passed -or $taskReport.stations.Count -ne 6 -or $taskReport.checks.Count -ne 6 -or -not $taskReport.devToolsKeyboardInput -or -not $taskReport.devToolsMouseInput -or $taskReport.rawGameCommandInjected -or $taskReport.controlledCharge -or $taskReport.controlledFishFacts){throw 'The six input-driven station visits did not complete.'}
+    $pairs=@($taskReport.stations | Group-Object site)
+    foreach($water in $pairs){
+      if($water.Count -ne 2 -or @($water.Group.habitat | Sort-Object -Unique).Count -ne 2 -or @($water.Group.referenceZmm | Sort-Object -Unique) -ne 19000){throw 'Paired casts did not reach both local depth bands at the same reference range.'}
+    }
+    if($pairs.Count -ne 3 -or $taskReport.sequence -ne 13 -or $taskReport.gameFlightEmissions -ne 6 -or $taskReport.value -ne 12000 -or $taskReport.baitCount -ne 6 -or $taskReport.stamina -ne 88){throw 'Surveyed station count or six-cast settlement mismatch.'}
+    foreach($station in $taskReport.stations){
+      if(-not (Test-Path -LiteralPath (Join-Path $taskRun ('shore-'+$station.station+'.png')) -PathType Leaf)){throw 'A station scene capture is missing.'}
+    }
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session'){throw 'The shoreline profile did not exit idle.'}
   }elseif($GameWalk){
     if(-not $taskReport.passed -or $taskReport.checks.Count -ne 9 -or -not $taskReport.walkConnected -or -not $taskReport.devToolsKeyboardInput -or -not $taskReport.devToolsMouseInput -or -not $taskReport.realHostClock -or -not $taskReport.controlledBlur -or -not $taskReport.stalePoseRejected -or -not $taskReport.heldWalkBlocksCast -or -not $taskReport.coastalCast -or $taskReport.nativeAltTabTested -or $taskReport.desktopLayer){throw 'Bank walking controls or release evidence mismatch.'}
     if($taskReport.anchorXmm -gt -650 -or $taskReport.poseRevision -lt 1 -or $taskReport.sequence -ne 3 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.value -ne 12000 -or $taskReport.remainingLineMm -ne 50000 -or $taskReport.gameFlightEmissions -ne 1){throw 'Walking changed resources or cast origin mismatch.'}

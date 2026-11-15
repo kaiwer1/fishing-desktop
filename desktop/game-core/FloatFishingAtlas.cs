@@ -28,6 +28,14 @@ namespace FishingDesktop.GameCore
         {Id=id;Name=name;Environment=environment;}
     }
 
+    internal sealed class FloatShoreStation
+    {
+        internal readonly string Id,Name;
+        internal readonly int Xmm;
+        internal const int SoundingZmm=19000;
+        internal FloatShoreStation(string id,string name,int xMm){Id=id;Name=name;Xmm=xMm;}
+    }
+
     // Relative weights and depth bands are original game settings for one
     // shoreline station, not real population surveys or sale prices.
     internal sealed class FloatFishingWater
@@ -43,14 +51,16 @@ namespace FishingDesktop.GameCore
         internal readonly string Id,Name,Kind,Description,ShallowPoolName,DeepPoolName;
         internal readonly FloatStillWaterGeometry Geometry;
         internal readonly int DeepThresholdMm;
+        internal readonly ReadOnlyCollection<FloatShoreStation> ShoreStations;
         readonly ReadOnlyCollection<FishWeight> weights;
 
         internal FloatFishingWater(string name,string kind,string description,FloatStillWaterGeometry geometry,
-            int thresholdMm,string shallowName,string deepName,params FishWeight[] species)
+            int thresholdMm,string shallowName,string deepName,FloatShoreStation[] stations,params FishWeight[] species)
         {
             Id=geometry.WaterId;Name=name;Kind=kind;Description=description;Geometry=geometry;
             DeepThresholdMm=thresholdMm;ShallowPoolName=shallowName;DeepPoolName=deepName;
             weights=Array.AsReadOnly((FishWeight[])species.Clone());
+            ShoreStations=Array.AsReadOnly((FloatShoreStation[])stations.Clone());
         }
 
         static bool HasEncounterRange(FloatGameRules rules,FloatFishingSpecies species)
@@ -66,6 +76,19 @@ namespace FishingDesktop.GameCore
             var result=new List<FloatFishingSpecies>();
             foreach(var row in weights)if(HasEncounterRange(rules,row.Species))result.Add(row.Species);
             return result.AsReadOnly();
+        }
+
+        internal string[] StationFish(FloatGameRules rules,bool deep)
+        {
+            var result=new List<string>();FishWeight strongest=null;
+            foreach(var row in weights){
+                if(!HasEncounterRange(rules,row.Species))continue;
+                if(strongest==null||(deep?row.Deep>strongest.Deep:row.Shallow>strongest.Shallow))strongest=row;
+                if(deep?row.Deep>row.Shallow:row.Shallow>row.Deep)result.Add(row.Species.Name);
+            }
+            // An older regional catalog may only have a generalist in this water.
+            if(result.Count==0&&strongest!=null)result.Add(strongest.Species.Name);
+            return result.ToArray();
         }
 
         // World identity, coordinates, bed and casting depth must agree with
@@ -107,17 +130,20 @@ namespace FishingDesktop.GameCore
         internal static readonly ReadOnlyCollection<FloatSpeciesRule> SpeciesRules=FloatDomesticSpeciesCatalog.Nine.Species;
         internal static readonly ReadOnlyCollection<FloatFishingWater> Waters=Array.AsReadOnly(new[]{
             new FloatFishingWater("静水湾","freshwater","近岸芦苇间可寻鲫鱼，塘心深水更常遇到鲤鱼。",
-                FloatStillWaterGeometry.CreateDevelopment(),1800,"芦苇浅滩","塘心深窝",
+                FloatStillWaterGeometry.CreateDevelopment(true),1800,"芦苇浅滩","塘心深窝",
+                new[]{new FloatShoreStation("reed-edge","芦苇口",-6000),new FloatShoreStation("pond-shelf","塘坎",6000)},
                 new FloatFishingWater.FishWeight(Carp,3,8),new FloatFishingWater.FishWeight(Crucian,7,2)),
             new FloatFishingWater("江湾","freshwater","浅水草滩聚着草鱼和鳊鱼，回湾深槽里鲤鱼较多。",
-                new FloatStillWaterGeometry("river-bend","reed-bank",2,0,1500,0,0,-46000,46000,3000,80000,
+                new FloatStillWaterGeometry("river-bend","reed-bank",5,0,1500,0,0,-46000,46000,3000,80000,
                     -13000,13000,12000,41000,new[]{new FloatWaterBedKnot(3000,520),new FloatWaterBedKnot(12000,950),
-                        new FloatWaterBedKnot(28000,2750),new FloatWaterBedKnot(80000,4650)}),2100,"湾口草滩","回湾深槽",
+                        new FloatWaterBedKnot(28000,2750),new FloatWaterBedKnot(80000,4650)},-500),2100,"湾口草滩","回湾深槽",
+                new[]{new FloatShoreStation("river-channel","回流口",-6000),new FloatShoreStation("grass-bank","草滩尾",6000)},
                 new FloatFishingWater.FishWeight(Grass,5,2),new FloatFishingWater.FishWeight(Bream,4,3),new FloatFishingWater.FishWeight(Carp,1,5),new FloatFishingWater.FishWeight(Catfish,1,3)),
             new FloatFishingWater("海湾","marine","黄鳍鲷常在近岸沙槽活动，外湾礁坡更容易遇到黑鲷和花鲈。",
-                new FloatStillWaterGeometry("coastal-bay","rock-bank",3,0,1600,0,0,-48000,48000,3000,85000,
+                new FloatStillWaterGeometry("coastal-bay","rock-bank",6,0,1600,0,0,-48000,48000,3000,85000,
                     -14000,14000,13000,42000,new[]{new FloatWaterBedKnot(3000,750),new FloatWaterBedKnot(13000,1500),
-                        new FloatWaterBedKnot(30000,3500),new FloatWaterBedKnot(85000,6400)}),2700,"近岸沙槽","外湾礁坡",
+                        new FloatWaterBedKnot(30000,3500),new FloatWaterBedKnot(85000,6400)},620),2700,"近岸沙槽","外湾礁坡",
+                new[]{new FloatShoreStation("sand-spit","沙嘴",-6000),new FloatShoreStation("reef-ledge","礁台",6000)},
                 new FloatFishingWater.FishWeight(Black,3,5),new FloatFishingWater.FishWeight(Bass,1,4),new FloatFishingWater.FishWeight(Yellow,6,1),new FloatFishingWater.FishWeight(Rockfish,1,4))
         });
 

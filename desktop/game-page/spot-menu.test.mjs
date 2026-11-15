@@ -56,3 +56,34 @@ test('failure, host catalogue replacement and lease cancellation never resend a 
   old.click(); assert.equal(f.sent.length, 3);
   f.apply(4); f.button('reef-01').click(); f.menu.cancelPending(); assert.equal(f.menu.pending, null); assert.equal(f.sent.length, 4);
 });
+
+test('station distances follow the angler in the active water while other maps show directions from their own centre', () => {
+  const f = fixture();
+  const station = (id, name, xMm, fish) => ({id, name, xMm, targetXmm:xMm, targetZmm:19000,
+    depthMm:xMm < 0 ? 1210 : 2320, habitat:xMm < 0 ? '浅滩' : '深槽', fish});
+  const spots = f.spots.map(s => ({...s, stations:[
+    station('west', '左滩', -6000, s.species.slice(0, 1)), station('east', '右槽', 6000, s.species.slice(-1))
+  ]}));
+  assert.equal(f.apply(1, spots[0].id, spots), true);
+  const cards = f.container.children[2].children;
+  const lists = cards.map(card => card.children.at(-2).children);
+  assert.equal(lists[0][0].dataset.station, 'west');
+  assert.equal(lists[0][0].children[3].textContent, '鲫鱼');
+  assert.match(lists[0][1].children[2].textContent, /深槽.*离岸 19 米.*水深 2.32 米/);
+  f.menu.render({waterId:'bank-01',xMm:-5000});
+  assert.equal(lists[0][0].children[1].textContent, '已到达');
+  assert.equal(lists[0][1].children[1].textContent, '向右走 11 米');
+  assert.equal(lists[1][0].children[1].textContent, '中央向左 6 米');
+  f.menu.render({waterId:'bank-01',xMm:-4999});
+  assert.equal(lists[0][0].children[1].textContent, '向左走 1.1 米');
+  f.button('bank-01').click(); assert.deepEqual(f.sent, []);
+  assert.ok(lists.flat().every(row => row.children.every(child => child.tagName !== 'button')));
+  const altered = f.menu.state(); altered.spots[0].stations[0].fish[0] = '黑鲷';
+  assert.equal(f.menu.state().spots[0].stations[0].fish[0], '鲫鱼');
+  const row = spots[0].stations[0];
+  for (const invalid of [[row, row], [{...row, depthMm:-1}], [{...row, targetZmm:NaN}], [{...row, fish:['外海鱼']} ]]) {
+    assert.equal(f.apply(2, spots[0].id, [{...spots[0], stations:invalid}]), false);
+  }
+  assert.equal(f.apply(2, f.spots[0].id, f.spots), true);
+  assert.equal(f.container.children[2].children[0].children.at(-2).className, undefined);
+});

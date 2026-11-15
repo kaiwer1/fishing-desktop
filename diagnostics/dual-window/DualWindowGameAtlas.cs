@@ -14,7 +14,14 @@ sealed partial class DualWindowContext
         var rows=new List<object>();var rules=game.Snapshot.State.Rules;
         foreach(var water in FloatFishingAtlas.Available(rules)){
             var names=new List<string>();foreach(var species in water.SpeciesFor(rules))names.Add(species.Name);
-            rows.Add(new {id=water.Id,name=water.Name,region=water.Kind=="marine"?"中国近海":"中国内陆",description=water.Description,species=names.ToArray()});
+            var stations=new List<object>();
+            foreach(var station in water.ShoreStations){
+                var sounding=water.Geometry.Sample(station.Xmm,FloatShoreStation.SoundingZmm,water.Geometry.Version).Sample;
+                var pool=water.CreatePool(sounding,rules);
+                stations.Add(new {id=station.Id,name=station.Name,xMm=station.Xmm,targetXmm=sounding.Xmm,targetZmm=sounding.Zmm,
+                    depthMm=sounding.DepthMm,habitat=pool.Name,fish=water.StationFish(rules,pool.Id=="deep")});
+            }
+            rows.Add(new {id=water.Id,name=water.Name,region=water.Kind=="marine"?"中国近海":"中国内陆",description=water.Description,species=names.ToArray(),stations=stations.ToArray()});
         }
         Send(pane,new {kind="game-spot-state",documentId=pane.Ticket.DocumentId,revision=checked(++binding.SpotRevision),state=new {activeId=gameFishingWater.Id,spots=rows.ToArray()}});
     }

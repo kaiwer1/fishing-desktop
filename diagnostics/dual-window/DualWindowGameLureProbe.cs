@@ -19,7 +19,7 @@ sealed partial class DualWindowContext
             for(const [u,v] of "+aims+@"){
                 const p=dualProbe.projectSceneAim(u,v);if(!p)continue;
                 const x=Math.round(p.clientX),y=Math.round(p.clientY),a=dualProbe.pickSceneAim(x,y);
-                if(document.elementFromPoint(x,y)===canvas && a?.geometryVersion===3)return {x,y,u:a.u,v:a.v};
+                if(document.elementFromPoint(x,y)===canvas && a?.geometryVersion==="+gameWater.Version+@")return {x,y,u:a.u,v:a.v};
             }return null;
         })()");
     }

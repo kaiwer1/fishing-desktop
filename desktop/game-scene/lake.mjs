@@ -86,12 +86,12 @@ const waterShader = {
   uniforms: { ...weatherUniforms(), tDiffuse: { value: null }, color: { value: null }, textureMatrix: { value: null },
     time: { value: 0 }, impact: { value: new THREE.Vector3(0, 0, -99) }, rough: { value: .65 }, body: {value: new THREE.Color(0x36594e)},
     fishPos:{value:new THREE.Vector3()},fishShape:{value:new THREE.Vector4()},spoon:{value:new THREE.Vector4()} },
-  vertexShader: `uniform mat4 textureMatrix;varying vec4 uvMirror;varying vec3 world;
-    void main(){uvMirror=textureMatrix*vec4(position,1.);world=(modelMatrix*vec4(position,1.)).xyz;
+  vertexShader: `uniform mat4 textureMatrix;attribute float sounding;varying float bedDepth;varying vec4 uvMirror;varying vec3 world;
+    void main(){bedDepth=sounding;uvMirror=textureMatrix*vec4(position,1.);world=(modelMatrix*vec4(position,1.)).xyz;
       gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
   fragmentShader: `uniform sampler2D tDiffuse;uniform float time;uniform float rough;uniform vec3 body;uniform vec3 impact;
     ${waterWeatherGLSL}
-    uniform vec3 fishPos;uniform vec4 fishShape;uniform vec4 spoon;varying vec4 uvMirror;varying vec3 world;
+    uniform vec3 fishPos;uniform vec4 fishShape;uniform vec4 spoon;varying float bedDepth;varying vec4 uvMirror;varying vec3 world;
     float oval(vec2 p,vec2 radius){float d=length(p/radius);return 1.-smoothstep(.91,1.06,d);}
     // Suppress ripples narrower than a pixel towards the horizon. In the
     // foreground overlapping trains and moving wind patches break up the crests.
@@ -128,6 +128,12 @@ const waterShader = {
       vec3 shore=texture2D(tDiffuse,clamp(uv+vec2(ax,az)*rough*(.09+.13*amp),.001,.999)).rgb;
       float fresnel=.09+.89*pow(1.-max(dot(eye,normal),0.),3.7);
       vec3 water=mix(body,shore,min(.9,fresnel));
+      if(bedDepth>0.){
+        // Diffuse light returning from the bed fades with the optical path
+        // through water. Grazing angles retain the reflected skyline.
+        float bottomLight=exp(-bedDepth*.79)*(1.-fresnel);
+        water+=vec3(.071,.052,.025)*bottomLight;
+      }
       if(fishShape.w>0. && eye.y>.012){
         // Project the fragment's viewing ray to the confirmed swimming depth.
         // The bed and shoreline mask the effect naturally at the water edge.
@@ -198,12 +204,30 @@ function terrain(group, width, depth, xCentre, zCentre, surfaceY, height, far, m
   group.add(new THREE.Mesh(g,material));
 }
 
+function bedColumns(water) {
+  return water.crossBed?.length?water.crossBed:[{xMm:water.waterBounds.minXmm,extraDepthMm:0},{xMm:water.waterBounds.maxXmm,extraDepthMm:0}];
+}
+
+function waterSurfaceGeometry(water,width,depth){
+  const columns=bedColumns(water),rows=water.bed,bounds=water.waterBounds;
+  const geometry=new THREE.PlaneGeometry(width,depth,columns.length-1,rows.length-1);
+  const pos=geometry.attributes.position,soundings=[];
+  const middleX=(bounds.minXmm+bounds.maxXmm)/2,middleZ=(bounds.minZmm+bounds.maxZmm)/2;
+  for(let i=rows.length-1;i>=0;i--)for(const col of columns){
+    pos.setXY(soundings.length,(col.xMm-middleX)/1000,(rows[i].zMm-middleZ)/1000);
+    soundings.push((rows[i].depthMm+col.extraDepthMm)/1000);
+  }
+  geometry.setAttribute('sounding',new THREE.Float32BufferAttribute(soundings,1));
+  return geometry;
+}
+
 function bedMesh(water) {
-  const pos = [], index = [], min = water.waterBounds.minXmm / 1000, max = water.waterBounds.maxXmm / 1000;
+  const pos = [], index = [],columns=bedColumns(water);
   for (const [i, k] of water.bed.entries()) {
-    const y = (water.surfaceYmm - k.depthMm) / 1000, z = -k.zMm / 1000;
-    pos.push(min, y, z, max, y, z);
-    if (i) { const n = i * 2; index.push(n - 2, n - 1, n, n, n - 1, n + 1); }
+    for(const [j,col] of columns.entries()){
+      pos.push(col.xMm/1000,(water.surfaceYmm-k.depthMm-col.extraDepthMm)/1000,-k.zMm/1000);
+      if(i&&j){const far=i*columns.length+j,near=far-columns.length;index.push(near-1,near,far-1,far-1,near,far);}
+    }
   }
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(index); g.computeVertexNormals();
   const bed = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x474938 })); bed.name = 'surveyed-bed'; return bed;
@@ -404,7 +428,8 @@ export function createLake(water,assetUrl=null) {
   group.add(bedMesh(water));
   // Extend only the visual ocean past its playable rectangle. The two meshes
   // share a reflection transform computed for the physical water plane.
-  const surface = new Reflector(new THREE.PlaneGeometry(width,depth),{shader:waterShader,textureWidth:768,textureHeight:384,multisample:0,clipBias:.003});
+  const surface = new Reflector(waterSurfaceGeometry(water,width,depth),{shader:waterShader,textureWidth:768,textureHeight:384,multisample:0,clipBias:.003});
+  surface.material.defaultAttributeValues.sounding=[0]; // Scenic sea outside the survey has no visible bed.
   surface.name='surveyed-surface'; surface.rotation.x=-Math.PI/2; surface.position.set(x,sy,(near+far)/2); group.add(surface);
   surface.material.uniforms.body.value.set(ocean?0x235d72:river?0x555b37:0x36594e);
   surface.material.uniforms.rough.value=ocean?1.35:river?.91:.65;

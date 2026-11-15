@@ -282,6 +282,27 @@ test('O from the bank waits for the current log, opens a read-only journal and r
 
 const bankState = (extra = {}) => ({ enabled:true, waterId:'development-still-water', geometryVersion:1,
   minXmm:-8000,maxXmm:8000,xMm:0,poseRevision:0,direction:0,fast:false,...extra });
+test('shore HUD and chart display the two surveyed targets and only report arrival after a host walking update', async () => {
+  const f=await pageFixture(fakeScene()); await enableScene(f);
+  document.createElementNS=(_,tag)=>document.createElement(tag);
+  const lake={id:'development-still-water',name:'静水湾',region:'中国内陆',description:'平缓水域。',species:['鲫鱼','鲤鱼'],
+    stations:[{id:'west',name:'西芦口',xMm:-6000,targetXmm:-6000,targetZmm:19000,depthMm:1590,habitat:'浅滩',fish:['鲫鱼']},
+      {id:'east',name:'东深槽',xMm:6000,targetXmm:6000,targetZmm:19000,depthMm:2430,habitat:'深槽',fish:['鲤鱼']}]};
+  const setSpot=(revision,spot)=>f.emit({kind:'game-spot-state',revision,state:{activeId:spot.id,spots:[spot]}});
+  setSpot(1,lake);
+  const guides=f.nodes.get('bank-stations'), marks=f.nodes.get('water-station-marks');
+  assert.equal(guides.hidden, true);
+  assert.deepEqual(marks.children.map(mark=>mark.attributes.transform), ['translate(120 210)','translate(360 210)']);
+  f.emit({kind:'game-bank-state',revision:1,state:bankState()});
+  assert.equal(guides.hidden, false);
+  assert.match(guides.textContent,/西芦口 · 向左走 6 米\n离岸 19 米 · 水深 1.59 米 · 鲫鱼/);
+  f.emit({kind:'game-bank-state',revision:2,state:bankState({xMm:6000,poseRevision:1})});
+  assert.match(guides.textContent,/西芦口 · 向左走 12 米/);
+  assert.match(guides.textContent,/东深槽 · 已到达\n离岸 19 米 · 水深 2.43 米 · 鲤鱼/);
+  assert.deepEqual(f.messages,[]);
+  setSpot(2,{...lake,id:'river-bend'});
+  assert.equal(marks.children.length,0); assert.equal(guides.hidden,true);
+});
 test('real bank HUD takes a confirmed standing pose before a fresh click and shares its absolute position with the renderer', async () => {
   const renderer=fakeScene(), f=await pageFixture(renderer); await enableScene(f); enableCampCatalog(f);
   const bank=(revision,extra={})=>f.emit({kind:'game-bank-state',revision,state:bankState(extra)});

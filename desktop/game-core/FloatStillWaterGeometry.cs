@@ -35,9 +35,9 @@ namespace FishingDesktop.GameCore
         {Accepted=sample!=null;Code=code;Sample=sample;}
     }
 
-    // An immutable, obstacle-free development water/spot definition. Depth is
-    // piecewise linear in Z and independent of X. No ecology or save state is
-    // inferred from this geometry, and animated waves do not change its plane.
+    // Add the cross-bank shelf to the longitudinal bed. Every patch between
+    // consecutive stations is a plane, so the rendered triangles and the
+    // physical soundings agree across their entire area.
     internal sealed class FloatStillWaterGeometry
     {
         internal const int FloatDepthMm=200,MinimumBottomClearanceMm=100;
@@ -48,6 +48,9 @@ namespace FishingDesktop.GameCore
         internal readonly int AimMinimumXmm,AimMaximumXmm,AimMinimumZmm,AimMaximumZmm;
         internal readonly int SafeWorkMinimumXmm,SafeWorkMaximumXmm,SafeWorkMinimumZmm,SafeWorkMaximumZmm;
         internal readonly ReadOnlyCollection<FloatWaterBedKnot> BedKnots;
+        // The sign selects which bank leads to deep water. Both sides add a
+        // nonnegative drop, preserving the validated safe-work rectangle.
+        internal readonly int ShelfDepthMm,ShelfStartXmm,ShelfEndXmm;
         static string Key(string value)
         {
             if(String.IsNullOrEmpty(value)||value.Length>96)throw new ArgumentException("A bounded water or spot identifier is required.");
@@ -58,7 +61,7 @@ namespace FishingDesktop.GameCore
         internal FloatStillWaterGeometry(string waterId,string spotId,long version,
             int anchorXmm,int anchorYmm,int anchorZmm,int surfaceYmm,
             int minimumXmm,int maximumXmm,int minimumZmm,int maximumZmm,
-            int aimMinimumXmm,int aimMaximumXmm,int aimMinimumZmm,int aimMaximumZmm,IEnumerable<FloatWaterBedKnot> bedKnots)
+            int aimMinimumXmm,int aimMaximumXmm,int aimMinimumZmm,int aimMaximumZmm,IEnumerable<FloatWaterBedKnot> bedKnots,int shelfDepthMm=0)
         {
             WaterId=Key(waterId);SpotId=Key(spotId);
             if(version<1)throw new ArgumentOutOfRangeException("version");
@@ -86,6 +89,24 @@ namespace FishingDesktop.GameCore
             AimMinimumXmm=aimMinimumXmm;AimMaximumXmm=aimMaximumXmm;AimMinimumZmm=aimMinimumZmm;AimMaximumZmm=aimMaximumZmm;
             SafeWorkMinimumXmm=minimumXmm;SafeWorkMaximumXmm=maximumXmm;SafeWorkMinimumZmm=safeMinimum;SafeWorkMaximumZmm=safeMaximum;
             BedKnots=copy.AsReadOnly();
+            if(Math.Abs((long)shelfDepthMm)>5000)throw new ArgumentOutOfRangeException("shelfDepthMm");
+            if(shelfDepthMm!=0){
+                int middle=(minimumXmm+maximumXmm)/2,side=Math.Sign(shelfDepthMm);
+                ShelfStartXmm=middle+side*1000;ShelfEndXmm=middle+side*6000;
+                if(Math.Min(ShelfStartXmm,ShelfEndXmm)<=minimumXmm||Math.Max(ShelfStartXmm,ShelfEndXmm)>=maximumXmm)
+                    throw new ArgumentException("The shelf must lie inside the surveyed rectangle.");
+                foreach(var knot in copy)if(knot.DepthMm+Math.Abs(shelfDepthMm)>100000)throw new ArgumentException("Shelf exceeds the survey depth range.");
+            }
+            ShelfDepthMm=shelfDepthMm;
+        }
+        int ShelfRun(int xMm)
+        {return Math.Min(5000,Math.Max(0,(xMm-ShelfStartXmm)*Math.Sign(ShelfDepthMm)));}
+        internal int ExtraDepthMm(int xMm){return (int)((long)ShelfRun(xMm)*Math.Abs(ShelfDepthMm)/5000);}
+        internal int SoundingMm(FloatWaterBedKnot a,FloatWaterBedKnot b,int xMm,int zMm)
+        {
+            long span=b.Zmm-a.Zmm;
+            long along=(long)a.DepthMm*(b.Zmm-zMm)+(long)b.DepthMm*(zMm-a.Zmm);
+            return (int)((along*5000+(long)ShelfRun(xMm)*Math.Abs(ShelfDepthMm)*span)/(span*5000));
         }
         static void FindSafeInterval(List<FloatWaterBedKnot> knots,out int minimum,out int maximum)
         {
@@ -112,11 +133,11 @@ namespace FishingDesktop.GameCore
             }
             if(!found||minimum>=maximum)throw new ArgumentException("No positive safe working rectangle is configured.");
         }
-        internal static FloatStillWaterGeometry CreateDevelopment()
+        internal static FloatStillWaterGeometry CreateDevelopment(bool surveyedBank=false)
         {
-            return new FloatStillWaterGeometry("development-still-water","bank-01",1,0,1500,0,0,-40000,40000,3000,80000,
+            return new FloatStillWaterGeometry("development-still-water","bank-01",surveyedBank?4:1,0,1500,0,0,-40000,40000,3000,80000,
                 -12000,12000,12000,40000,new[]{new FloatWaterBedKnot(3000,600),new FloatWaterBedKnot(12000,1200),
-                    new FloatWaterBedKnot(30000,2400),new FloatWaterBedKnot(80000,4000)});
+                    new FloatWaterBedKnot(30000,2400),new FloatWaterBedKnot(80000,4000)},surveyedBank?450:0);
         }
         internal FloatWaterSampleResult ResolveAim(int u,int v,long expectedVersion)
         {
@@ -137,8 +158,7 @@ namespace FishingDesktop.GameCore
                 var a=BedKnots[index-1];var b=BedKnots[index];if(zMm>b.Zmm)continue;
                 // Weighted nonnegative integers floor the true depth even on
                 // descending segments, never overestimating bottom clearance.
-                long numerator=(long)a.DepthMm*(b.Zmm-zMm)+(long)b.DepthMm*(zMm-a.Zmm);
-                int depth=checked((int)(numerator/(b.Zmm-a.Zmm)));
+                int depth=SoundingMm(a,b,xMm,zMm);
                 if(depth<FloatDepthMm+MinimumBottomClearanceMm)return new FloatWaterSampleResult("float-clearance-insufficient");
                 return new FloatWaterSampleResult("water-sampled",new FloatWaterSample(this,xMm,zMm,depth));
             }

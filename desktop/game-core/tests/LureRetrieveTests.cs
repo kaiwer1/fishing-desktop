@@ -141,7 +141,7 @@ static class LureRetrieveTests
             f.SetDragLevel(Session,bite.EncounterId,6);f.SetReelLevel(Session,bite.EncounterId,10);f.SetReeling(Session,bite.EncounterId,true);
             for(int i=0;i<2200&&f.Snapshot.Phase==FloatFightPhase.Fighting;i++){
                 f.Advance(Session,50);var point=f.Snapshot.Position;
-                var bottom=r.Plan.Geometry.Sample((int)Math.Round(point.X*1000),(int)Math.Round(point.Z*1000),3);
+                var bottom=r.Plan.Geometry.Sample((int)Math.Round(point.X*1000),(int)Math.Round(point.Z*1000),r.Plan.GeometryVersion);
                 Need(bottom.Accepted&&point.Y>=bottom.Sample.BottomYmm/1000d-.002,"fish crossed surveyed reef");
             }
             Need(f.Snapshot.Phase==FloatFightPhase.LandingEligible,"fish never reached net: "+f.Snapshot.Phase+" / "+f.Snapshot.LandingReason);
@@ -158,7 +158,7 @@ static class LureRetrieveTests
         Test("a diagonal cast from a displaced bank position cannot retrieve through an unreachable shore",()=>{
             var g=Plan().Geometry;
             var shifted=new FloatStillWaterGeometry(g.WaterId,g.SpotId,g.Version,8000,g.AnchorYmm,g.AnchorZmm,g.SurfaceYmm,
-                g.MinimumXmm,g.MaximumXmm,g.MinimumZmm,g.MaximumZmm,g.AimMinimumXmm,g.AimMaximumXmm,g.AimMinimumZmm,g.AimMaximumZmm,g.BedKnots);
+                g.MinimumXmm,g.MaximumXmm,g.MinimumZmm,g.MaximumZmm,g.AimMinimumXmm,g.AimMaximumXmm,g.AimMinimumZmm,g.AimMaximumZmm,g.BedKnots,g.ShelfDepthMm);
             var p=FloatCastLaunchPlanner.Plan(shifted,0,10000,shifted.Version,1000).Plan;LureRetrieveSimulation run;
             Need(p!=null&&LureRetrieveSimulation.CheckCast(Rig(),p,Bass())=="lure-return-path-unreachable"&&
                 LureRetrieveSimulation.AtWaterContact(Session,Rig(),p,Land(p),Bass(),1,true,out run)=="lure-return-path-unreachable","impossible pickup accepted");
@@ -194,7 +194,7 @@ static class LureRetrieveTests
             var water=FloatFishingAtlas.Find("coastal-bay");var climate=new ChinaWaterConditions(91,30000);
             FloatFightPoint last=null;int calls=0,lastRate=0;long lastTime=-1;bool shallow=false,deep=false;
             var r=new Run(activity:(p,depth,t)=>{
-                var sample=water.Geometry.Sample((int)Math.Round(p.X*1000),(int)Math.Round(p.Z*1000),3);
+                var sample=water.Geometry.Sample((int)Math.Round(p.X*1000),(int)Math.Round(p.Z*1000),water.Geometry.Version);
                 Need(sample.Accepted&&p.Y*1000<=sample.Sample.SurfaceYmm&&p.Y*1000>=sample.Sample.BottomYmm-2,"invalid working point");
                 Near(sample.Sample.DepthMm,depth*1000,2);
                 bool isDeep=sample.Sample.DepthMm>=water.DeepThresholdMm;deep|=isDeep;shallow|=!isDeep;

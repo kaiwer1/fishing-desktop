@@ -14,10 +14,18 @@ static class FloatFishingAtlasTests
     }
     static FloatGameRules Rules(long version,IEnumerable<FloatSpeciesRule> rows)
     {return new FloatGameRules(version,"float-starter","worm",2,100,2,1000000,rows);}
-    static FloatWaterSample Land(FloatFishingWater water,int power)
+    static FloatWaterSample Land(FloatFishingWater water,int power,FloatShoreStation station=null)
     {
         var g=water.Geometry;
-        var planned=FloatCastLaunchPlanner.Plan(g,5000,0,g.Version,power);
+        int u=5000,v=0;
+        if(station!=null){
+            var walk=new FloatBankWalk(g);walk.SetMotion(Math.Sign(station.Xmm),false);
+            for(int t=0;t<15;t++)walk.Advance(250);
+            Need(walk.Xmm==station.Xmm,"Named station must be reachable by walking.");
+            g=walk.Geometry;u=walk.NearestAimU;
+            v=(int)Math.Round(10000.0*(g.AimMaximumZmm-FloatShoreStation.SoundingZmm)/(g.AimMaximumZmm-g.AimMinimumZmm));
+        }
+        var planned=FloatCastLaunchPlanner.Plan(g,u,v,g.Version,power);
         Need(planned.Accepted && planned.Plan.RequiredLineMm<=50000,"Destination cannot be cast with the starter spool.");
         var p=planned.Plan;
         var launch=new FloatFlightLaunch(new FloatFlightPoint(g.AnchorXmm,g.AnchorYmm,g.AnchorZmm),
@@ -61,8 +69,8 @@ static class FloatFishingAtlasTests
         });
         Test("the first station retains its original bed while other maps reject its geometry version",()=>{
             var original=FloatStillWaterGeometry.CreateDevelopment();
-            foreach(var k in original.BedKnots)Need(still.Geometry.Sample(0,k.Zmm,1).Sample.DepthMm==k.DepthMm,"First bed changed.");
-            Need(river.Geometry.Version==2 && coast.Geometry.Version==3 &&
+            foreach(var k in original.BedKnots)Need(still.Geometry.Sample(0,k.Zmm,still.Geometry.Version).Sample.DepthMm==k.DepthMm,"Centre survey changed.");
+            Need(still.Geometry.Version==4 && river.Geometry.Version==5 && coast.Geometry.Version==6 &&
                 !river.Geometry.ResolveAim(5000,5000,1).Accepted && !coast.Geometry.ResolveAim(5000,5000,2).Accepted,"A stale map aim was accepted.");
         });
         Test("station manifests expose the nine species with matching reference IDs",()=>{
@@ -90,6 +98,7 @@ static class FloatFishingAtlasTests
         Test("old two-species saves see only legal freshwater fish without changing their sale rules",()=>{
             var signature=old.Signature;
             Need(FloatFishingAtlas.Available(old).SequenceEqual(new[]{still,river}) && river.SpeciesFor(old).Single().Id=="carp" &&
+                river.StationFish(old,false).SequenceEqual(new[]{"鲤鱼"})&&river.StationFish(old,true).SequenceEqual(new[]{"鲤鱼"})&&
                 coast.SpeciesFor(old).Count==0 && coast.CreatePool(Land(coast,1000),old)==null &&
                 old.Signature==signature && old.Species.Count==2,"Old save compatibility or prices changed.");
         });
@@ -111,6 +120,19 @@ static class FloatFishingAtlasTests
                 still.CreatePool(new FloatWaterSample(still.Geometry,999999,real.Zmm,real.DepthMm),rules)==null,"Malformed contact produced a fish pool.");
         });
         foreach(var water in FloatFishingAtlas.Waters){
+            Test(water.Id+" both walkable stations produce their charted, distinct feeding zones on a 19 m cast",()=>{
+                var pools=new HashSet<string>();
+                foreach(var station in water.ShoreStations){
+                    var actual=Land(water,1000,station);
+                    var chart=water.Geometry.Sample(station.Xmm,FloatShoreStation.SoundingZmm,water.Geometry.Version).Sample;
+                    var pool=water.CreatePool(actual,rules);
+                    Need(Math.Abs(chart.DepthMm-actual.DepthMm)<=1&&Math.Abs(actual.Zmm-FloatShoreStation.SoundingZmm)<=2&&
+                        Math.Abs(chart.Xmm-actual.Xmm)<=2&&pool.Id==water.CreatePool(chart,rules).Id&&
+                        water.StationFish(rules,pool.Id=="deep").Length>0,"Chart, cast or local stock differs.");
+                    pools.Add(pool.Id);
+                }
+                Need(pools.SetEquals(new[]{"shallow","deep"}),"The two stations cast into the same feeding zone.");
+            });
             Test(water.Id+" uses different fish weights for low and full power landings toward the same target",()=>{
                 var near=Land(water,0);var far=Land(water,1000);
                 var shallow=water.CreatePool(near,rules);var deep=water.CreatePool(far,rules);
@@ -122,7 +144,7 @@ static class FloatFishingAtlasTests
             });
         }
         Test("depth exactly on the still water threshold uses the deep pool and one millimetre nearer uses shallow",()=>{
-            var edge=still.Geometry.Sample(0,21000,1).Sample;var near=still.Geometry.Sample(0,20999,1).Sample;
+            var edge=still.Geometry.Sample(0,21000,still.Geometry.Version).Sample;var near=still.Geometry.Sample(0,20999,still.Geometry.Version).Sample;
             Need(edge.DepthMm==still.DeepThresholdMm && still.CreatePool(edge,rules).Id=="deep" &&
                 near.DepthMm==still.DeepThresholdMm-1 && still.CreatePool(near,rules).Id=="shallow","Depth boundary classified inconsistently.");
         });

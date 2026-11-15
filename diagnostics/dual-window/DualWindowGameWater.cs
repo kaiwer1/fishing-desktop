@@ -88,6 +88,12 @@ sealed partial class DualWindowContext
         if(gameWater==null)state=new {enabled=false};
         else{
             var beds=new List<object>();foreach(var row in gameWater.BedKnots)beds.Add(new {zMm=row.Zmm,depthMm=row.DepthMm});
+            var crossBed=new List<object>();
+            if(gameWater.ShelfDepthMm!=0){
+                foreach(int position in new[]{gameWater.MinimumXmm,Math.Min(gameWater.ShelfStartXmm,gameWater.ShelfEndXmm),
+                    Math.Max(gameWater.ShelfStartXmm,gameWater.ShelfEndXmm),gameWater.MaximumXmm})
+                    crossBed.Add(new {xMm=position,extraDepthMm=gameWater.ExtraDepthMm(position)});
+            }
             var cast=gameCast==null?null:gameCast.Snapshot;
             var release=cast==null?null:GameWaterReleasePlan(cast);
             object target=gameWaterPlan==null?null:new {u=gameWaterPlan.U,v=gameWaterPlan.V,xMm=gameWaterPlan.Target.Xmm,zMm=gameWaterPlan.Target.Zmm,
@@ -100,7 +106,7 @@ sealed partial class DualWindowContext
                 waterBounds=new {minXmm=gameWater.MinimumXmm,maxXmm=gameWater.MaximumXmm,minZmm=gameWater.MinimumZmm,maxZmm=gameWater.MaximumZmm},
                 anchor=new {xMm=gameWater.AnchorXmm,yMm=gameWater.AnchorYmm,zMm=gameWater.AnchorZmm},
                 surfaceYmm=gameWater.SurfaceYmm,floatDepthMm=FloatStillWaterGeometry.FloatDepthMm,clearanceMm=FloatStillWaterGeometry.MinimumBottomClearanceMm,
-                bed=beds.ToArray(),target,prediction,landing};
+                bed=beds.ToArray(),crossBed=crossBed.ToArray(),target,prediction,landing};
         }
         Send(pane,new {kind="game-water-state",sceneEnabled=GameWaterMode&&!GameWaterSelfTest&&!GameAtlasSelfTest,documentId=pane.Ticket.DocumentId,revision=checked(++binding.WaterRevision),state});
     }

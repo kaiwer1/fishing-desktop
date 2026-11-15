@@ -8,12 +8,21 @@ const validBounds = b => b && ['minXmm', 'maxXmm', 'minZmm', 'maxZmm'].every(key
 const copyBounds = b => ({ minXmm: b.minXmm, maxXmm: b.maxXmm, minZmm: b.minZmm, maxZmm: b.maxZmm });
 const point = value => value && coordinate(value.xMm) && coordinate(value.zMm) && integer(value.depthMm, 0, 100000);
 const clonePoint = (value, extra = []) => value === null ? null : Object.fromEntries(['xMm', 'zMm', 'depthMm', ...extra].map(key => [key, value[key]]));
+export function validCrossBed(rows, bounds) {
+  if (rows === undefined) return true;
+  if (!Array.isArray(rows) || rows.length > 128) return false;
+  if (!rows.length) return true;
+  return rows.length >= 2 && bounds && rows[0]?.xMm === bounds.minXmm && rows.at(-1)?.xMm === bounds.maxXmm
+    && rows.every((row, i) => row && coordinate(row.xMm) && integer(row.extraDepthMm, 0, 5000)
+      && (!i || row.xMm > rows[i - 1].xMm));
+}
 const copy = state => !state.enabled ? { enabled: false } : {
   enabled: true, geometryVersion: state.geometryVersion, waterId: state.waterId, spotId: state.spotId,
   bounds: copyBounds(state.bounds),
   ...(state.waterBounds ? { waterBounds: copyBounds(state.waterBounds), anchor: { xMm: state.anchor.xMm, yMm: state.anchor.yMm, zMm: state.anchor.zMm } } : {}),
   surfaceYmm: state.surfaceYmm, floatDepthMm: state.floatDepthMm, clearanceMm: state.clearanceMm,
   bed: state.bed.map(row => ({ zMm: row.zMm, depthMm: row.depthMm })),
+  ...(state.crossBed?.length ? { crossBed: state.crossBed.map(({xMm,extraDepthMm}) => ({xMm,extraDepthMm})) } : {}),
   target: clonePoint(state.target, ['u', 'v', 'requiredLineMm']),
   prediction: clonePoint(state.prediction, ['powerPermille']), landing: clonePoint(state.landing, state.landing?.sessionId ? ['accepted', 'reason', 'sessionId'] : ['accepted', 'reason'])
 };
@@ -22,7 +31,7 @@ function validState(s) {
   if (!s.enabled) return Object.keys(s).length === 1;
   const b = s.bounds;
   if (!integer(s.geometryVersion, 1, Number.MAX_SAFE_INTEGER) || !identifier(s.waterId) || !identifier(s.spotId) ||
-      !validBounds(b) ||
+      !validBounds(b) || !validCrossBed(s.crossBed,s.waterBounds) ||
       !coordinate(s.surfaceYmm) || !integer(s.floatDepthMm, 1, 100000) || !integer(s.clearanceMm, 0, 100000) ||
       !Array.isArray(s.bed) || s.bed.length < 2 || s.bed.length > 128) return false;
   if (!s.bed.every((row, index) => row && coordinate(row.zMm) && integer(row.depthMm, 1, 100000) &&
@@ -58,7 +67,7 @@ export class WaterView {
   geometryKey(movingAlongBank = false) {
     const s = this.#state;
     const anchor = s?.anchor && movingAlongBank ? [s.anchor.yMm, s.anchor.zMm] : s?.anchor;
-    return s?.enabled ? JSON.stringify([s.geometryVersion, s.waterId, s.spotId, s.bounds, s.waterBounds, anchor, s.surfaceYmm, s.floatDepthMm, s.clearanceMm, s.bed]) : null;
+    return s?.enabled ? JSON.stringify([s.geometryVersion, s.waterId, s.spotId, s.bounds, s.waterBounds, anchor, s.surfaceYmm, s.floatDepthMm, s.clearanceMm, s.bed,s.crossBed]) : null;
   }
   diagram() {
     const s = this.#state; if (!s?.enabled) return null;

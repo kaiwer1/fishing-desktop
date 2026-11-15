@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { validCrossBed } from '../game-page/water-view.mjs';
 
 const finiteInteger = Number.isSafeInteger;
 
@@ -14,7 +15,7 @@ export function validWater(water) {
       || water.anchor.yMm <= water.surfaceYmm || !Array.isArray(water.bed) || water.bed.length < 2) return false;
   const b = water.bounds, w = water.waterBounds;
   if (b.minXmm < w.minXmm || b.maxXmm > w.maxXmm || b.minZmm < w.minZmm || b.maxZmm > w.maxZmm) return false;
-  return water.bed[0]?.zMm === w.minZmm && water.bed.at(-1)?.zMm === w.maxZmm
+  return validCrossBed(water.crossBed,w) && water.bed[0]?.zMm === w.minZmm && water.bed.at(-1)?.zMm === w.maxZmm
     && water.bed.every((k, i) => k && finiteInteger(k.zMm) && finiteInteger(k.depthMm) && k.depthMm >= 0
       && (i === 0 || k.zMm > water.bed[i - 1].zMm));
 }
@@ -29,7 +30,7 @@ export function waterGeometryKey(water) {
   if (!validWater(water)) return null;
   const b = water.waterBounds;
   return JSON.stringify([water.waterId, water.spotId, water.geometryVersion, water.surfaceYmm,
-    b.minXmm, b.maxXmm, b.minZmm, b.maxZmm, water.bed.map(k => [k.zMm,k.depthMm])]);
+    b.minXmm, b.maxXmm, b.minZmm, b.maxZmm, water.bed.map(k => [k.zMm,k.depthMm]),water.crossBed?.map(k=>[k.xMm,k.extraDepthMm])]);
 }
 
 export function setBankCamera(camera, water, aspect) {

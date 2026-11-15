@@ -90,19 +90,19 @@ namespace FishingDesktop.GameCore
             anchor=new FloatFightPoint(geometry.AnchorXmm/1000.0,geometry.AnchorYmm/1000.0,geometry.AnchorZmm/1000.0);
             var stations=new double[geometry.BedKnots.Count];var ys=new double[stations.Length];
             for(int i=0;i<stations.Length;i++){stations[i]=geometry.BedKnots[i].Zmm/1000.0;ys[i]=(geometry.SurfaceYmm-geometry.BedKnots[i].DepthMm)/1000.0;}
-            var bed=new FloatFightBed(stations,ys);
+            var bed=new FloatFightBed(stations,ys,geometry.ShelfStartXmm/1000.0,geometry.ShelfEndXmm/1000.0,Math.Abs(geometry.ShelfDepthMm)/1000.0);
             water=new FloatFightWater(geometry.SurfaceYmm/1000.0,bed.MinimumY,geometry.MinimumXmm/1000.0,geometry.MaximumXmm/1000.0,
                 geometry.MinimumZmm/1000.0,geometry.MaximumZmm/1000.0,bed);
             above=anchor.Y-water.SurfaceY;nearRadius=(water.MinimumZ-anchor.Z)/dirZ;
             minimumLine=Span(nearRadius,0);line=contact.LineUsedMm/1000.0;
-            clearance=water.SurfaceY-bed.Elevation(contact.Zmm/1000.0);BeginSearch();
+            clearance=water.SurfaceY-bed.Elevation(contact.Xmm/1000.0,contact.Zmm/1000.0);BeginSearch();
         }
         static bool Finite(double x){return !Double.IsNaN(x)&&!Double.IsInfinity(x);}
         internal static string CheckCast(LureRetrieveRig rig,FloatCastLaunchPlan releasePlan,FloatBiteCandidate seaBass)
         {
             if(rig==null||releasePlan==null||seaBass==null)return "configuration-missing";
             var geometry=releasePlan.Geometry;
-            if(geometry.WaterId!="coastal-bay"||geometry.SpotId!="rock-bank"||geometry.Version!=3)return "lure-spot-unavailable";
+            if(geometry.WaterId!="coastal-bay"||geometry.SpotId!="rock-bank"||geometry.Version!=FloatFishingAtlas.Find("coastal-bay").Geometry.Version)return "lure-spot-unavailable";
             if(seaBass.SpeciesId!="spotted-seabass"||seaBass.MinimumMassMg<480000||seaBass.MaximumMassMg>2600000)return "lure-species-unconfigured";
             if(releasePlan.RequiredLineMm>rig.TotalLineMm)return "lure-contact-line-mismatch";
             double dx=(releasePlan.PredictedXmm-geometry.AnchorXmm)/1000.0,dz=(releasePlan.PredictedZmm-geometry.AnchorZmm)/1000.0;
@@ -205,7 +205,7 @@ namespace FishingDesktop.GameCore
             double verticalSpan=above+candidateDepth;
             radius=Math.Max(nearRadius,Math.Min(radius,Math.Sqrt(Math.Max(0,line*line-verticalSpan*verticalSpan))));
             var z=Math.Max(water.MinimumZ,anchor.Z+dirZ*radius);
-            double bottomDepth=water.SurfaceY-water.Bed.Elevation(z);
+            double bottomDepth=water.SurfaceY-water.Bed.Elevation(anchor.X+dirX*radius,z);
             depth=Math.Min(candidateDepth,bottomDepth);clearance=bottomDepth-depth;
             if(candidateDepth>=bottomDepth&&phase!=LureRetrievePhase.BottomRecovery){ClearTarget();phase=LureRetrievePhase.BottomRecovery;hazard=0;exposure=0;}
             layer=depth<.12?LureWaterLayer.Surface:depth<.55?LureWaterLayer.Upper:depth<=1.60?LureWaterLayer.Middle:LureWaterLayer.Deep;

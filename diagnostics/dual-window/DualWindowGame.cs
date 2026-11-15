@@ -10,14 +10,14 @@ using FishingDesktop.GameCore;
 sealed partial class DualWindowContext
 {
     readonly string gameMode;
-    internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest; } }
+    internal bool PlayerWindowOnly { get { return gameMode=="player-window"||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest||GameEcologySelfTest; } }
     internal bool PlayerMode { get { return gameMode=="player-window"||gameMode=="player-wallpaper"; } }
     bool GamePlayerSelfTest { get { return gameMode=="player-self-test"; } }
     bool GameCatchSelfTest { get { return gameMode=="catch-self-test"; } }
     bool GameAtlasSelfTest { get { return gameMode=="atlas-self-test"; } }
-    bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest||PlayerMode; } }
+    bool GameAtlasMode { get { return GameAtlasSelfTest||GamePlayerSelfTest||GameWardrobeSelfTest||GameCatchSelfTest||GameWallpaperSelfTest||GameWalkSelfTest||GameBottomSelfTest||GameMultiRodSelfTest||GameLureSelfTest||GameEcologySelfTest||PlayerMode; } }
     internal bool GameMode { get { return gameMode != null; } }
-    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameSceneSelfTest || GameAtlasSelfTest || GamePlayerSelfTest || GameWardrobeSelfTest || GameCatchSelfTest || GameWallpaperSelfTest || GameWalkSelfTest || GameBottomSelfTest || GameMultiRodSelfTest || GameLureSelfTest || GameFailureCase!=null; } }
+    bool GameSelfTest { get { return gameMode == "self-test" || GameSparesSelfTest || GameCampSelfTest || GameLineBreakSelfTest || GameWaterSelfTest || GameSceneSelfTest || GameAtlasSelfTest || GamePlayerSelfTest || GameWardrobeSelfTest || GameCatchSelfTest || GameWallpaperSelfTest || GameWalkSelfTest || GameBottomSelfTest || GameMultiRodSelfTest || GameLureSelfTest || GameEcologySelfTest || GameFailureCase!=null; } }
     bool GameSceneSelfTest { get { return gameMode=="scene-self-test"; } }
     bool GameWaterSelfTest { get { return gameMode=="water-self-test"; } }
     bool GameWaterMode { get { return GameWaterSelfTest||GameAtlasMode||GameSceneSelfTest||gameMode=="new"||gameMode=="open"||gameMode=="line-break-new"||gameMode=="line-break-open"; } }
@@ -35,7 +35,10 @@ sealed partial class DualWindowContext
         internal FloatDocumentTicket Document;
         internal FloatControlLease Lease;
         internal string WireLease;
-        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, WardrobeRevision, WalkRevision, BottomRevision, BottomShopRevision, BankStandRevision, BankKitRevision, LureShopRevision, LureRevision;
+        internal FloatDocumentTicket ConditionsDocument;
+        internal string ConditionsWater;
+        internal long ConditionsMinute;
+        internal int Revision, Offset, CastRevision, FlightRevision, BiteRevision, FightRevision, ShopRevision, EquipmentRevision, SparesRevision, CampRevision, WaterRevision, SpotRevision, ConditionsRevision, WardrobeRevision, WalkRevision, BottomRevision, BottomShopRevision, BankStandRevision, BankKitRevision, LureShopRevision, LureRevision;
         internal long CastHighWater, StrikeHighWater, FightHighWater, ShopHighWater, EquipmentHighWater, CampHighWater, WalkHighWater, BottomStrikeHighWater, LureHighWater;
         internal GameShopPending Shop;
         internal GameEquipmentPending Equipment;
@@ -196,7 +199,7 @@ sealed partial class DualWindowContext
         if (b.Offset>count) b.Offset=0;
         var projected=FloatPageProjection.Create(snapshot,b.Offset,50,GameHeldBankSession);
         Send(pane,new {kind="game-snapshot",documentId=pane.Ticket.DocumentId,revision=checked(++b.Revision),snapshot=projected});
-        SendGameSpots(pane);SendGameWardrobe(pane);SendBottomShop(pane);SendBankKit(pane);SendBankStand(pane);SendGameLureShop(pane);SendGameLure(pane);
+        SendGameSpots(pane);SendGameConditions(pane);SendGameWardrobe(pane);SendBottomShop(pane);SendBankKit(pane);SendBankStand(pane);SendGameLureShop(pane);SendGameLure(pane);
         SendGameCast(pane);
         SendGameWalk(pane);SendGameFlight(pane);
         SendGameBite(pane);SendGameBottom(pane);

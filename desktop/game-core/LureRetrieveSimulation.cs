@@ -25,6 +25,7 @@ namespace FishingDesktop.GameCore
     }
     internal enum LureRetrievePhase { InWater, Following, Strikeable, BottomRecovery, RetrievePending, Hooked, Ended }
     internal enum LureWaterLayer { Surface, Upper, Middle, Deep }
+    internal delegate int LureActivitySampler(FloatFightPoint workPosition,double waterDepthM,long worldMilliseconds);
     internal sealed class LureRetrieveSnapshot
     {
         internal readonly Guid SessionId,EncounterId,RetrieveEventId;
@@ -34,19 +35,19 @@ namespace FishingDesktop.GameCore
         internal readonly FloatFightPoint Position,Velocity;
         internal readonly double DepthM,BedClearanceM,OutLineM,RemainingLineM,SlackM,HazardPerSecond,Exposure;
         internal readonly long Step,SearchEpoch,OpenStep,CloseStep;
-        internal readonly int SpeedLevel;
+        internal readonly int SpeedLevel,ActivityPermille;
         internal readonly bool Reeling,BailOpen;
         // Host-only. A presentation may signal an attack but must not reveal
         // the encounter's target, weight or hazard before a confirmed catch.
         internal readonly FloatBiteTarget Target;
         internal LureRetrieveSnapshot(Guid session,LureRetrieveRig rig,LureRetrievePhase phase,LureWaterLayer layer,FloatFightPoint position,
             FloatFightPoint velocity,double depth,double clearance,double line,double slack,double hazard,double exposure,
-            long step,long epoch,long open,long close,int speed,bool reeling,bool bail,Guid encounter,Guid ending,FloatBiteTarget target)
+            long step,long epoch,long open,long close,int speed,int activityPermille,bool reeling,bool bail,Guid encounter,Guid ending,FloatBiteTarget target)
         {
             SessionId=session;Rig=rig;Phase=phase;Layer=layer;Position=position;Velocity=velocity;DepthM=depth;
             BedClearanceM=clearance;OutLineM=line;RemainingLineM=rig.TotalLineMm/1000.0-line;SlackM=slack;HazardPerSecond=hazard;
             Exposure=exposure;Step=step;SearchEpoch=epoch;OpenStep=open;CloseStep=close;SpeedLevel=speed;
-            Reeling=reeling;BailOpen=bail;EncounterId=encounter;RetrieveEventId=ending;Target=target;
+            ActivityPermille=activityPermille;Reeling=reeling;BailOpen=bail;EncounterId=encounter;RetrieveEventId=ending;Target=target;
         }
     }
 
@@ -65,12 +66,13 @@ namespace FishingDesktop.GameCore
         readonly FloatFightWater water;
         readonly FloatFightPoint anchor;
         readonly FloatBiteCandidate bass;
+        readonly LureActivitySampler sampleActivity;
         readonly FloatBiteRandom searchRandom,massRandom;
         readonly uint fightSeed;
         readonly bool net;
         readonly double dirX,dirZ,nearRadius,minimumLine,above;
         double radius,depth,line,stroke,clearance,hazard,exposure,threshold,followGap;
-        int speedLevel=2,pauseSteps,steadySteps,followSteps,remainder;
+        int speedLevel=2,pauseSteps,steadySteps,followSteps,remainder,activityPermille=1000;
         long step,epoch,open,close,control,lastInput;
         bool controlled,reeling,bail,paused;
         LureRetrievePhase phase=LureRetrievePhase.InWater;
@@ -80,9 +82,9 @@ namespace FishingDesktop.GameCore
         FloatFightPoint velocity=new FloatFightPoint(0,0,0);
 
         LureRetrieveSimulation(Guid session,LureRetrieveRig rig,FloatStillWaterGeometry geometry,FloatFlightSnapshot contact,
-            FloatBiteCandidate bass,uint seed,bool net,double dx,double dz,double horizontal)
+            FloatBiteCandidate bass,uint seed,bool net,double dx,double dz,double horizontal,LureActivitySampler sampleActivity)
         {
-            this.session=session;this.rig=rig;this.bass=bass;this.net=net;
+            this.session=session;this.rig=rig;this.bass=bass;this.net=net;this.sampleActivity=sampleActivity;
             searchRandom=new FloatBiteRandom(seed^0xa341316cU);massRandom=new FloatBiteRandom(seed^0xad90777dU);fightSeed=seed^0x4c555246U;
             dirX=dx/horizontal;dirZ=dz/horizontal;radius=horizontal;
             anchor=new FloatFightPoint(geometry.AnchorXmm/1000.0,geometry.AnchorYmm/1000.0,geometry.AnchorZmm/1000.0);
@@ -112,7 +114,8 @@ namespace FishingDesktop.GameCore
             return Math.Sqrt(shore*shore+height*height)>5?"lure-return-path-unreachable":null;
         }
         internal static string AtWaterContact(Guid session,LureRetrieveRig rig,FloatCastLaunchPlan releasePlan,
-            FloatFlightSnapshot contact,FloatBiteCandidate seaBass,uint seed,bool netEquipped,out LureRetrieveSimulation run)
+            FloatFlightSnapshot contact,FloatBiteCandidate seaBass,uint seed,bool netEquipped,out LureRetrieveSimulation run,
+            LureActivitySampler sampleActivity=null)
         {
             run=null;
             string error=CheckCast(rig,releasePlan,seaBass);if(error!=null)return error;
@@ -128,14 +131,14 @@ namespace FishingDesktop.GameCore
             double horizontal=Math.Sqrt(dx*dx+dz*dz),height=(geometry.AnchorYmm-geometry.SurfaceYmm)/1000.0;
             double span=Math.Sqrt(horizontal*horizontal+height*height);
             if(contact.LineUsedMm>rig.TotalLineMm||Math.Abs(span*1000-contact.LineUsedMm)>.00001)return "lure-contact-line-mismatch";
-            run=new LureRetrieveSimulation(session,rig,geometry,contact,seaBass,seed,netEquipped,dx,dz,horizontal);return null;
+            run=new LureRetrieveSimulation(session,rig,geometry,contact,seaBass,seed,netEquipped,dx,dz,horizontal,sampleActivity);return null;
         }
         void Check(){if(thread!=Thread.CurrentThread.ManagedThreadId)throw new InvalidOperationException("Use the lure owner's thread.");}
         bool Active{get{return phase!=LureRetrievePhase.Hooked&&phase!=LureRetrievePhase.RetrievePending&&phase!=LureRetrievePhase.Ended;}}
         double Span(double h,double d){return Math.Sqrt(h*h+(above+d)*(above+d));}
         FloatFightPoint Position(){return new FloatFightPoint(anchor.X+dirX*radius,water.SurfaceY-depth,Math.Max(water.MinimumZ,anchor.Z+dirZ*radius));}
         internal LureRetrieveSnapshot Snapshot{get{Check();return new LureRetrieveSnapshot(session,rig,phase,layer,Position(),velocity,depth,
-            clearance,line,Math.Max(0,line-Span(radius,depth)),hazard,exposure,step,epoch,open,close,speedLevel,reeling,bail,encounter,ending,target);}}
+            clearance,line,Math.Max(0,line-Span(radius,depth)),hazard,exposure,step,epoch,open,close,speedLevel,activityPermille,reeling,bail,encounter,ending,target);}}
         Guid Identity(byte kind,long serial)
         {
             var data=new byte[32];Array.Copy(session.ToByteArray(),data,16);
@@ -183,7 +186,7 @@ namespace FishingDesktop.GameCore
             if(speedLevel!=level){steadySteps=0;stroke=0;}
             speedLevel=level;return null;
         }
-        void Tick()
+        void Tick(long worldMilliseconds)
         {
             step=checked(step+1);
             var previous=Position();double previousRadius=radius,previousDepth=depth;
@@ -218,7 +221,12 @@ namespace FishingDesktop.GameCore
                 !reeling&&pauseSteps>0&&depth>previousDepth?.4:0;
             if(!reeling&&pauseSteps>0)pauseSteps--;
             double waterFactor=layer==LureWaterLayer.Upper?.45:layer==LureWaterLayer.Middle?1:layer==LureWaterLayer.Deep?.3:0;
-            hazard=clearance>=.12&&bass.Weight>0?.60*motionFactor*waterFactor:0;
+            double presentationRate=clearance>=.12&&bass.Weight>0?.60*motionFactor*waterFactor:0;
+            if(sampleActivity!=null){
+                activityPermille=sampleActivity(point,bottomDepth,worldMilliseconds);
+                if(activityPermille<0||activityPermille>10000)throw new InvalidOperationException("Lure activity must be in [0,10000] permille.");
+            }
+            hazard=presentationRate*(activityPermille/1000.0);
             if(phase==LureRetrievePhase.InWater){
                 exposure+=hazard*Dt;
                 if(exposure>=threshold){
@@ -226,20 +234,27 @@ namespace FishingDesktop.GameCore
                     encounter=Identity(1,epoch);followGap=.60;followSteps=0;phase=LureRetrievePhase.Following;
                 }
             }else if(phase==LureRetrievePhase.Following){
-                if(hazard==0||++followSteps>40){BeginSearch();return;}
+                // Weather governs new searches. An already locked follower
+                // still leaves only for the original physical reasons.
+                if(presentationRate==0||++followSteps>40){BeginSearch();return;}
                 double travel=Math.Sqrt(moved*moved+(depth-previousDepth)*(depth-previousDepth));
                 followGap=Math.Max(0,followGap+travel-2.35*Dt);
                 if(followGap<=.08){phase=LureRetrievePhase.Strikeable;open=step;close=checked(step+20);}
             }else if(phase==LureRetrievePhase.Strikeable&&(step>=close||bail||clearance<.12||line-Span(radius,depth)>.12))BeginSearch();
         }
-        internal string Advance(Guid sessionId,int activeMilliseconds,bool isPaused=false)
+        internal string Advance(Guid sessionId,int activeMilliseconds,bool isPaused=false,long? worldEndMilliseconds=null)
         {
             Check();if(activeMilliseconds<0||activeMilliseconds>250)throw new ArgumentOutOfRangeException("activeMilliseconds");
             if(session!=sessionId)return "lure-not-current";
             paused=isPaused;if(isPaused||!controlled){StopInput();return null;}
             if(!Active)return "lure-not-active";
+            if(sampleActivity!=null&&activeMilliseconds>0&&(!worldEndMilliseconds.HasValue||worldEndMilliseconds.Value<activeMilliseconds))
+                throw new ArgumentOutOfRangeException("worldEndMilliseconds");
             remainder+=activeMilliseconds;
-            while(remainder>=StepMilliseconds&&Active){remainder-=StepMilliseconds;Tick();}
+            while(remainder>=StepMilliseconds&&Active){
+                remainder-=StepMilliseconds;
+                Tick(worldEndMilliseconds.GetValueOrDefault()-remainder);
+            }
             return null;
         }
         internal string StrikeAndStart(Guid rigId,Guid sessionId,long generation,long sequence,Guid encounterId,out FloatFightSimulation fight)

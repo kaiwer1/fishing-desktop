@@ -28,8 +28,8 @@ sealed partial class DualWindowContext
         if(!GameReadyForFish()){if(reconciled)BroadcastGameBite();return;}
         var session=game.Snapshot.State.Session.Id;
         if(gameBite==null || gameBite.Snapshot.SessionId!=session){
-            // The only supported slice is the explicit starter rig and a flat,
-            // still-water worm pool. No time/weather/pressure ecology is implied.
+            // The legacy training mode uses the starter rig and a fixed pool.
+            // Atlas mode resolves the pool from the real landing below.
             var state=game.Snapshot.State;
             if(state.Rig.DefinitionKey!="float-starter" || state.Rules.BaitDefinitionKey!="worm")
                 throw new InvalidOperationException("No bite configuration for this rig/bait.");
@@ -44,7 +44,7 @@ sealed partial class DualWindowContext
             uint seed=GameSelfTest?1u:BitConverter.ToUInt32(session.ToByteArray(),0);
             var environmentForBite=new FloatBiteEnvironment(.18,pool);
             if(gameFishingWater!=null){
-                gameFishingPool=gameFishingWater.CreatePool(gameWaterLanding.Sample,state.Rules);
+                gameFishingPool=BuildGameFishingPool(gameWaterLanding.Sample);
                 if(gameFishingPool==null)return;
                 environmentForBite=gameFishingPool.Environment;
             }

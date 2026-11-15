@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology)
 $ErrorActionPreference='Stop'
 if($GameLineBreak -and ($GameSpares -or $GameCamp)){throw 'Run line-break integration separately.'}
 if($GameWater -and ($GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run water integration separately.'}
@@ -11,7 +11,8 @@ if($GameWalk -and ($GameWallpaper -or $GameWallpaperPrepare -or $GameCatch -or $
 if($GameBottom -and ($GameWalk -or $GameWallpaper -or $GameWallpaperPrepare -or $GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run bottom fishing integration separately.'}
 if($GameMultiRod -and ($GameWalk -or $GameBottom -or $GameWallpaper -or $GameWallpaperPrepare -or $GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run the multi-rod player alone.'}
 if($GameLure -and ($GameMultiRod -or $GameWalk -or $GameBottom -or $GameWallpaper -or $GameWallpaperPrepare -or $GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run lure integration separately.'}
-if($GameWalk -or $GameBottom -or $GameMultiRod -or $GameLure){$Game=$true}
+if($GameEcology -and ($GameLure -or $GameMultiRod -or $GameBottom -or $GameWalk -or $GameWallpaper -or $GameWallpaperPrepare -or $GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run ecology integration separately.'}
+if($GameWalk -or $GameBottom -or $GameMultiRod -or $GameLure -or $GameEcology){$Game=$true}
 if($GameWallpaperPrepare){$GameWallpaper=$true}
 if($GameWallpaper -and ($GameCatch -or $GameWardrobe -or $GamePlayer -or $GameAtlas -or $GameScene -or $GameWater -or $GameFailureCase -or $GameSpares -or $GameCamp -or $GameLineBreak)){throw 'Run wallpaper game integration separately.'}
 if($GameWater -or $GameScene -or $GameAtlas -or $GamePlayer -or $GameWardrobe -or $GameCatch -or $GameWallpaper){$Game=$true}
@@ -108,6 +109,7 @@ try{
   if($GameSpares){$taskMode='--game-spares-self-test'}
   if($GameCamp){$taskMode='--game-camp-self-test'}
   if($GameWalk){$taskMode='--game-walk-self-test'}
+  if($GameEcology){$taskMode='--game-ecology-self-test'}
   if($GameLure){$taskMode='--game-lure-self-test'}
   if($GameMultiRod){$taskMode='--game-multi-rod-self-test'}
   if($GameBottom){$taskMode='--game-bottom-self-test'}
@@ -141,6 +143,12 @@ try{
     if(Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt')){throw 'Failure boundary test reported an unexpected host error.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if($taskGameExit.normalExit -or $taskGameExit.code -ne 'unconfirmed-failure-no-settlement'){throw 'Unconfirmed failure exit was not preserved.'}
+  }elseif($GameEcology){
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 7 -or -not $taskReport.ecologyConnected -or -not $taskReport.realClockSample -or -not $taskReport.controlledEnvironmentTime -or -not $taskReport.daylightPixelsDiffer -or -not $taskReport.menuClockFrozen -or -not $taskReport.localPoolVerified -or $taskReport.controlledFishFacts -or $taskReport.weatherPersisted -or $taskReport.personalSaveRead){throw 'Water ecology integration evidence mismatch.'}
+    if($taskReport.actualPoolDraws -ne 2 -or $taskReport.dayRate -eq $taskReport.nightRate -or $taskReport.sequence -ne 5 -or $taskReport.value -ne 12000 -or $taskReport.baitCount -ne 10 -or $taskReport.stamina -ne 96 -or $taskReport.creelCount -ne 0 -or $taskReport.gameFlightEmissions -ne 2){throw 'Day/night fishing rates or resource settlement do not match.'}
+    foreach($photo in 'ecology-day.png','ecology-night.png'){if(-not (Test-Path -LiteralPath (Join-Path $taskRun $photo) -PathType Leaf)){throw 'Ecology scene capture missing.'}}
+    $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
+    if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session'){throw 'Ecology shutdown mismatch.'}
   }elseif($GameLure){
     if(-not $taskReport.passed -or $taskReport.checks.Count -ne 8 -or -not $taskReport.lureFishingConnected -or -not $taskReport.closedJournalVerified -or -not $taskReport.naturalLureAttack -or -not $taskReport.manualReel -or -not $taskReport.shoreRetrieveVerified -or -not $taskReport.saleVerified -or -not $taskReport.originalFloatGearUnchanged -or $taskReport.controlledFishFacts -or $taskReport.personalSaveRead){throw 'Lure fishing integration evidence mismatch.'}
     if($taskReport.sequence -ne 9 -or $taskReport.value -ne (4000+$taskReport.saleValueMinor) -or $taskReport.baitCount -ne 0 -or $taskReport.stamina -ne 96 -or $taskReport.lureIds -ne 6 -or $taskReport.lineMm -ne 50000 -or $taskReport.creelCount -ne 0 -or $taskReport.gameFlightEmissions -ne 2 -or $taskReport.gameHookedEmissions -ne 1 -or $taskReport.gameNaturalLandings -ne 1){throw 'Lure transaction or catch evidence mismatch.'}

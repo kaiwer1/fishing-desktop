@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using FishingDesktop.GameCore;
 
 static class LureRetrieveTests
@@ -35,15 +36,15 @@ static class LureRetrieveTests
         internal readonly FloatCastLaunchPlan Plan;
         internal readonly FloatFlightSnapshot Contact;
         internal readonly LureRetrieveSimulation Sim;
-        internal long Sequence;
-        internal Run(uint seed=1,int weight=1,int v=3000){
+        internal long Sequence,WorldMs;
+        internal Run(uint seed=1,int weight=1,int v=3000,LureActivitySampler activity=null){
             Plan=LureRetrieveTests.Plan(v:v);Contact=Land(Plan);
             LureRetrieveSimulation sim;
-            string err=LureRetrieveSimulation.AtWaterContact(Session,Rig(),Plan,Contact,Bass(weight),seed,true,out sim);
+            string err=LureRetrieveSimulation.AtWaterContact(Session,Rig(),Plan,Contact,Bass(weight),seed,true,out sim,activity);
             Need(err==null,err);Sim=sim;Sim.SetControl(1,true);
         }
         internal LureRetrieveSnapshot S{get{return Sim.Snapshot;}}
-        internal void Step(int count){for(int i=0;i<count;i++)Sim.Advance(Session,50);}
+        internal void Step(int count){for(int i=0;i<count;i++){WorldMs+=50;Sim.Advance(Session,50,false,WorldMs);}}
         internal void Reel(bool down){Need(Sim.SetReeling(RigId,Session,1,++Sequence,down)==null,"reel input");}
         internal void Speed(int level){Need(Sim.SetSpeed(RigId,Session,1,++Sequence,level)==null,"speed input");}
         internal void Bail(bool open){Need(Sim.SetBail(RigId,Session,1,++Sequence,open)==null,"bail input");}
@@ -188,6 +189,70 @@ static class LureRetrieveTests
                 Near(a.S.Position.X,b.S.Position.X);Near(a.S.Position.Z,b.S.Position.Z);Near(a.S.DepthM,b.S.DepthM);Near(a.S.OutLineM,b.S.OutLineM);Invariant(a);
                 if(a.S.Target!=null)Need(a.S.Target.MassMg==b.S.Target.MassMg,"mass changed");
             }
+        });
+        Test("moving spoon samples both local coastal depth bands at its actual submerged coordinates and active time",()=>{
+            var water=FloatFishingAtlas.Find("coastal-bay");var climate=new ChinaWaterConditions(91,30000);
+            FloatFightPoint last=null;int calls=0,lastRate=0;long lastTime=-1;bool shallow=false,deep=false;
+            var r=new Run(activity:(p,depth,t)=>{
+                var sample=water.Geometry.Sample((int)Math.Round(p.X*1000),(int)Math.Round(p.Z*1000),3);
+                Need(sample.Accepted&&p.Y*1000<=sample.Sample.SurfaceYmm&&p.Y*1000>=sample.Sample.BottomYmm-2,"invalid working point");
+                Near(sample.Sample.DepthMm,depth*1000,2);
+                bool isDeep=sample.Sample.DepthMm>=water.DeepThresholdMm;deep|=isDeep;shallow|=!isDeep;
+                calls++;last=p;lastTime=t;lastRate=climate.Sample(water,t).ActivityPermille("spotted-seabass",isDeep);
+                return lastRate;
+            });
+            r.Reel(true);int moving=0;
+            while(r.S.Phase!=LureRetrievePhase.RetrievePending){
+                int before=calls;r.Step(1);Need(r.S.Step<1500,"failed to reach shore");
+                if(before==calls)continue;
+                Near(last.X,r.S.Position.X);Near(last.Y,r.S.Position.Y);Near(last.Z,r.S.Position.Z);
+                Need(lastTime==r.WorldMs&&lastRate==r.S.ActivityPermille,"stale world sample");
+                if(r.S.Step>6&&r.S.Layer==LureWaterLayer.Middle&&r.S.BedClearanceM>.12&&r.S.HazardPerSecond>0){
+                    Near(r.S.HazardPerSecond,.60*r.S.ActivityPermille/1000.0);moving++;
+                }
+            }
+            Need(deep&&shallow&&moving>10&&calls>100,"only the initial landing or one layer was sampled");
+        });
+        Test("zero activity or no eligible bass produces no encounter, increased activity cannot animate a stopped lure",()=>{
+            var zero=new Run(activity:(p,d,t)=>0);
+            var empty=new Run(weight:0,activity:(p,d,t)=>2000);
+            var still=new Run(activity:(p,d,t)=>2000);
+            zero.Reel(true);empty.Reel(true);
+            for(int i=0;i<150;i++){
+                zero.Step(1);empty.Step(1);still.Step(1);
+                Need(zero.S.Exposure==0&&empty.S.Exposure==0&&still.S.Exposure==0&&
+                    zero.S.Target==null&&empty.S.Target==null&&still.S.Target==null,"ecology generated a fish without an eligible presentation");
+            }
+            var normal=new Run(seed:18);var high=new Run(seed:18,activity:(p,d,t)=>1700);
+            normal.Reel(true);high.Reel(true);normal.Step(18);high.Step(18);
+            Need(normal.S.ActivityPermille==1000&&normal.S.HazardPerSecond>0,"original rate lost");
+            Near(high.S.HazardPerSecond,normal.S.HazardPerSecond*1.7);
+        });
+        Test("weather changes during a committed follow never substitute a new encounter or fish",()=>{
+            int rate=1000;var r=new Run(activity:(p,d,t)=>rate);r.Reel(true);r.WaitFor(LureRetrievePhase.Following);
+            var following=r.S;rate=0;r.Step(1);r.WaitFor(LureRetrievePhase.Strikeable,40);var attacking=r.S;
+            Need(attacking.HazardPerSecond==0&&attacking.ActivityPermille==0&&attacking.EncounterId==following.EncounterId&&
+                Object.ReferenceEquals(attacking.Target,following.Target),"weather redrew the committed follower");
+            FloatFightSimulation fight;
+            Need(r.Sim.StrikeAndStart(RigId,Session,1,++r.Sequence,attacking.EncounterId,out fight)==null&&
+                Object.ReferenceEquals(fight.Snapshot.Target,following.Target),"handoff lost the locked fish");
+        });
+        Test("each fixed step uses its exact world time across display partitions and paused input",()=>{
+            var aTimes=new List<long>();var bTimes=new List<long>();
+            var a=new Run(activity:(p,d,t)=>{aTimes.Add(t);return (int)(t%1000)+550;});
+            var b=new Run(activity:(p,d,t)=>{bTimes.Add(t);return (int)(t%1000)+550;});
+            a.Reel(true);b.Reel(true);long start=9021;
+            for(int i=0;i<40;i++){
+                long t=start+100*i;
+                a.Sim.Advance(Session,17,false,t+17);a.Sim.Advance(Session,34,false,t+51);a.Sim.Advance(Session,49,false,t+100);
+                b.Sim.Advance(Session,100,false,t+100);
+                Need(a.S.EncounterId==b.S.EncounterId&&a.S.Phase==b.S.Phase&&a.S.ActivityPermille==b.S.ActivityPermille,"frame-dependent fish response");
+                Near(a.S.Exposure,b.S.Exposure);
+            }
+            Need(aTimes.Count==80&&aTimes.Count==bTimes.Count,"missed fixed step");
+            for(int i=0;i<aTimes.Count;i++)Need(aTimes[i]==start+50*(i+1)&&aTimes[i]==bTimes[i],"end-of-frame weather applied to earlier physics step");
+            a.Sim.Advance(Session,250,true,start+4250);Need(aTimes.Count==80,"paused time sampled conditions");
+            a.Sim.Advance(Session,50,false,start+4300);Need(aTimes.Count==81&&aTimes[80]==start+4300&&!a.S.Reeling,"resume backfilled missed samples");
         });
         return failed==0?0:1;
     }

@@ -18,10 +18,22 @@ sealed partial class DualWindowContext
     FloatBiteCandidate GameLureBass(FloatCastLaunchPlan plan)
     {
         if(!GameLureSpot||plan==null||gameFishingWater==null)return null;
-        var pool=gameFishingWater.CreatePool(plan.PredictedSample,game.Snapshot.State.Rules);
+        var pool=BuildGameFishingPool(plan.PredictedSample);
         if(pool!=null)foreach(var candidate in pool.Environment.Candidates)
             if(candidate.SpeciesId=="spotted-seabass")return candidate;
         return null;
+    }
+    int GameLureActivity(FloatFightPoint position,double waterDepthM,long atMilliseconds)
+    {
+        if(!GameLureSpot||gameLurePlan==null||!Object.ReferenceEquals(gameWater,gameLurePlan.Geometry))return 0;
+        var sampled=gameWater.Sample(FightUnits(position.X),FightUnits(position.Z),gameWater.Version);
+        if(!sampled.Accepted)return 0;
+        var work=sampled.Sample;int y=FightUnits(position.Y);
+        // The surveyed integer bed floors interpolated depth; the spoon uses
+        // the same continuous slope. Allow their millimetre rounding margin.
+        if(y>work.SurfaceYmm||y<work.BottomYmm-2||Math.Abs(waterDepthM*1000-work.DepthMm)>2)return 0;
+        var current=gameClimate.Sample(gameFishingWater,atMilliseconds);
+        return current.ActivityPermille("spotted-seabass",work.DepthMm>=gameFishingWater.DeepThresholdMm);
     }
     string CheckGameLurePlan(FloatCastLaunchPlan plan)
     {
@@ -64,8 +76,9 @@ sealed partial class DualWindowContext
             if(!GameReadyForFish())return;
             gameLureAttempt=active.Id;
             LureRetrieveRig rig;string why=LureOwnedEquipment.Bind(s,active.Id,out rig);
+            LureActivitySampler activity=GameEcologyEnabled?(LureActivitySampler)GameLureActivity:null;
             if(why==null)why=LureRetrieveSimulation.AtWaterContact(active.Id,rig,gameLurePlan,gameFlight.Snapshot,GameLureBass(gameLurePlan),
-                GameSelfTest?1u:BitConverter.ToUInt32(active.Id.ToByteArray(),0),s.OwnedNet!=null&&s.EquippedNetId==s.OwnedNet.Id,out gameLure);
+                GameSelfTest?1u:BitConverter.ToUInt32(active.Id.ToByteArray(),0),s.OwnedNet!=null&&s.EquippedNetId==s.OwnedNet.Id,out gameLure,activity);
             if(why!=null)throw new InvalidOperationException("A confirmed lure cast lost its flight or equipment binding: "+why);
             GetGameLureControl();BroadcastGameLure();return;
         }
@@ -78,7 +91,8 @@ sealed partial class DualWindowContext
         // input. No wall-clock delta is inferred while a view has no lease.
         var before=gameLure.Snapshot;
         do{
-            int n=Math.Min(250,whole);gameLure.Advance(active.Id,n);whole-=n;
+            int n=Math.Min(250,whole);whole-=n;
+            gameLure.Advance(active.Id,n,false,GameEcologyEnabled?(long?)(gameEcologyTimeMs-whole):null);
         }while(whole>0&&gameLure.Snapshot.Phase!=LureRetrievePhase.RetrievePending);
         var after=gameLure.Snapshot;
         if(after.Phase==LureRetrievePhase.RetrievePending&&gameLureEnding==null){

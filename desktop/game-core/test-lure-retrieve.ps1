@@ -9,7 +9,7 @@ $exe=Join-Path $run 'LureRetrieveTests.exe'
 $sources=@('FloatEquipmentLedger.cs','FloatEquipmentCodec.cs','FloatEquipmentOffers.cs','FloatEquipmentOffersCodec.cs',
     'FloatEquipmentCommerce.cs','FloatEquipmentArchive.cs','FloatCampWorkReward.cs','FloatEquipmentMigrationPolicy.cs','FloatEquipmentUpgradeCommand.cs',
     'FloatGameState.cs','FloatGameReducer.cs','FloatBiteSimulation.cs','FloatFightSimulation.cs','FloatStillWaterGeometry.cs',
-    'FloatFlightSimulation.cs','FloatCastLaunchPlanner.cs','FloatFishingAtlas.cs','LureRetrieveSimulation.cs','tests/LureRetrieveTests.cs') |
+    'FloatFlightSimulation.cs','FloatCastLaunchPlanner.cs','FloatFishingAtlas.cs','ChinaWaterConditions.cs','LureRetrieveSimulation.cs','tests/LureRetrieveTests.cs') |
     ForEach-Object {Join-Path $PSScriptRoot $_}
 $build=@(& $compiler /nologo /utf8output /codepage:65001 /target:exe /platform:x64 /warnaserror+ ('/out:'+$exe) $sources)
 $buildExit=$LASTEXITCODE
@@ -20,7 +20,7 @@ $testExit=$LASTEXITCODE
 $lines | Set-Content -LiteralPath (Join-Path $run 'test-output.txt') -Encoding utf8
 $passed=@($lines | Where-Object {$_ -like 'PASS *'})
 $failed=@($lines | Where-Object {$_ -like 'FAIL *'})
-$report=[pscustomobject]@{passed=($testExit -eq 0 -and $passed.Count -eq 17 -and $failed.Count -eq 0);passedCount=$passed.Count;
+$report=[pscustomobject]@{passed=($testExit -eq 0 -and $passed.Count -eq 21 -and $failed.Count -eq 0);passedCount=$passed.Count;
     checks=$passed;failures=$failed;actualFlight=$true;fixedSteps=$true;webViewExecuted=$false;personalSaveRead=$false;outputDirectory=$run}
 $report | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $run 'summary.json') -Encoding utf8
 if(-not $report.passed){$lines | Out-Host;throw 'Lure retrieval tests failed.'}

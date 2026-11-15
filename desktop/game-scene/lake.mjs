@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { disposeGroup } from './water-space.mjs';
+import { weatherUniforms, setWeatherUniforms, skyWeatherGLSL, waterWeatherGLSL } from './weather-lighting.mjs';
 
 function randomSource(seed) {
   return () => { seed = (Math.imul(1664525, seed) + 1013904223) >>> 0; return seed / 4294967296; };
@@ -56,10 +57,11 @@ function treeTexture(kind) {
 }
 
 const skyShader = {
-  uniforms: { horizon: { value:new THREE.Vector3(.92,.81,.62) }, zenith: { value:new THREE.Vector3(.18,.42,.65) } },
+  uniforms: { ...weatherUniforms(), horizon: { value:new THREE.Vector3(.92,.81,.62) }, zenith: { value:new THREE.Vector3(.18,.42,.65) } },
   vertexShader: `varying vec3 direction;
     void main(){direction=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
   fragmentShader: `varying vec3 direction;uniform vec3 horizon;uniform vec3 zenith;
+    ${skyWeatherGLSL}
     float hash(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
     float noise(vec2 p){vec2 i=floor(p),f=fract(p); f=f*f*(3.-2.*f);
       return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+1.),f.x),f.y);}
@@ -67,9 +69,12 @@ const skyShader = {
       vec3 sky=mix(horizon,zenith,pow(h,.45));
       vec2 p=d.xz/max(.09,h+.12);p+=vec2(noise(p*1.4),noise(p*1.6+3.5))*.45;
       float clouds=.50*noise(p*2.)+.27*noise(p*4.3)+.14*noise(p*9.1)+.06*noise(p*19.)+.03*noise(p*38.);
-      sky=mix(sky,mix(vec3(.67,.72,.74),vec3(.98,.95,.87),smoothstep(.46,.70,clouds)),smoothstep(.46,.68,clouds)*smoothstep(.03,.22,h)*.84);
-      float sun=max(dot(d,normalize(vec3(-.47,.23,-1.))),0.);
-      sky+=vec3(.64,.38,.13)*pow(sun,22.)+vec3(3.,2.3,1.4)*smoothstep(.9996,.99998,sun);
+      if(weatherOn>.5)sky=conditionsSky(d,h,clouds);
+      else{
+        sky=mix(sky,mix(vec3(.67,.72,.74),vec3(.98,.95,.87),smoothstep(.46,.70,clouds)),smoothstep(.46,.68,clouds)*smoothstep(.03,.22,h)*.84);
+        float sun=max(dot(d,normalize(vec3(-.47,.23,-1.))),0.);
+        sky+=vec3(.64,.38,.13)*pow(sun,22.)+vec3(3.,2.3,1.4)*smoothstep(.9996,.99998,sun);
+      }
       gl_FragColor=vec4(sky,1.);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -78,13 +83,14 @@ const skyShader = {
 
 const waterShader = {
   name: 'StillwaterSurface',
-  uniforms: { tDiffuse: { value: null }, color: { value: null }, textureMatrix: { value: null },
+  uniforms: { ...weatherUniforms(), tDiffuse: { value: null }, color: { value: null }, textureMatrix: { value: null },
     time: { value: 0 }, impact: { value: new THREE.Vector3(0, 0, -99) }, rough: { value: .65 }, body: {value: new THREE.Color(0x36594e)},
     fishPos:{value:new THREE.Vector3()},fishShape:{value:new THREE.Vector4()},spoon:{value:new THREE.Vector4()} },
   vertexShader: `uniform mat4 textureMatrix;varying vec4 uvMirror;varying vec3 world;
     void main(){uvMirror=textureMatrix*vec4(position,1.);world=(modelMatrix*vec4(position,1.)).xyz;
       gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
   fragmentShader: `uniform sampler2D tDiffuse;uniform float time;uniform float rough;uniform vec3 body;uniform vec3 impact;
+    ${waterWeatherGLSL}
     uniform vec3 fishPos;uniform vec4 fishShape;uniform vec4 spoon;varying vec4 uvMirror;varying vec3 world;
     float oval(vec2 p,vec2 radius){float d=length(p/radius);return 1.-smoothstep(.91,1.06,d);}
     void main(){vec2 p=world.xz;vec3 eye=normalize(cameraPosition-world);
@@ -130,8 +136,10 @@ const waterShader = {
           water=mix(water,vec3(.51,.57,.53),flash*(1.-smoothstep(.0,1.9,depth)));
         }
       }
-      float spark=pow(max(dot(normal,normalize(eye+normalize(vec3(-.47,.23,-1.)))),0.),850.);
-      water+=vec3(.98,.77,.41)*spark*.83;
+      vec3 lightDir=weatherOn>.5?weatherSun:normalize(vec3(-.47,.23,-1.));
+      float spark=pow(max(dot(normal,normalize(eye+lightDir)),0.),850.);
+      water+=vec3(.98,.77,.41)*spark*.83*(weatherOn>.5?weatherGlow:1.);
+      if(weatherOn>.5)water=conditionsWater(water,world,fresnel);
       gl_FragColor=vec4(water,1.);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -324,7 +332,14 @@ export function createLake(water,assetUrl=null) {
       },undefined,()=>texture?.dispose());
     }
   }
-  return {group,kind, refreshMirror(immediate=false){mirrorDirty=true;forceMirror=forceMirror||immediate;},
+  const grass=group.getObjectByName('bank-vegetation');
+  return {group,kind,waterId:water.waterId,
+    setConditions(value){
+      setWeatherUniforms(uniforms,value);setWeatherUniforms(surface.material.uniforms,value);
+      if(grass)grass.material.color.setScalar(value?.waterLight??1);
+      mirrorDirty=true;
+    },
+    refreshMirror(immediate=false){mirrorDirty=true;forceMirror=forceMirror||immediate;},
     mirrorUpdates(){return mirrorUpdates;},
     loadedMaterials(){return loadedMaterials;},
     lure(mesh){

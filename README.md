@@ -2,9 +2,13 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 试玩包 0.4.0-preview.5](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.5)**。选择 `FishingDesktop-0.4.0-preview.5-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 试玩包 0.4.0-preview.6](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.6)**。选择 `FishingDesktop-0.4.0-preview.6-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
-![海湾岩岸用亮片收饵](docs/preview-0.4/lure-retrieve.png)
+![静水湾正午的水面与岸边](docs/preview-0.4/ecology-day.png)
+
+三个钓场都有各自的天气。开局是早上 07:30，实际游玩一分钟，钓场约过去一小时。可以在天还亮时试一次静水湾浅滩，到晚上再钓同一个落点，看鲫鱼和鲤鱼的鱼口怎么变。切换钓场会沿用当前时刻；打开营地菜单时暂停，退出重开则从早上开始。
+
+[同一钓位的午夜](docs/preview-0.4/ecology-night.png) · [海湾亮片收线](docs/preview-0.4/lure-retrieve.png)
 
 [海湾亮片渔获](docs/preview-0.4/lure-catch.png) · [静水湾竿架](docs/preview-0.4/multi-rod-stand.png) · [竿架渔获](docs/preview-0.4/multi-rod-catch.png) · [静水湾岸景](docs/preview-0.4/shore-lake.png) · [江湾滩岸](docs/preview-0.4/shore-river.png) · [海湾礁岸](docs/preview-0.4/shore-coast.png)
 
@@ -47,6 +51,8 @@
 | 海湾 | 黑鲷、花鲈、黄鳍鲷 |
 
 ### 试玩版本与素材
+
+- **0.4.0-preview.6** 昼夜、当地天气与鱼情接入三个钓场。保持原有存档格式。[第五版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.5)
 
 - **0.4.0-preview.5** 在海湾岩岸可用单枚下沉亮片钓花鲈。升级前先退出游戏，备份 `%LOCALAPPDATA%\FishingDesktop\Preview\game.fltj`，再将新包解压到独立文件夹。上一版正常退出的进度可继续使用。购买路亚套装或用亮片抛竿后，请用第五版读取这些新记录；若要降级，退出游戏后恢复更新前的备份。
 - **0.4.0-preview.4** 静水湾开放三槽竿架和两套可逐次购买的备用底竿。[第四版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.4)

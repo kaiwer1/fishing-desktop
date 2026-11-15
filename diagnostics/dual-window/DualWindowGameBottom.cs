@@ -74,7 +74,7 @@ sealed partial class DualWindowContext
             gameBottomAttempt=active.Id;gameBottom=null;gameBottomRemainder=0;
             BottomEquipmentBridge kit;var patch=GameBottomPatch();
             if(patch!=null&&BottomOwnedEquipment.Bind(s,out kit)==null&&Object.ReferenceEquals(active.BottomKit,s.OwnedBottomKit)){
-                var pool=gameFishingWater.CreatePool(gameWaterLanding.Sample,s.Rules);gameFishingPool=pool;
+                var pool=BuildGameFishingPool(gameWaterLanding.Sample);gameFishingPool=pool;
                 var config=BottomFightConfiguration(s);
                 if(pool!=null)BottomFightHandoff.AtWaterContact(active.Id,kit.Assembly,patch,gameWater.Version,gameWaterLanding.Sample.Xmm,gameWaterLanding.Sample.Zmm,
                     GameSelfTest?1u:BitConverter.ToUInt32(active.Id.ToByteArray(),0),pool.Environment,config,out gameBottom);

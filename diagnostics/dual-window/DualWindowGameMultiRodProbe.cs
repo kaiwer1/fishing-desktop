@@ -77,7 +77,8 @@ sealed partial class DualWindowContext
 
             stage="buying all three rods, stand and net";
             await SceneProbeButton(pane,"scene-menu");
-            await Wait(pane,p=>Field(p,"bottomShopState")!=null&&(bool)Field(p,"bottomShopState")["allowed"]&&Field(p,"bankKitState")!=null);
+            await Wait(pane,p=>Field(p,"snapshot")!=null&&(bool)Field(p,"snapshot")["MenuOpen"]&&
+                Field(p,"bottomShopState")!=null&&(bool)Field(p,"bottomShopState")["allowed"]&&Field(p,"bankKitState")!=null);
             await MultiBuy(pane,"bottom-buy",6400,1,false);await MultiBuy(pane,"bank-buy-2",4800,2,false);
             await MultiBuy(pane,"bank-buy-3",4800,3,false);await MultiBuy(pane,"bank-buy-stand",1600,3,true);
             var quoted=Field(Field(await CatchProbeShop(pane,"quote-net","shop-quoted",false),"shopState"),"quote");

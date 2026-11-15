@@ -23,6 +23,7 @@ import { StandView, createStandPanel } from './stand-view.mjs';
 import { BankKit, bindBankShop } from './bank-kit.mjs';
 import { LureView, createLurePanel, lureMetrics, lurePrompt } from './lure-view.mjs';
 import { LureShop, LureInput } from './lure-controls.mjs';
+import { WaterConditions, showWaterConditions } from './water-conditions.mjs';
 
 const documentId = crypto.randomUUID();
 const authority = new LeaseSession(documentId);
@@ -44,6 +45,7 @@ const equipmentView = new EquipmentView(documentId);
 const sparesView = new SparesView(documentId);
 const campView = new CampView(documentId);
 const waterView = new WaterView(documentId);
+const conditionsView=new WaterConditions(documentId);
 let selectedAim = null;
 let saveFaulted = false;
 let speedKeyHeld = false;
@@ -184,6 +186,17 @@ function tradeContext(otherShopFree) {
 function currentSpotWater() {
   return !spotMenu.revision || Boolean(spotMenu.activeId && waterView.state()?.waterId === spotMenu.activeId);
 }
+function currentConditions(){
+  if(!snapshot?.HasConfirmedState || snapshot.Faulted || snapshot.ShutdownConfirmed || saveFaulted)return conditionsView.forWater(null);
+  const water=waterView.state();
+  const frozen=document.hidden || visualPaused || snapshot.HostPaused || snapshot.MenuOpen || hostPolicy?.canRun===false;
+  return conditionsView.forWater(water?.enabled && currentSpotWater() ? water.waterId : null,frozen);
+}
+function renderConditions(){
+  const weather=currentConditions();
+  showWaterConditions($('water-conditions'),weather);
+  showWaterConditions($('map-weather'),weather);
+}
 function spotAccess() {
   if (!canControl()) return '开启交互后可以切换钓点。';
   if (!snapshot.MenuOpen) return '打开菜单后可以切换钓点。';
@@ -238,7 +251,7 @@ function sceneProjection() {
   const canAim = canPrepare() && bankWalk.canCast(water) && !castInput.state() && !document.hidden && !visualPaused && hostPolicy?.canRun === true;
   return { water, cast, flight: current(flightView.state()), bite: current(biteView.state()), fight: current(fightView.state()),
     bottom:bottom ? { ...bottom, lineEnd:bottomLineEnd && { ...bottomLineEnd } } : null,
-    lureSelected:lureMethod(),lure:currentLure(),canAim,stand:bankKit.selected ? stand.state() : null,bank:bankWalk.forWater(water),sleeveColor:wardrobe.sleeveColor };
+    weather:currentConditions(),lureSelected:lureMethod(),lure:currentLure(),canAim,stand:bankKit.selected ? stand.state() : null,bank:bankWalk.forWater(water),sleeveColor:wardrobe.sleeveColor };
 }
 function renderSceneShell() {
   const state = scene.state();
@@ -493,6 +506,7 @@ function updateButtons() {
   bankKit.reconcile(); stand.reconcile(); bottomShop.reconcile(); bottomStrike.reconcile(); renderBottom();
   lureShop.reconcile(); lureInput.reconcile(); renderLure();
   renderBankShop(snapshot?.MenuOpen); renderStand();
+  renderConditions();
   const active = canControl() && !inflight && !spotRequest && !gearBusy() && !wardrobe.busy && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy();
   const input = castInput.state();
   $('cast').disabled = !canPrepare() || !bankWalk.canCast(waterView.state()) || Boolean(input);
@@ -715,6 +729,10 @@ Object.assign(codes, { 'camp-work-started': '帮工已开始，请保持当前�
   'camp-creel-not-empty': '可以先出售鱼护里的渔获。', 'camp-schema-required': '此存档尚未支持营地帮工。' });
 window.chrome.webview.addEventListener('message', event => {
   const m = event.data; if (!m || m.documentId !== documentId) return;
+  if(m.kind==='game-conditions-state'){
+    if(conditionsView.apply(m)){renderConditions();scene.refresh();}
+    return;
+  }
   if(m.kind==='game-lure-shop-state'){if(lureShop.apply(m))render();return;}
   if(m.kind==='game-lure-state'){
     const previous=lureView.state(),retry=lureView.canRetryRetrieve;
@@ -1087,7 +1105,7 @@ $('scene-to-water').addEventListener('click', () => scene.showScene(true));
 for (const key of ['menu','recall','release','land','retry-land','retry-escape']) {
   $(`scene-${key}`).addEventListener('click', event => { if (event.detail <= 1 && !$(key).disabled) $(key).click(); });
 }
-function pauseVisual(value) { visualPaused = value; if (value) bankWalk.stop(); scene.refresh(); }
+function pauseVisual(value) { visualPaused = value; if (value) bankWalk.stop();renderConditions();scene.refresh(); }
 const visual = { start: () => pauseVisual(false), stop: () => pauseVisual(true), pause: () => pauseVisual(true), resume: () => pauseVisual(false),
   state: () => scene.state().renderer ?? { running: false, frames: 0, kind: 'host-flight-projection' } };
 window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authority.state(), snapshot, revision, lastReply, lastActivationReply, lastRevoke, hostPolicy, castState, lastFlight: flightNotices.last, flightCount: flightNotices.count, inputState: castInput.state(), flightState: flightView.state(), flightRevision: flightView.revision,
@@ -1101,7 +1119,7 @@ window.dualProbe = { documentId, visual, state: () => ({ documentId, ...authorit
   equipmentState: equipmentView.state(), equipmentRevision: equipmentView.revision, equipmentInputState: equipmentInput.state(),
   sparesState: sparesView.state(), sparesRevision: sparesView.revision, sparesInputState: sparesInput.state(),
   campState: campView.state(), campRevision: campView.revision, campInputState: campInput.state(),
-  waterState: waterView.state(), waterRevision: waterView.revision, sceneState: scene.state(),
+  waterState: waterView.state(), waterRevision: waterView.revision, weatherState:currentConditions(),weatherRevision:conditionsView.revision,sceneState: scene.state(),
   bankState:bankWalk.state(), bankRevision:bankWalk.revision, bankPending:bankWalk.pending,
   spotState: spotMenu.state(), spotRevision: spotMenu.revision, spotPending: spotRequest?.spotId ?? spotMenu.pending,
   wardrobeState: wardrobe.state(), wardrobeRevision: wardrobe.revision, wardrobePending: wardrobe.pending }),

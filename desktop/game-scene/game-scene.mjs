@@ -3,11 +3,12 @@ import { createFrameScheduler } from '../../src/frame-scheduler.js';
 import { renderSize } from '../../src/display.js';
 import { createLake } from './lake.mjs';
 import { createTackle } from './tackle.mjs';
+import { createWeatherLighting } from './weather-lighting.mjs';
 import { createRodStand, standAtWater } from './rod-stand.mjs';
 import { sampleFightFish } from './fight-fish.mjs';
 import { aimPoint, pickAim, projectAim, setBankCamera, waterGeometryKey } from './water-space.mjs';
 
-const viewNames=['water','cast','flight','bite','fight','bottom','sleeveColor','stand','lureSelected','lure'];
+const viewNames=['water','cast','flight','bite','fight','bottom','sleeveColor','stand','lureSelected','lure','weather'];
 
 // All inputs are read-only page projections. The renderer neither advances a
 // fishing clock nor posts input. Projection helpers use live CSS client pixels.
@@ -18,8 +19,9 @@ export function createGameScene(canvas,{onFault}={}) {
   renderer.setPixelRatio(1);
   const scene=new THREE.Scene();scene.background=new THREE.Color(0xc7c5ad);scene.fog=new THREE.FogExp2(0xc4c7b9,.0068);
   const camera=new THREE.PerspectiveCamera(47,1,.022,700);camera.layers.enable(1);
-  scene.add(new THREE.HemisphereLight(0xfff1d6,0x79795c,1.77));
+  const skyLight=new THREE.HemisphereLight(0xfff1d6,0x79795c,1.77);scene.add(skyLight);
   const sun=new THREE.DirectionalLight(0xffdfae,2.15);sun.position.set(-47,23,-100);scene.add(sun);
+  const lighting=createWeatherLighting(scene,sun,skyLight);
   const tackle=createTackle();scene.add(tackle.group);
   const aimMarker=new THREE.Mesh(new THREE.RingGeometry(.42,.467,56),
     new THREE.MeshBasicMaterial({color:0xeceec7,transparent:true,opacity:.86,depthWrite:false,side:THREE.DoubleSide}));
@@ -94,6 +96,7 @@ export function createGameScene(canvas,{onFault}={}) {
       for(const name of viewNames)if(Object.hasOwn(data,name))views[name]=data[name];
       if(Object.hasOwn(data,'canAim')){canAim=data.canAim===true;if(!canAim)hideAim();}
       if(Object.hasOwn(data,'water'))resetLake(data.water);
+      lighting.update(views.weather??null,lake);
       if(key!==oldWaterKey&&!Object.hasOwn(data,'stand'))views.stand=null;
       if(key!==oldWaterKey&&!Object.hasOwn(data,'lure'))views.lure=null;
       if(Object.hasOwn(data,'stand')||Object.hasOwn(data,'water')){
@@ -113,7 +116,7 @@ export function createGameScene(canvas,{onFault}={}) {
   function state(){
     return {ready:Boolean(lake&&!disposed&&!error),active,running:scheduler.getState().running,frames,width,height,
       triangles:renderer.info.render.triangles,calls:renderer.info.render.calls,geometryVersion:water?.geometryVersion??null,rodPhase,
-      shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
+      weather:lighting.state(),shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
       sceneBuilds,mirrorUpdates:lake?.mirrorUpdates()??0,loadedMaterials:lake?.loadedMaterials()??0,cameraXmm:lake&&aspect>0?Math.round(camera.position.x*1000):null,
       rodAnchorXmm:lake?tackle.anchorXmm():null,bottomTipPermille:lake?tackle.bottomTipPermille():null,stand:stand?.state()??null,
       lureVisible:frames>0&&Boolean(lake)&&tackle.group.visible&&tackle.spoon.visible,

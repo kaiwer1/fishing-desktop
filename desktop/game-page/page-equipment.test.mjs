@@ -158,6 +158,19 @@ const bankKitState = (f,revision,extra={}) => f.emit({kind:'game-bank-kit-state'
 
 const lureShopState=(f,revision,extra={})=>f.emit({kind:'game-lure-shop-state',revision,state:{
   available:true,owned:false,selected:false,allowed:false,priceMinor:5600,...extra}});
+test('actual shore HUD reads the current water and preserves its last time while the menu is open',async()=>{
+  const f=await pageFixture(),hud=f.nodes.get('water-conditions'),map=f.nodes.get('map-weather');
+  const s={waterId:'development-still-water',clockMinute:480,weatherCode:'cloudy',lightPermille:405,rainPermille:0,windDeciMs:22,tempDeciC:188,cloudPercent:50};
+  const weather=(revision,extra={})=>f.emit({kind:'game-conditions-state',revision,state:{...s,...extra}});
+  assert.equal(hud.hidden,true);weather(1);assert.equal(f.probe.state().weatherState,null);
+  spotWater(f,1,1,s.waterId);assert.equal(hud.dataset.clockMinute,'480');assert.equal(map.textContent,hud.textContent);
+  weather(2,{clockMinute:483});assert.equal(hud.dataset.clockMinute,'480');
+  f.snapshot.MenuOpen=false;f.broadcast();assert.equal(hud.dataset.clockMinute,'483');
+  spotWater(f,2,3,'coastal-bay');assert.equal(hud.hidden,true);assert.equal(map.hidden,true);
+  weather(3,{waterId:'coastal-bay',clockMinute:500,weatherCode:'rain',rainPermille:750});
+  assert.equal(hud.dataset.waterId,'coastal-bay');assert.equal(hud.dataset.weatherCode,'rain');
+  assert.equal(f.messages.length,0);
+});
 test('the camp confirms one reusable lure and enters the method only after coastal ownership is projected',async()=>{
   const f=await pageFixture();
   assert.equal(f.nodes.get('lure-shop').hidden,true);lureShopState(f,1);

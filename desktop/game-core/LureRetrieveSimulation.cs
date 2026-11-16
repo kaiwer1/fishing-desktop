@@ -65,7 +65,7 @@ namespace FishingDesktop.GameCore
         readonly LureRetrieveRig rig;
         readonly FloatFightWater water;
         readonly FloatFightPoint anchor;
-        readonly FloatBiteCandidate bass;
+        readonly FloatBiteCandidate predator;
         readonly LureActivitySampler sampleActivity;
         readonly FloatBiteRandom searchRandom,massRandom;
         readonly uint fightSeed;
@@ -82,9 +82,9 @@ namespace FishingDesktop.GameCore
         FloatFightPoint velocity=new FloatFightPoint(0,0,0);
 
         LureRetrieveSimulation(Guid session,LureRetrieveRig rig,FloatStillWaterGeometry geometry,FloatFlightSnapshot contact,
-            FloatBiteCandidate bass,uint seed,bool net,double dx,double dz,double horizontal,LureActivitySampler sampleActivity)
+            FloatBiteCandidate predator,uint seed,bool net,double dx,double dz,double horizontal,LureActivitySampler sampleActivity)
         {
-            this.session=session;this.rig=rig;this.bass=bass;this.net=net;this.sampleActivity=sampleActivity;
+            this.session=session;this.rig=rig;this.predator=predator;this.net=net;this.sampleActivity=sampleActivity;
             searchRandom=new FloatBiteRandom(seed^0xa341316cU);massRandom=new FloatBiteRandom(seed^0xad90777dU);fightSeed=seed^0x4c555246U;
             dirX=dx/horizontal;dirZ=dz/horizontal;radius=horizontal;
             anchor=new FloatFightPoint(geometry.AnchorXmm/1000.0,geometry.AnchorYmm/1000.0,geometry.AnchorZmm/1000.0);
@@ -98,12 +98,22 @@ namespace FishingDesktop.GameCore
             clearance=water.SurfaceY-bed.Elevation(contact.Xmm/1000.0,contact.Zmm/1000.0);BeginSearch();
         }
         static bool Finite(double x){return !Double.IsNaN(x)&&!Double.IsInfinity(x);}
-        internal static string CheckCast(LureRetrieveRig rig,FloatCastLaunchPlan releasePlan,FloatBiteCandidate seaBass)
+        internal static string SpoonSpecies(FloatStillWaterGeometry geometry)
         {
-            if(rig==null||releasePlan==null||seaBass==null)return "configuration-missing";
+            if(geometry==null)return null;
+            var site=FloatFishingAtlas.Find(geometry.WaterId);
+            if(site==null||site.Geometry.Version!=geometry.Version||site.Geometry.SpotId!=geometry.SpotId)return null;
+            if(site.Id=="coastal-bay")return FloatFishingAtlas.Bass.Id;
+            return site.Id=="river-bend"?FloatFishingAtlas.Culter.Id:null;
+        }
+        internal static string CheckCast(LureRetrieveRig rig,FloatCastLaunchPlan releasePlan,FloatBiteCandidate predator)
+        {
+            if(rig==null||releasePlan==null||predator==null)return "configuration-missing";
             var geometry=releasePlan.Geometry;
-            if(geometry.WaterId!="coastal-bay"||geometry.SpotId!="rock-bank"||geometry.Version!=FloatFishingAtlas.Find("coastal-bay").Geometry.Version)return "lure-spot-unavailable";
-            if(seaBass.SpeciesId!="spotted-seabass"||seaBass.MinimumMassMg<480000||seaBass.MaximumMassMg>2600000)return "lure-species-unconfigured";
+            string species=SpoonSpecies(geometry);
+            if(species==null)return "lure-spot-unavailable";
+            var stock=species==FloatFishingAtlas.Culter.Id?FloatFishingAtlas.Culter:FloatFishingAtlas.Bass;
+            if(predator.SpeciesId!=species||predator.MinimumMassMg<stock.EncounterMinimumMg||predator.MaximumMassMg>stock.EncounterMaximumMg)return "lure-species-unconfigured";
             if(releasePlan.RequiredLineMm>rig.TotalLineMm)return "lure-contact-line-mismatch";
             double dx=(releasePlan.PredictedXmm-geometry.AnchorXmm)/1000.0,dz=(releasePlan.PredictedZmm-geometry.AnchorZmm)/1000.0;
             double height=(geometry.AnchorYmm-geometry.SurfaceYmm)/1000.0;
@@ -114,11 +124,11 @@ namespace FishingDesktop.GameCore
             return Math.Sqrt(shore*shore+height*height)>5?"lure-return-path-unreachable":null;
         }
         internal static string AtWaterContact(Guid session,LureRetrieveRig rig,FloatCastLaunchPlan releasePlan,
-            FloatFlightSnapshot contact,FloatBiteCandidate seaBass,uint seed,bool netEquipped,out LureRetrieveSimulation run,
+            FloatFlightSnapshot contact,FloatBiteCandidate predator,uint seed,bool netEquipped,out LureRetrieveSimulation run,
             LureActivitySampler sampleActivity=null)
         {
             run=null;
-            string error=CheckCast(rig,releasePlan,seaBass);if(error!=null)return error;
+            string error=CheckCast(rig,releasePlan,predator);if(error!=null)return error;
             var geometry=releasePlan.Geometry;
             if(contact==null||session==Guid.Empty||rig.Contains(session)||contact.SessionId!=session||
                 contact.Phase!=FloatFlightPhase.Waiting||contact.Reason!="water-contact")return "confirmed-contact-required";
@@ -131,7 +141,7 @@ namespace FishingDesktop.GameCore
             double horizontal=Math.Sqrt(dx*dx+dz*dz),height=(geometry.AnchorYmm-geometry.SurfaceYmm)/1000.0;
             double span=Math.Sqrt(horizontal*horizontal+height*height);
             if(contact.LineUsedMm>rig.TotalLineMm||Math.Abs(span*1000-contact.LineUsedMm)>.00001)return "lure-contact-line-mismatch";
-            run=new LureRetrieveSimulation(session,rig,geometry,contact,seaBass,seed,netEquipped,dx,dz,horizontal,sampleActivity);return null;
+            run=new LureRetrieveSimulation(session,rig,geometry,contact,predator,seed,netEquipped,dx,dz,horizontal,sampleActivity);return null;
         }
         void Check(){if(thread!=Thread.CurrentThread.ManagedThreadId)throw new InvalidOperationException("Use the lure owner's thread.");}
         bool Active{get{return phase!=LureRetrievePhase.Hooked&&phase!=LureRetrievePhase.RetrievePending&&phase!=LureRetrievePhase.Ended;}}
@@ -221,7 +231,8 @@ namespace FishingDesktop.GameCore
                 !reeling&&pauseSteps>0&&depth>previousDepth?.4:0;
             if(!reeling&&pauseSteps>0)pauseSteps--;
             double waterFactor=layer==LureWaterLayer.Upper?.45:layer==LureWaterLayer.Middle?1:layer==LureWaterLayer.Deep?.3:0;
-            double presentationRate=clearance>=.12&&bass.Weight>0?.60*motionFactor*waterFactor:0;
+            if(predator.SpeciesId==FloatFishingAtlas.Culter.Id)waterFactor=layer==LureWaterLayer.Upper?1.25:layer==LureWaterLayer.Middle?.65:0;
+            double presentationRate=clearance>=.12&&predator.Weight>0?.60*motionFactor*waterFactor:0;
             if(sampleActivity!=null){
                 activityPermille=sampleActivity(point,bottomDepth,worldMilliseconds);
                 if(activityPermille<0||activityPermille>10000)throw new InvalidOperationException("Lure activity must be in [0,10000] permille.");
@@ -230,7 +241,7 @@ namespace FishingDesktop.GameCore
             if(phase==LureRetrievePhase.InWater){
                 exposure+=hazard*Dt;
                 if(exposure>=threshold){
-                    target=new FloatBiteTarget(bass.SpeciesId,bass.MinimumMassMg+(long)massRandom.Bounded((ulong)(bass.MaximumMassMg-bass.MinimumMassMg+1)));
+                    target=new FloatBiteTarget(predator.SpeciesId,predator.MinimumMassMg+(long)massRandom.Bounded((ulong)(predator.MaximumMassMg-predator.MinimumMassMg+1)));
                     encounter=Identity(1,epoch);followGap=.60;followSteps=0;phase=LureRetrievePhase.Following;
                 }
             }else if(phase==LureRetrievePhase.Following){

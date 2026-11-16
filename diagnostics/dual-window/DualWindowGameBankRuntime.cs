@@ -165,7 +165,7 @@ sealed partial class DualWindowContext
             held.Landing=gameWaterLanding;
             BottomEquipmentBridge equipment;
             if(GameReadyForFish()&&BottomOwnedEquipment.Bind(state,gameBankStand.Held,out equipment)==null){
-                held.Pool=BuildGameFishingPool(held.Landing.Sample);
+                held.Pool=BuildGameFishingPool(held.Landing.Sample,FishingPresentation.Bottom);
                 var patch=GameBottomPatch();
                 if(patch!=null&&held.Pool!=null){
                     BottomFightHandoff bottom;

@@ -10,15 +10,15 @@ sealed partial class DualWindowContext
         GameMultiRodSelfTest||GameBottomSelfTest||GameLureSelfTest||GameWallpaperSelfTest||GamePlayerSelfTest||GameShoreSelfTest);}}
 
     ChinaWaterConditionSnapshot SampleGameConditions(){return gameClimate.Sample(gameFishingWater,gameEcologyTimeMs);}
-    FloatFishingPool BuildGameFishingPool(FloatWaterSample sample)
+    FloatFishingPool BuildGameFishingPool(FloatWaterSample sample,FishingPresentation method=FishingPresentation.Float)
     {
         if(gameFishingWater==null||game==null||game.Snapshot.State==null)return null;
         gameFishingPoolTimeMs=gameEcologyTimeMs;
         var state=game.Snapshot.State;
-        var pool=GameEcologyEnabled?gameClimate.CreatePool(gameFishingWater,sample,state.Rules,gameFishingPoolTimeMs):
-            gameFishingWater.CreatePool(sample,state.Rules);
+        var pool=GameEcologyEnabled?gameClimate.CreatePool(gameFishingWater,sample,state.Rules,gameFishingPoolTimeMs,method):
+            gameFishingWater.CreatePool(sample,state.Rules,method);
         var session=state.Session;
-        if(pool!=null&&gameFishingWater.Kind=="freshwater"&&session!=null&&!session.IsBottom&&!session.IsLure&&state.BreadBaitSelected)
+        if(method==FishingPresentation.Float&&pool!=null&&gameFishingWater.Kind=="freshwater"&&session!=null&&!session.IsBottom&&!session.IsLure&&state.BreadBaitSelected)
             return new FloatFishingPool(pool.Id,pool.Name,pool.Environment.WithBreadPaste());
         return pool;
     }
@@ -36,7 +36,7 @@ sealed partial class DualWindowContext
                 var rod=pair.Value;
                 if(rod.Bottom==null||rod.Landing==null||!rod.Landing.Accepted||
                     rod.Bottom.Snapshot.Phase>BottomPhase.Searching)continue;
-                var pool=BuildGameFishingPool(rod.Landing.Sample);
+                var pool=BuildGameFishingPool(rod.Landing.Sample,FishingPresentation.Bottom);
                 if(pool!=null&&gameBankScheduler.SetEnvironment(pair.Key,rod.Session,pool.Environment)==null){
                     rod.Pool=pool;if(gameBankStand.Held==pair.Key)gameFishingPool=pool;
                 }
@@ -46,7 +46,7 @@ sealed partial class DualWindowContext
         if(gameWaterLanding==null||!gameWaterLanding.Accepted||game.Snapshot.State.Session==null)return;
         var session=game.Snapshot.State.Session;
         if(session.IsBottom&&gameBottom!=null&&gameBottom.Snapshot.Phase<=BottomPhase.Searching){
-            var pool=BuildGameFishingPool(gameWaterLanding.Sample);
+            var pool=BuildGameFishingPool(gameWaterLanding.Sample,FishingPresentation.Bottom);
             if(pool!=null&&gameBottom.SetEnvironment(session.Id,pool.Environment).Accepted)gameFishingPool=pool;
         }else if(!session.IsBottom&&!session.IsLure&&gameBite!=null&&gameBite.Snapshot.Phase<=FloatBitePhase.Searching){
             var pool=BuildGameFishingPool(gameWaterLanding.Sample);

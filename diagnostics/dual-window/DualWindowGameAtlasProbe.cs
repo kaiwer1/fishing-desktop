@@ -81,7 +81,7 @@ sealed partial class DualWindowContext
             await Wait(read,s=>AtlasProbeProjected(s,start));
             var rows=Field(page,"spotState")["spots"] as IEnumerable;
             Require(rows!=null && initial.Sequence==1 && initial.RulesVersion==FloatFishingAtlas.NewRulesVersion &&
-                initial.Rules.Species.Count==9 && initial.WalletMinor==12000 && initial.BaitCount==12 && initial.Stamina==100,"Unexpected atlas profile.");
+                initial.Rules.Species.Count==11 && initial.WalletMinor==12000 && initial.BaitCount==12 && initial.Stamina==100,"Unexpected atlas profile.");
             var projected=new HashSet<string>(StringComparer.Ordinal);
             foreach(Dictionary<string,object> row in rows){
                 var station=FloatFishingAtlas.Find((string)row["id"]);
@@ -93,7 +93,7 @@ sealed partial class DualWindowContext
                 foreach(var fish in wanted)Require(names.Contains(fish.Name),"Station preview omitted a saved species.");
             }
             Require(projected.SetEquals(new[]{start,river,coast}),"Station menu is incomplete.");
-            checks.Add("the new nine-species profile projects three distinct fishing stations and the eligible domestic fish names");
+            checks.Add("the new eleven-species profile projects three distinct fishing stations and the eligible domestic fish names");
 
             string lease=await Activate(pane);await GameMenu(pane,lease,true);
             string journal=GameShopJournalDigest();

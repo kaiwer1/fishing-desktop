@@ -10,16 +10,16 @@ $taskArgs=@('/nologo','/utf8output','/codepage:65001','/target:exe','/platform:x
 foreach($taskName in @('FloatEquipmentLedger.cs','FloatEquipmentCodec.cs','FloatEquipmentOffers.cs','FloatEquipmentOffersCodec.cs',
     'FloatEquipmentCommerce.cs','FloatEquipmentArchive.cs','FloatCampWorkReward.cs','FloatEquipmentMigrationPolicy.cs','FloatEquipmentUpgradeCommand.cs',
     'FloatGameState.cs','FloatGameReducer.cs','FloatBiteSimulation.cs','FloatStillWaterGeometry.cs','FloatFlightSimulation.cs',
-    'FloatCastLaunchPlanner.cs','FloatFishingAtlas.cs','FloatBankWalk.cs','tests/FloatFishingAtlasTests.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
+    'FloatCastLaunchPlanner.cs','FloatFishingAtlas.cs','ChinaWaterConditions.cs','FloatBankWalk.cs','tests/FloatFishingAtlasTests.cs')){$taskArgs+=(Join-Path $PSScriptRoot $taskName)}
 $taskBuild=@(& $taskCompiler @taskArgs);$taskBuildExit=$LASTEXITCODE
 $taskBuild|Set-Content -LiteralPath (Join-Path $taskRun 'build-output.txt') -Encoding utf8
 if($taskBuildExit -ne 0){$taskBuild|Out-Host;throw 'Fishing atlas checks did not compile.'}
 $taskLines=@(& $taskExecutable);$taskExit=$LASTEXITCODE
 $taskLines|Set-Content -LiteralPath (Join-Path $taskRun 'test-output.txt') -Encoding utf8
 $taskPassed=@($taskLines|Where-Object {$_ -like 'PASS *'});$taskFailed=@($taskLines|Where-Object {$_ -like 'FAIL *'})
-$taskReport=[pscustomobject]@{passed=($taskExit -eq 0 -and $taskPassed.Count -eq 17 -and $taskFailed.Count -eq 0);passedCount=$taskPassed.Count;
-    checks=$taskPassed;failures=$taskFailed;waterCount=3;speciesCount=9;poolCount=6;realSimulationFlight=$true;
-    seededBiteDrawsPerPool=128;adoptedReducerSaleCandidates=9;diskPersistenceTested=$false;nativeExecuted=$false;outputDirectory=$taskRun}
+$taskReport=[pscustomobject]@{passed=($taskExit -eq 0 -and $taskPassed.Count -eq 18 -and $taskFailed.Count -eq 0);passedCount=$taskPassed.Count;
+    checks=$taskPassed;failures=$taskFailed;waterCount=3;speciesCount=11;poolCount=6;realSimulationFlight=$true;
+    seededBiteDrawsPerPool=128;adoptedReducerSaleCandidates=11;diskPersistenceTested=$false;nativeExecuted=$false;outputDirectory=$taskRun}
 $taskReport|ConvertTo-Json -Depth 4|Set-Content -LiteralPath (Join-Path $taskRun 'summary.json') -Encoding utf8
 if(-not $taskReport.passed){$taskLines|Out-Host;throw 'Fishing atlas checks failed.'}
 $taskReport|ConvertTo-Json -Depth 4

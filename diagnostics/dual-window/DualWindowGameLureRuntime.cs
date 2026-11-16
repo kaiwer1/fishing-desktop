@@ -15,12 +15,12 @@ sealed partial class DualWindowContext
     RecallFloat gameLureEnding;
     bool gameLureEndingRetry;
 
-    FloatBiteCandidate GameLureBass(FloatCastLaunchPlan plan)
+    FloatBiteCandidate GameSpoonTarget(FloatCastLaunchPlan plan)
     {
         if(!GameLureSpot||plan==null||gameFishingWater==null)return null;
-        var pool=BuildGameFishingPool(plan.PredictedSample);
+        var pool=BuildGameFishingPool(plan.PredictedSample,FishingPresentation.Spoon);
         if(pool!=null)foreach(var candidate in pool.Environment.Candidates)
-            if(candidate.SpeciesId=="spotted-seabass")return candidate;
+            if(candidate.SpeciesId==LureRetrieveSimulation.SpoonSpecies(gameWater))return candidate;
         return null;
     }
     int GameLureActivity(FloatFightPoint position,double waterDepthM,long atMilliseconds)
@@ -33,14 +33,14 @@ sealed partial class DualWindowContext
         // the same continuous slope. Allow their millimetre rounding margin.
         if(y>work.SurfaceYmm||y<work.BottomYmm-2||Math.Abs(waterDepthM*1000-work.DepthMm)>2)return 0;
         var current=gameClimate.Sample(gameFishingWater,atMilliseconds);
-        return current.ActivityPermille("spotted-seabass",work.DepthMm>=gameFishingWater.DeepThresholdMm);
+        return current.ActivityPermille(LureRetrieveSimulation.SpoonSpecies(gameWater),work.DepthMm>=gameFishingWater.DeepThresholdMm);
     }
     string CheckGameLurePlan(FloatCastLaunchPlan plan)
     {
         if(!GameLureSpot)return "lure-spot-unavailable";
         LureRetrieveRig rig;string why=LureOwnedEquipment.BindForCast(game.Snapshot.State,out rig);
         if(why!=null)return why;
-        return LureRetrieveSimulation.CheckCast(rig,plan,GameLureBass(plan));
+        return LureRetrieveSimulation.CheckCast(rig,plan,GameSpoonTarget(plan));
     }
     void ClearGameLureInput(ProbeWindow pane=null)
     {
@@ -77,7 +77,7 @@ sealed partial class DualWindowContext
             gameLureAttempt=active.Id;
             LureRetrieveRig rig;string why=LureOwnedEquipment.Bind(s,active.Id,out rig);
             LureActivitySampler activity=GameEcologyEnabled?(LureActivitySampler)GameLureActivity:null;
-            if(why==null)why=LureRetrieveSimulation.AtWaterContact(active.Id,rig,gameLurePlan,gameFlight.Snapshot,GameLureBass(gameLurePlan),
+            if(why==null)why=LureRetrieveSimulation.AtWaterContact(active.Id,rig,gameLurePlan,gameFlight.Snapshot,GameSpoonTarget(gameLurePlan),
                 GameSelfTest?1u:BitConverter.ToUInt32(active.Id.ToByteArray(),0),s.OwnedNet!=null&&s.EquippedNetId==s.OwnedNet.Id,out gameLure,activity);
             if(why!=null)throw new InvalidOperationException("A confirmed lure cast lost its flight or equipment binding: "+why);
             GetGameLureControl();BroadcastGameLure();return;

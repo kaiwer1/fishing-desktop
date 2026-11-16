@@ -6,7 +6,12 @@ using FishingDesktop.GameCore;
 sealed partial class DualWindowContext
 {
     bool gameLureSelected;
-    bool GameLureSpot {get{return gameWater!=null&&gameWater.WaterId=="coastal-bay"&&gameWater.SpotId=="rock-bank";}}
+    bool GameLureSpot {get{
+        string species=LureRetrieveSimulation.SpoonSpecies(gameWater);
+        var state=game==null?null:game.Snapshot.State;
+        return species!=null&&state!=null&&state.Rules.Find(species)!=null&&
+            (species!=FloatFishingAtlas.Culter.Id||state.Rules.Signature==FloatDomesticSpeciesCatalog.Eleven.Signature);
+    }}
     void SendGameLureShop(ProbeWindow p)
     {
         GameBinding b;if(!GameAtlasMode||!p.Ready||!gameViews.TryGetValue(p,out b)||b.Document==null)return;

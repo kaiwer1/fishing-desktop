@@ -88,15 +88,22 @@ static class FloatFishingAtlasTests
                     water.CreatePool(oldContact,rules)==null,water.Id+" failed to isolate the old contact.");
             }
         });
-        Test("station manifests expose the nine species with matching reference IDs",()=>{
+        Test("station manifests expose eleven species with matching reference IDs",()=>{
             Need(still.SpeciesFor(rules).Select(x=>x.Id).SequenceEqual(new[]{"carp","crucian"}) &&
-                river.SpeciesFor(rules).Select(x=>x.Id).SequenceEqual(new[]{"grass-carp","blunt-snout-bream","carp","yellow-catfish"}) &&
-                coast.SpeciesFor(rules).Select(x=>x.AssetId).SequenceEqual(new[]{"sw_black_seabream","sw_spotted_seabass","sw_yellowfin_seabream","sw_black_rockfish"}) &&
-                rules.Species.Count==9 && rules.Find("carp").MinorPerKg==old.Find("carp").MinorPerKg,"Missing or substituted species.");
+                river.SpeciesFor(rules).Select(x=>x.Id).SequenceEqual(new[]{"grass-carp","blunt-snout-bream","carp","yellow-catfish","topmouth-culter"}) &&
+                coast.SpeciesFor(rules).Select(x=>x.AssetId).SequenceEqual(new[]{"sw_black_seabream","sw_spotted_seabass","sw_yellowfin_seabream","sw_black_rockfish","sw_large_yellow_croaker"}) &&
+                rules.Species.Count==11 && rules.Find("carp").MinorPerKg==old.Find("carp").MinorPerKg,"Missing or substituted species.");
         });
-        Test("a previous seven-species river and coast retain the original draws and weights",()=>{
+        Test("the original seven- and nine-species float draws keep their weights and masses",()=>{
             foreach(var water in new[]{river,coast})foreach(bool deep in new[]{false,true}){
-                var previous=water.CreatePool(Land(water,deep?1000:0),FloatDomesticSpeciesCatalog.Seven).Environment;
+                var landing=Land(water,deep?1000:0);
+                var previous=water.CreatePool(landing,FloatDomesticSpeciesCatalog.Seven).Environment;
+                var nine=water.CreatePool(landing,FloatDomesticSpeciesCatalog.Nine).Environment;
+                var eleven=water.CreatePool(landing,rules).Environment;
+                for(uint seed=1;seed<=128;seed++){
+                    var before=Draw(nine,seed);var after=Draw(eleven,seed);
+                    Need(before.SpeciesId==after.SpeciesId&&before.MassMg==after.MassMg,"The float catch from an existing nine-species seed changed.");
+                }
                 var original=water==river?new[]{
                     new FloatBiteCandidate("grass-carp",deep?2:5,550000,2400000),new FloatBiteCandidate("blunt-snout-bream",deep?3:4,220000,1050000),new FloatBiteCandidate("carp",deep?5:1,300000,1800000)
                 }:new[]{
@@ -108,6 +115,29 @@ static class FloatFishingAtlasTests
                     var a=Draw(previous,seed);var b=Draw(expected,seed);
                     Need(a.SpeciesId==b.SpeciesId&&a.MassMg==b.MassMg,"A previously supported draw changed.");
                 }
+            }
+        });
+        Test("new predators require their own method, water, current catalog and time response",()=>{
+            var clock=new ChinaWaterConditions(0x1557u);
+            var sites=new[]{river,coast};var methods=new[]{FishingPresentation.Spoon,FishingPresentation.Bottom};
+            var keys=new[]{"topmouth-culter","large-yellow-croaker"};
+            for(int i=0;i<sites.Length;i++){
+                var water=sites[i];var key=keys[i];var method=methods[i];var sample=Land(water,1000);
+                var current=water.CreatePool(sample,rules,method);
+                Need(current.Environment.Candidates.Any(c=>c.SpeciesId==key),"missing target "+key);
+                foreach(var presentation in new[]{FishingPresentation.Float,FishingPresentation.Spoon,FishingPresentation.Bottom}){
+                    var previous=water.CreatePool(sample,FloatDomesticSpeciesCatalog.Nine,presentation);
+                    var other=water.CreatePool(sample,rules,presentation);
+                    Need(previous==null||!previous.Environment.Candidates.Any(c=>c.SpeciesId==key),"nine-species save exposed "+key);
+                    if(presentation!=method)Need(other==null||!other.Environment.Candidates.Any(c=>c.SpeciesId==key),"wrong presentation "+key);
+                }
+                var shallow=clock.CreatePool(water,Land(water,0),rules,0,method).Environment.Candidates.Single(c=>c.SpeciesId==key);
+                var deep=clock.CreatePool(water,sample,rules,0,method).Environment.Candidates.Single(c=>c.SpeciesId==key);
+                Need(i==0?shallow.Weight>deep.Weight:deep.Weight>shallow.Weight,"no habitat preference "+key);
+                Need(clock.Sample(sites[1-i],0).ActivityPermille(key,true)==0,"foreign activity "+key);
+                var noon=clock.Sample(water,270000).ActivityPermille(key,true);
+                var preferred=clock.Sample(water,i==0?630000:990000).ActivityPermille(key,true);
+                Need(preferred>noon,"no time preference "+key);
             }
         });
         Test("old two-species saves see only legal freshwater fish without changing their sale rules",()=>{
@@ -163,10 +193,13 @@ static class FloatFishingAtlasTests
             Need(edge.DepthMm==still.DeepThresholdMm && still.CreatePool(edge,rules).Id=="deep" &&
                 near.DepthMm==still.DeepThresholdMm-1 && still.CreatePool(near,rules).Id=="shallow","Depth boundary classified inconsistently.");
         });
-        Test("real casts at all six named stations encounter every local candidate and all nine fish collectively",()=>{
+        Test("real casts at all six named stations encounter every local float, spoon and bottom candidate",()=>{
             var allSeen=new HashSet<string>();
-            foreach(var water in FloatFishingAtlas.Waters)foreach(var station in water.ShoreStations){
-                var env=water.CreatePool(Land(water,1000,station),rules).Environment;
+            foreach(var water in FloatFishingAtlas.Waters)foreach(var station in water.ShoreStations)
+            foreach(var method in new[]{FishingPresentation.Float,FishingPresentation.Spoon,FishingPresentation.Bottom}){
+                var pool=water.CreatePool(Land(water,1000,station),rules,method);
+                if(pool==null)continue;
+                var env=pool.Environment;
                 var seen=new HashSet<string>();
                 for(uint seed=1;seed<=128;seed++){
                     var t=Draw(env,seed);var c=env.Candidates.Single(x=>x.SpeciesId==t.SpeciesId);
@@ -179,7 +212,7 @@ static class FloatFishingAtlasTests
             }
             Need(allSeen.SetEquals(rules.Species.Select(x=>x.SpeciesKey)),"A catalogued species cannot be drawn from any named station.");
         });
-        Test("all nine sale rules permit host landing and a normal sale at the saved price",()=>{
+        Test("all eleven sale rules permit host landing and a normal sale at the saved price",()=>{
             var rig=new FixedFloatRig(G(),1,"float-starter",G(),G(),G(),50000,G(),G(),G());
             var state=FloatGameState.CreateNew(G(),G(),100,100,G(),"worm",12,rig,rules);
             foreach(var rule in rules.Species){
@@ -191,7 +224,7 @@ static class FloatFishingAtlasTests
                 state=Adopt(state,new SellFloatFish(state.ProfileId,state.BranchId,G(),G(),new[]{fish.Id},state.Sequence,1,rules.Version));
                 Need(state.WalletMinor==startingMoney+rule.MinorPerKg && state.Creel.Count==0 && state.Session==null,"Sale did not settle exactly once.");
             }
-            Need(state.Sequence==27 && state.BaitCount==3 && state.Stamina==82,"Nine fishing sessions had unexpected resource costs.");
+            Need(state.Sequence==33 && state.BaitCount==1 && state.Stamina==78,"Eleven fishing sessions had unexpected resource costs.");
         });
         Console.WriteLine("RESULT "+passed+" passed, "+failed+" failed");return failed==0?0:1;
     }

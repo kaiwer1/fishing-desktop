@@ -9,12 +9,15 @@ sealed partial class DualWindowContext
     BottomFightHandoff gameBottom;
     Guid gameBottomAttempt;
     double gameBottomRemainder;
-    bool GameBottomSpot {get{return gameWater!=null&&gameWater.WaterId=="development-still-water"&&gameWater.SpotId=="bank-01";}}
+    bool GameBankStandSpot {get{return gameWater!=null&&gameWater.WaterId=="development-still-water"&&gameWater.SpotId=="bank-01";}}
+    bool GameCoastalBottomSpot {get{return gameWater!=null&&gameWater.WaterId=="coastal-bay"&&gameWater.SpotId=="rock-bank"&&
+        game!=null&&game.Snapshot.State!=null&&game.Snapshot.State.Rules.Signature==FloatDomesticSpeciesCatalog.Eleven.Signature;}}
+    bool GameBottomSpot {get{return GameBankStandSpot||GameCoastalBottomSpot;}}
     BottomSurveyPatch GameBottomPatch()
     {
         if(!GameBottomSpot)return null;
         return new BottomSurveyPatch(gameWater,gameWater.SafeWorkMinimumXmm,gameWater.SafeWorkMaximumXmm,
-            gameWater.SafeWorkMinimumZmm,gameWater.SafeWorkMaximumZmm,BottomSubstrate.FirmGravel,true);
+            gameWater.SafeWorkMinimumZmm,gameWater.SafeWorkMaximumZmm,GameCoastalBottomSpot?BottomSubstrate.FirmSand:BottomSubstrate.FirmGravel,true);
     }
     long GameCastReservation(FloatCastLaunchPlan plan)
     {
@@ -74,10 +77,10 @@ sealed partial class DualWindowContext
             gameBottomAttempt=active.Id;gameBottom=null;gameBottomRemainder=0;
             BottomEquipmentBridge kit;var patch=GameBottomPatch();
             if(patch!=null&&BottomOwnedEquipment.Bind(s,out kit)==null&&Object.ReferenceEquals(active.BottomKit,s.OwnedBottomKit)){
-                var pool=BuildGameFishingPool(gameWaterLanding.Sample);gameFishingPool=pool;
+                var pool=BuildGameFishingPool(gameWaterLanding.Sample,FishingPresentation.Bottom);gameFishingPool=pool;
                 var config=BottomFightConfiguration(s);
                 if(pool!=null)BottomFightHandoff.AtWaterContact(active.Id,kit.Assembly,patch,gameWater.Version,gameWaterLanding.Sample.Xmm,gameWaterLanding.Sample.Zmm,
-                    GameSelfTest?1u:BitConverter.ToUInt32(active.Id.ToByteArray(),0),pool.Environment,config,out gameBottom);
+                    GameSelfTest?catchSeed:BitConverter.ToUInt32(active.Id.ToByteArray(),0),pool.Environment,config,out gameBottom);
             }
             BroadcastBottom();return;
         }
@@ -90,7 +93,7 @@ sealed partial class DualWindowContext
     static BottomFightConfig BottomFightConfiguration(FloatGameState state)
     {
         var rules=new Dictionary<string,FloatFightFishRules>();
-        foreach(string key in new[]{"carp","crucian"})rules.Add(key,new FloatFightFishRules(key=="carp"?3:2,2,20,.05,.005,10,FloatFightBehavior.Seeded));
+        foreach(string key in new[]{"carp","crucian","black-seabream","yellowfin-seabream","large-yellow-croaker"})rules.Add(key,new FloatFightFishRules(key=="carp"||key=="large-yellow-croaker"?3:2,2,20,.05,.005,10,FloatFightBehavior.Seeded));
         return new BottomFightConfig(new FloatFightRigRules(80,1,40,200,1,20,.2,1.6,40,3,3,5,5),
             new FloatLandingRules(state.OwnedNet!=null&&state.EquippedNetId==state.OwnedNet.Id,5,1,1,.5),rules,new FloatUnhookRules(.25,60,2));
     }

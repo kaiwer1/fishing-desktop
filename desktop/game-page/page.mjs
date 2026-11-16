@@ -65,7 +65,7 @@ const canControl = () => !readOnly && !saveFaulted && landscape() && Boolean(aut
 const freeAtBank = () => canControl() && !inflight && !spotRequest && !gearBusy() && !wardrobe.busy && currentSpotWater() && !shopBusy() && !equipmentBusy() && !sparesBusy() && !campBusy() && !campEngaged() && !snapshot.MenuOpen;
 const canPrepare = () => {
   if (!freeAtBank() || heldSession()) return false;
-  if (lureMethod()) return waterView.state()?.waterId==='coastal-bay' && !bankKit.selected && !bottomMethod();
+  if (lureMethod()) return lureShop.state()?.allowed===true && !bankKit.selected && !bottomMethod();
   if (!bankKit.selected) return true;
   const hand = stand.state()?.heldRig;
   return handReady() && (hand.phase === 'idle' || (hand.phase === 'charging' && Boolean(castInput.state())));
@@ -110,7 +110,7 @@ function lureContext() {
   const sessionId=heldSession(), lure=currentLure();
   return {lease:authority.state().lease,sessionId,lure,allowed:canControl() && !inflight && !snapshot.MenuOpen &&
     !snapshot.PendingResult && !document.hidden && document.hasFocus() && !visualPaused && hostPolicy?.canRun!==false &&
-    !bottomMethod() && waterView.state()?.waterId==='coastal-bay' && !castInput.state()};
+    !bottomMethod() && lureShop.state()?.allowed===true && !castInput.state()};
 }
 const lureInput=new LureInput({documentId,readContext:lureContext,post:send,newTransportId:()=>crypto.randomUUID()});
 function fightContext() {
@@ -676,7 +676,7 @@ function renderBottom() {
     $('bottom-shop-status').textContent = !shop.available ? '当前存档的底钓套装暂不可用。' : bottomShop.pending ? '正在确认本次操作…' :
       bottomShop.confirming ? '支付 64.00 银币购入一套单钩底钓装备？' :
       [shop.owned ? '已拥有' : affordable ? '64.00 银币 / 套' : '64.00 银币 / 套 · 余额不足', '当前钓法 · '+method,
-        shop.allowed ? '' : '请前往静水湾的底钓区使用'].filter(Boolean).join('　');
+        shop.allowed ? '' : '可前往静水湾底钓'].filter(Boolean).join('　');
     $('bottom-buy').hidden = shop.owned || bottomShop.confirming;
     $('bottom-buy').disabled = !bottomShop.can('buy');
     $('bottom-confirm').hidden = $('bottom-cancel').hidden = !bottomShop.confirming;
@@ -700,7 +700,7 @@ function renderLure(){
   if(s && menu){
     $('lure-shop-status').textContent=lureShop.pending?'正在确认操作…':lureShop.confirming?'支付 56.00 银币购买亮片、路亚竿和纺车轮？':
       s.selected?'已装备亮片路亚':!s.available?'此存档暂未开放亮片路亚。':s.owned?
-      (s.allowed?'已拥有，可在此钓场使用。':'已拥有，在海湾岩岸可以使用。'):'56.00 银币 / 套';
+      (s.allowed?'已拥有，可在此钓场使用。':'已拥有，可前往海湾使用。'):'56.00 银币 / 套';
     $('lure-buy').hidden=s.owned || lureShop.confirming;
     $('lure-buy').disabled=!lureShop.can('buy');
     $('lure-confirm').hidden=$('lure-cancel').hidden=!lureShop.confirming;
@@ -827,11 +827,11 @@ Object.assign(codes,{'steady-strike-learned':'已学会稳手提竿。','steady-
 Object.assign(codes, { 'bottom-kit-purchased':'底钓套装购买已确认。', 'bottom-method-selected':'钓法已切换。',
   'bottom-hooked':'底钓已中鱼，请手动收线。', 'bottom-shop-busy':'请先结束当前一竿或菜单操作。', 'bottom-shop-stale':'存档进度已变化，请重新选择。',
   'bottom-unavailable':'当前未开放底钓。', 'bottom-kit-not-owned':'请先购买底钓套装。', 'bottom-kit-owned':'已经拥有底钓套装。',
-  'bottom-spot-unavailable':'请前往静水湾的底钓区。', 'bottom-strike-missed':'已经错过这次鱼口。',
+  'bottom-spot-unavailable':'当前钓场未开放底钓。', 'bottom-strike-missed':'已经错过这次鱼口。',
   'outside-bottom-patch':'落点离开底钓区，请收回并重新瞄准。', 'bed-too-steep':'落点底坡过陡，请换个落点。' });
 Object.assign(codes, { 'save-settlement-reserve': '存档空间不足以安全保存下一竿，已取消操作，未扣除鱼饵或体力。请保留当前存档。' });
 Object.assign(codes, {'lure-kit-purchased':'亮片套装已购入。','lure-method-selected':'钓法已切换。','lure-hooked':'已中鱼，请重新按左键收线。',
-  'lure-unavailable':'暂时不能使用路亚套装。','lure-spot-unavailable':'亮片路亚请前往海湾岩岸。','lure-not-current':'这次收饵已结束。',
+  'lure-unavailable':'暂时不能使用路亚套装。','lure-spot-unavailable':'当前钓场未开放亮片路亚。','lure-not-current':'这次收饵已结束。',
   'lure-shop-stale':'存档进度已变化，请重新选择。','lure-shop-busy':'请先收回钓组或完成当前菜单操作。','lure-kit-owned':'已拥有亮片套装。',
   'lure-kit-not-owned':'请先在渔具店购买亮片套装。','lure-not-written':'购买尚未写入，可在柜台重新确认。',
   'lure-retrieved':'亮片已收回，可以重新抛投。','lure-retrieval-not-written':'进度尚未写入，请点「重试收回亮片」。','lure-retrieve-required':'请按住左键把亮片收回岸边。',

@@ -70,7 +70,7 @@ sealed partial class DualWindowContext
             await Wait(pane,p=>PlayerProbeDrawn(p,lake),30000);
             var start=game.Snapshot.State;
             Require(start.Sequence==1&&start.WalletMinor==30000&&start.BaitCount==12&&start.Stamina==100&&
-                start.OwnedBottomKits.Count==0&&start.OwnedBankRodStand==null&&start.OwnedNet==null&&start.Rules.Species.Count==9,
+                start.OwnedBottomKits.Count==0&&start.OwnedBankRodStand==null&&start.OwnedNet==null&&start.Rules.Species.Count==11,
                 "Wrong private starting profile.");
             var original=FloatEquipmentCodec.Encode(start.Equipment);
             checks.Add("one real landscape player starts with 300 silver, a single float rig, no bank equipment and no net");

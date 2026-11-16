@@ -139,9 +139,9 @@ sealed partial class DualWindowContext
             var pane=windows[true];await Ready(pane);
             var initial=game.Snapshot.State;var lake=FloatFishingAtlas.Find("development-still-water");
             var river=FloatFishingAtlas.Find("river-bend");var coast=FloatFishingAtlas.Find("coastal-bay");
-            Require(!pane.DesktopReadOnly && initial.Sequence==1 && initial.Rules.Species.Count==9 && initial.WalletMinor==12000 &&
+            Require(!pane.DesktopReadOnly && initial.Sequence==1 && initial.Rules.Species.Count==11 && initial.WalletMinor==12000 &&
                 initial.BaitCount==12 && initial.Stamina==100 && initial.Equipment.Instances.Count==6 && initial.Session==null,
-                "Single player did not start from its new private nine-species profile.");
+                "Single player did not start from its new private eleven-species profile.");
             // The hidden diagnostic window uses a fixed landscape preview size.
             pane.ClientSize=new Size(1440,900);
             // Use a focused WebView document before the normal grant and HUD projection.
@@ -149,7 +149,7 @@ sealed partial class DualWindowContext
             await pane.View.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled","{\"enabled\":true}");
             string lease=await Activate(pane);
             await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
-            checks.Add("the standalone player starts at the lake in a single hidden interaction pane with all nine sale rules");
+            checks.Add("the standalone player starts at the lake in a single hidden interaction pane with all eleven sale rules");
             var qualityModes=await PlayerProbeQuality(pane);
 
             await SceneProbeButton(pane,"scene-menu");

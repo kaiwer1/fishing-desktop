@@ -38,6 +38,8 @@ namespace FishingDesktop.GameCore
                 case "spotted-seabass": return WaterId=="coastal-bay"?Rate(deep,-165,425,180,50):0;
                 case "yellowfin-seabream": return WaterId=="coastal-bay"?Rate(deep,200,75,-150,45):0;
                 case "yellow-catfish": return WaterId=="river-bend"?Rate(deep,-140,230,90,50):0;
+                case "topmouth-culter": return WaterId=="river-bend"?Rate(deep,20,550,90,-80)*(deep?65:100)/100:0;
+                case "large-yellow-croaker": return WaterId=="coastal-bay"?Rate(deep,-275,200,60,50):0;
                 case "black-rockfish": return WaterId=="coastal-bay"?Rate(deep,-65,160,70,105):0;
                 default:return 0;
             }
@@ -100,10 +102,10 @@ namespace FishingDesktop.GameCore
                 light,cloud,rain,wind,temperature);
         }
 
-        internal FloatFishingPool CreatePool(FloatFishingWater water,FloatWaterSample landing,FloatGameRules rules,long activeMilliseconds)
+        internal FloatFishingPool CreatePool(FloatFishingWater water,FloatWaterSample landing,FloatGameRules rules,long activeMilliseconds,FishingPresentation method=FishingPresentation.Float)
         {
             var conditions=Sample(water,activeMilliseconds);
-            var basis=water.CreatePool(landing,rules);if(basis==null)return null;
+            var basis=water.CreatePool(landing,rules,method);if(basis==null)return null;
             var result=new List<FloatBiteCandidate>();int total=0;
             foreach(var candidate in basis.Environment.Candidates){
                 int activity=conditions.ActivityPermille(candidate.SpeciesId,basis.Id=="deep");

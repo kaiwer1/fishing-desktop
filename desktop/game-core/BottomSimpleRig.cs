@@ -72,7 +72,7 @@ namespace FishingDesktop.GameCore
         internal Guid ItemId(BottomPartKind kind){int i=(int)kind;return i>=0&&i<parts.Length&&parts[i]!=null?parts[i].Id:Guid.Empty;}
     }
 
-    internal enum BottomSubstrate { Unknown, FirmGravel, SoftMud, Weeds }
+    internal enum BottomSubstrate { Unknown, FirmGravel, SoftMud, Weeds, FirmSand }
     internal sealed class BottomContact
     {
         internal const int SlackMm=180;
@@ -110,7 +110,7 @@ namespace FishingDesktop.GameCore
         {
             contact=null;
             if(version!=Geometry.Version)return "geometry-version-mismatch";
-            if(substrate!=BottomSubstrate.FirmGravel||!unobstructed)return "bottom-unsupported";
+            if((substrate!=BottomSubstrate.FirmGravel&&substrate!=BottomSubstrate.FirmSand)||!unobstructed)return "bottom-unsupported";
             // The 400 mm leader trails 240 mm towards the bank. The residual
             // length can rest on the bed after both endpoints have settled.
             const int trailMm=240;

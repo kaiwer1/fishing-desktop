@@ -229,6 +229,9 @@ test('the single shallow fish image follows confirmed encounter measurements and
   const moved=sampleFightFish({...views,fight:{...active,xMm:active.xMm+600}},initial);
   assert.equal(moved.xMm,active.xMm+600);assert.ok(Math.abs(moved.yaw)<1e-12);
   assert.ok(sampleFightFish({...views,fight:{...active,speciesKey:'grass-carp'}},initial).length>initial.length);
+  const culter=sampleFightFish({...views,fight:{...active,speciesKey:'topmouth-culter'}},initial);
+  const croaker=sampleFightFish({...views,fight:{...active,speciesKey:'large-yellow-croaker'}},initial);
+  assert.ok(culter.length>croaker.length && culter.width<croaker.width);
   for(const patch of [{phase:'landed'},{phase:'failure-pending'},{phase:'escaped'},{yMm:-950},{sessionId:'old'},{encounterId:null}]){
     assert.equal(sampleFightFish({...views,fight:{...active,...patch}},moved),null);
   }

@@ -17,7 +17,8 @@ const app=`
 import * as T from 'three';
 import {createSpecimen,disposeSpecimen} from './specimen-model.mjs';
 const species=[['carp','鲤鱼'],['crucian','鲫鱼'],['grass-carp','草鱼'],['blunt-snout-bream','鳊鱼'],
-  ['black-seabream','黑鲷'],['spotted-seabass','花鲈'],['yellowfin-seabream','黄鳍鲷'],['yellow-catfish','黄颡鱼'],['black-rockfish','许氏平鲉']];
+  ['black-seabream','黑鲷'],['spotted-seabass','花鲈'],['yellowfin-seabream','黄鳍鲷'],['yellow-catfish','黄颡鱼'],['black-rockfish','许氏平鲉'],
+  ['topmouth-culter','翘嘴鲌'],['large-yellow-croaker','大黄鱼']];
 const result=document.querySelector('output');
 try{
 const renderer=new T.WebGLRenderer({alpha:true,antialias:true,preserveDrawingBuffer:true});
@@ -30,8 +31,11 @@ scene.add(new T.HemisphereLight(0xe1edf1,0x585344,1.1));
 for(const [colour,power,pos] of [[0xffebd7,2.55,[1.0,1.55,2.3]],[0xb7d4e6,1.8,[-1,1.2,-1.5]]]){
   const lamp=new T.DirectionalLight(colour,power);lamp.position.set(...pos);scene.add(lamp);
 }
-const metrics=[],plate=document.createElement('canvas');plate.width=1200;plate.height=298*Math.ceil(species.length/2);
-const brush=plate.getContext('2d');brush.fillStyle='#202b2d';brush.fillRect(0,0,plate.width,plate.height);
+const metrics=[],plates=Array.from({length:2},()=>{
+  const plate=document.createElement('canvas');plate.width=1200;plate.height=298*Math.ceil(species.length/2);
+  const brush=plate.getContext('2d');brush.fillStyle='#202b2d';brush.fillRect(0,0,plate.width,plate.height);
+  return brush;
+});
 const rgba=new Uint8Array(640*332*4);
 for(const [i,[id,label]] of species.entries()){
   const g=createSpecimen(T,id);scene.add(g);const views=[];
@@ -46,16 +50,14 @@ for(const [i,[id,label]] of species.entries()){
     }
     if(count<15000||palette.size<65||minX<2||maxX>=638||minY<2||maxY>=330)throw Error('Incomplete WebGL fish '+id+' view '+j+' '+[count,palette.size,minX,maxX,minY,maxY]);
     views.push({pixels:count,quantisedColours:palette.size,draws:renderer.info.render.calls,triangles:renderer.info.render.triangles});
-    if(j===0){
-      const x=(i%2)*600,y=Math.floor(i/2)*298;
-      brush.drawImage(renderer.domElement,x+37,y+1,526,273);
-      brush.fillStyle='#d7dcd6';brush.font='20px "Microsoft YaHei", sans-serif';brush.fillText(label,x+38,y+279);
-    }
+    const x=(i%2)*600,y=Math.floor(i/2)*298,brush=plates[j];
+    brush.drawImage(renderer.domElement,x+37,y+1,526,273);
+    brush.fillStyle='#d7dcd6';brush.font='20px "Microsoft YaHei", sans-serif';brush.fillText(label,x+38,y+279);
   }
   metrics.push({speciesId:id,views});scene.remove(g);disposeSpecimen(g);
 }
 renderer.dispose();
-result.textContent=JSON.stringify({passed:true,driver,metrics,plate:plate.toDataURL('image/png')});
+result.textContent=JSON.stringify({passed:true,driver,metrics,plates:plates.map(b=>b.canvas.toDataURL('image/png'))});
 }catch(error){result.textContent=JSON.stringify({passed:false,error:String(error.stack||error)});}
 `;
 const bundle=await rolldown({input:entry,plugins:[{
@@ -72,8 +74,10 @@ if(child.error)throw child.error;
 if(child.status!==0)throw new Error('Chromium exited '+child.status+' '+child.stderr.slice(-1800));
 const match=child.stdout.match(/<output id="result">([^<]*)<\/output>/);
 if(!match)throw new Error('No rendered result. '+child.stderr.slice(-1200));
-const {plate,...report}=JSON.parse(match[1].replaceAll('&amp;','&').replaceAll('&gt;','>').replaceAll('&lt;','<'));
+const {plates,...report}=JSON.parse(match[1].replaceAll('&amp;','&').replaceAll('&gt;','>').replaceAll('&lt;','<'));
 writeFileSync(join(run,'report.json'),JSON.stringify(report,null,2));
 if(!report.passed)throw new Error(report.error);
-writeFileSync(join(run,'specimens.png'),Buffer.from(plate.split(',')[1],'base64'));
+for(const [i,name] of ['specimens.png','specimens-reverse.png'].entries()){
+  writeFileSync(join(run,name),Buffer.from(plates[i].split(',')[1],'base64'));
+}
 console.log(JSON.stringify({directory:run,...report}));

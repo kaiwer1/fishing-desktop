@@ -17,7 +17,7 @@ function fixture() {
     createElement: tag => new Node(tag,doc) };
   return {doc, bank:doc.createElementNS('http://www.w3.org/2000/svg','svg')};
 }
-const species = ['carp','crucian','grass-carp','blunt-snout-bream','black-seabream','yellowfin-seabream','spotted-seabass','yellow-catfish','black-rockfish'];
+const species = ['carp','crucian','grass-carp','blunt-snout-bream','black-seabream','yellowfin-seabream','spotted-seabass','yellow-catfish','black-rockfish','topmouth-culter','large-yellow-croaker'];
 test('each species has an independent body and dorsal shape, local pigments, distinct fins and a reusable accessible plate', () => {
   const {doc,bank} = fixture(); installFishIllustrations(doc,bank); installFishIllustrations(doc,bank);
   const symbols = bank.all('symbol'), bodies=bank.all('clipPath').map(c=>c.children[0].attributes.d);
@@ -38,10 +38,10 @@ test('a coastal fishing spot shows the host-listed fish even with an empty creel
   const {doc}=fixture(), container=doc.createElement('section');
   const menu = new SpotMenu({documentId:'page',container,canSelect:()=>false,send:()=>assert.fail(),fishArt:fishFigure});
   menu.apply({kind:'game-spot-state',documentId:'page',revision:1,state:{activeId:'coastal-bay',spots:[{
-    id:'coastal-bay',name:'海湾',region:'中国近海',description:'海岸礁坡',species:['黑鲷','花鲈','黄鳍鲷'],
+    id:'coastal-bay',name:'海湾',region:'中国近海',description:'海岸礁坡',species:['黑鲷','花鲈','黄鳍鲷','许氏平鲉','大黄鱼'],
   }]}});
-  assert.deepEqual(container.all('figcaption').map(n=>n.textContent),['黑鲷','花鲈','黄鳍鲷']);
-  assert.deepEqual(container.all('use').map(n=>n.attributes.href),['#fd-fish-black-seabream','#fd-fish-spotted-seabass','#fd-fish-yellowfin-seabream']);
+  assert.deepEqual(container.all('figcaption').map(n=>n.textContent),['黑鲷','花鲈','黄鳍鲷','许氏平鲉','大黄鱼']);
+  assert.deepEqual(container.all('use').map(n=>n.attributes.href),['#fd-fish-black-seabream','#fd-fish-spotted-seabass','#fd-fish-yellowfin-seabream','#fd-fish-black-rockfish','#fd-fish-large-yellow-croaker']);
 });
 test('a catch card identifies only the appended confirmed creel row from the just-finished cast', () => {
   const caught={Id:'fish-42',SpeciesKey:'spotted-seabass',MassMg:'8744000',SaleValueMinor:'96'};

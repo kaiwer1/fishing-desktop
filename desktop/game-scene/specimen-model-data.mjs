@@ -10,6 +10,20 @@
 // maximum body depth. Dorsal/anal records are [front, back, height, rays, spiny].
 // Distances outside the contour ordinates are in model metres.
 export const specimens = {
+  'topmouth-culter': {
+    depth:.213,width:.111,head:.753,eye:.872,eyeSize:.020,noseY:.052,hump:.008,
+    profile:[.27,.29,.42,.60,.78,.93,1,.95,.77,.55,.30,.115],
+    colors:[0x354e53,0xb5c0c2,0xe5e8df],fin:0x50636b,pectoralColor:0x898f81,ventral:0x849397,iris:0xbcc4a5,
+    scales:66,dorsal:[[.487,.350,.100,9,false]],anal:[.444,.182,.070,23,false],tail:.144,fork:.64,
+    chest:.745,pelvis:.514,pectoral:.152,upturned:true
+  },
+  'large-yellow-croaker': {
+    depth:.255,width:.139,head:.722,eye:.865,eyeSize:.019,noseY:-.014,hump:.014,
+    profile:[.26,.28,.40,.59,.79,.94,1,.99,.87,.71,.45,.12],
+    colors:[0x58646a,0xb9b198,0xe6b74e],fin:0x8b8460,pectoralColor:0xba9c5e,ventral:0xc9a23c,iris:0xae9877,
+    scales:55,dorsal:[[.710,.463,.097,9,true],[.463,.106,.071,32,false]],anal:[.323,.195,.070,9,false],tail:.103,fork:0,
+    chest:.706,pelvis:.655,pectoral:.139,croaker:true
+  },
   'yellow-catfish': {
     depth:.239,width:.194,head:.694,eye:.891,eyeSize:.018,noseY:-.021,hump:.014,
     profile:[.34,.35,.47,.62,.76,.91,1,.99,.85,.66,.42,.11],

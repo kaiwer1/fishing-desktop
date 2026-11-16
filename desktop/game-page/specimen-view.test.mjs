@@ -42,6 +42,20 @@ test('real catch opens read-only, suspends on blur and closes with Escape, remov
   f.snapshot.Creel=snap().Creel;f.view.open(id);await wait();f.win.innerWidth=400;f.win.dispatchEvent(new Event('resize'));
   assert.equal(disposals,3);assert.equal(f.view.open(id),false);f.view.dispose();f.view.dispose();
 });
+test('confirmed river culter and marine croaker creel rows open their own named specimens',async()=>{
+  const seen=[];
+  const f=fixture(async()=>({createSpecimenViewer:(canvas,species)=>{
+    seen.push(species);return {setActive(){},state(){return {};},dispose(){}};
+  }}));
+  for(const [species,name] of [['topmouth-culter','翘嘴鲌'],['large-yellow-croaker','大黄鱼']]){
+    f.snapshot.Creel[0].SpeciesKey=species;
+    const button=f.view.buttonFor(id);button.dispatchEvent(new Event('click'));await wait();
+    assert.equal(f.byId('specimen-species').textContent,name);
+    assert.equal(f.view.state().fish.speciesId,species);
+    f.view.close();
+  }
+  assert.deepEqual(seen,['topmouth-culter','large-yellow-croaker']);f.view.dispose();
+});
 test('a late viewer import cannot replace a newer modal and WebGL failure leaves the fish identity and return action usable',async()=>{
   let resolve,created=0;
   const f=fixture(()=>new Promise(r=>{resolve=r;}));

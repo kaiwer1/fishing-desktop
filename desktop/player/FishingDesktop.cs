@@ -8,8 +8,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("钓鱼桌面")]
 [assembly: AssemblyProduct("Fishing Desktop")]
 [assembly: AssemblyDescription("Windows 互动钓鱼动态壁纸启动器")]
-[assembly: AssemblyVersion("0.5.0.0")]
-[assembly: AssemblyFileVersion("0.5.0.0")]
+[assembly: AssemblyVersion("0.6.0.0")]
+[assembly: AssemblyFileVersion("0.6.0.0")]
 
 namespace FishingDesktop.Player
 {

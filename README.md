@@ -2,11 +2,15 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 离线版 0.5.0](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.5.0)**。选择 `FishingDesktop-0.5.0-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 离线版 0.6.0](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.6.0)**。选择 `FishingDesktop-0.6.0-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
 在水面按住左键，看到力度条后松开抛竿。漂尾下沉时按右键提竿，中鱼后按住左键收线。**F1** 可随时在岸边查操作。按 **Esc** 打开营地，**M** 选钓场，**C** 进鱼护，**T** 进食品店。在菜单内就能买装备、换衣和卖鱼。
 
 ![岸边营地总览](docs/preview-0.4/camp-home-041.png)
+
+浮漂竿有整段软木握柄，底钓竿有黄橙色软尾，路亚竿的前后手柄之间露出一段竿身。收线时能看见鱼线从线杯和导线轮穿过竿身的各个导环。[海湾路亚收线](docs/preview-0.6/spinning-rod.png) · [静水湾底钓](docs/preview-0.6/bottom-tip.png)
+
+**0.6.0 可以沿岸找水深。** 按 **M** 先看钓场的两个推荐落点，回到岸边后用 **A / D** 走到对应位置，停稳再抛。静水湾左边的芦苇口较浅，右边的塘坎较深。江湾正好相反，同样往前抛约 19 米，左边回流口水深约 2.22 米，右边草滩尾约 1.72 米。海湾可以比较沙嘴和礁台。浮漂入护经验满 10 点后按 **O** 学「稳手提竿」，鱼漂沉下后多出 0.75 秒提竿时间。按 **F1** 可切换省电、标准和高清，壁纸也会随之调整。[江湾回流口实机画面](docs/preview-0.6/river-channel.png) · [浮漂技能](docs/preview-0.5/steady-strike.png)
 
 **0.5.0 新玩法。** 江湾的回湾深槽可以用浮漂找黄颡鱼，在海湾外侧的礁坡可以钓许氏平鲉。按 **T** 进食品店，买一份面包，揉成三份面饵，再点「挂面饵」。回岸边抛一竿，在淡水里对照鲤鱼和鲫鱼的鱼口。取消蓄力会保留挂好的饵，只有实际抛出才扣一份。[食品店实机画面](docs/preview-0.5/bread-bait.png) · [升级与退回旧存档](desktop/game-core/FISH_CATALOG.md)
 
@@ -81,7 +85,7 @@ npm ci
 $sdk = Join-Path $env:USERPROFILE '.nuget/packages/microsoft.web.webview2/1.0.3405.78'
 $output = (New-Item -ItemType Directory -Force -Path '../fishing-windows-build').FullName
 $build = & ./diagnostics/dual-window/build.ps1 -Game -SdkDirectory $sdk -OutputDirectory $output
-& ./scripts/package-game-preview.ps1 -BuildDirectory $build.outputDirectory -ArchivePath (Join-Path $output 'FishingDesktop-0.5.0-win-x64.zip')
+& ./scripts/package-game-preview.ps1 -BuildDirectory $build.outputDirectory -ArchivePath (Join-Path $output 'FishingDesktop-0.6.0-win-x64.zip')
 ```
 
 运行 `diagnostics/dual-window/test-webviews.ps1` 并指定同一组 `-SdkDirectory` 和 `-OutputDirectory`，加上 `-GameSpecimen` 可验证从抛竿到看鱼、卖鱼的流程，加上 `-GameWallpaper` 可单独验证壁纸挂载。每次选择其中一项。

@@ -169,7 +169,7 @@ sealed partial class DualWindowContext
 
             var materials=new Dictionary<string,int>();
             await PlayerProbeTravel(pane,lease,river);
-            var riverPixels=await PlayerProbePicture(pane,river,"player-river.png",2,materials);
+            var riverPixels=await PlayerProbePicture(pane,river,"player-river.png",3,materials);
             checks.Add("a real lake menu click travels to the river and produces a menu-free landscape preview with its river title");
 
             await PlayerProbeTravel(pane,lease,lake);

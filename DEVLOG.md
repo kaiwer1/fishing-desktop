@@ -2,6 +2,12 @@
 
 按日期倒序记录，时间以北京时间（Asia/Shanghai）为准。
 
+## 2026-11-16 · 江湾的远林、草滩与倒影
+
+- 从属都湖的 CC0 全景中提取一段林脊，放在江湾对岸。天空和水面由游戏绘制，远林随晴雨明暗变化，也能映到水里。近岸的莎草沿砾石滩根部分簇生长。[照片作者与许可](desktop/game-scene/assets/SCENE-ASSET-CREDITS.txt) · [白天](docs/river-bank/day.webp) · [夜间](docs/river-bank/night.webp)
+- Windows 玩家窗口在小雨中沿岸走到回流口和草滩尾，完成瞄准、抛投及收回。回流口的前后两图相差约 0.1 米；另以相同的相机位置和时间离屏复核昼、夜、雨三种画面，三种画面都刷新了水面倒影。[原回流口](docs/preview-0.6/river-channel.png) · [新回流口](docs/river-bank/river-channel.png) · [新草滩尾](docs/river-bank/grass-bank.png)
+- 回流口相同离屏镜头中的三角形由 40,900 增至 49,196，绘制调用由 80 降至 78。检查补齐了边缘水深连续性和远林暗化，桌面页面、场景和网页试玩的 321 项回归通过。
+
 ## 2026-11-16 · Windows 0.7.0 十一种鱼和竿架鱼讯铃
 
 - 江湾晨昏用亮片在上层找翘嘴鲌，海湾礁台外的沙底可以用蚯蚓单竿找大黄鱼。最终 Windows 包进行了两次独立实钓。翘嘴鲌重 1.43423 千克，售得 2.18 银币；大黄鱼重 561.248 克，售得 1.13 银币。两条鱼都已手动提竿、遛鱼、抄网、转动鱼体并出售，重新打开后能查到原重量和收入。[江湾翘嘴鲌](docs/preview-0.7/topmouth-culter.png) · [海湾大黄鱼](docs/preview-0.7/large-yellow-croaker.png) · [十一种鱼同光照对照](docs/preview-0.7/eleven-fish.png)

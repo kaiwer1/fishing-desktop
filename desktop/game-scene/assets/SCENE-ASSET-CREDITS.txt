@@ -1,6 +1,6 @@
 岸边材质来源
 
-以下三个素材来自 Poly Haven，以 CC0 1.0 Universal 发布，可用于商业项目并随本游戏再分发。许可说明见 https://polyhaven.com/license 和 https://creativecommons.org/publicdomain/zero/1.0/ 。游戏离线读取包内的材质，不连接素材服务。
+以下素材来自 Poly Haven，以 CC0 1.0 Universal 发布，可用于商业项目并随本游戏再分发。许可说明见 https://polyhaven.com/license 和 https://creativecommons.org/publicdomain/zero/1.0/ 。游戏离线读取包内的素材。
 
 静水湾岸土 · Forest Ground 04
 作者为 Rob Tuytel（拍摄与处理）和 Rico Cilliers（微调）。原始扫描宽度约 3.2 米。
@@ -23,4 +23,14 @@ SHA-256 975dbfbd4e855c517f7f945bef7d8ea55edc5a7a208f5c690a724c13269a3b0c
 包内名 coastal-rock.jpg，1024 × 1024，688083 字节。
 SHA-256 0b5f0418eb1e686190c5d33bb54c400b1f9ed58813b5e34aa5e573a5197302b5
 
-三个 JPEG 均为官方 1K 漫反射色彩图，仅更改文件名。水面、天空、树木、草、岩体、竿轮、人物握柄和鱼影由本项目生成。
+三个 JPEG 均为官方 1K 漫反射色彩图，仅更改文件名。水面、天空、岸边三维树草、岩体、竿轮、手部和鱼影由本项目生成。江湾远林采用下列照片裁片。
+
+江湾远岸林脊 · Shudu Lake
+作者 Alex Radosnov。属都湖的拍摄环境用于虚构江湾的远岸山林。
+资产页 https://polyhaven.com/a/shudu_lake
+原文件 https://dl.polyhaven.org/file/ph-assets/HDRIs/extra/Tonemapped%20JPG/shudu_lake.jpg
+官方 8K Tonemapped JPG，8192 × 4096，35529116 字节。
+原文件 SHA-256 a4db1e5edf79687215e3ab847d419aec8e9ce250529dda8db8b64b52300d7e8a
+scripts/prepare-shudu-ridge.py 提取背景山林，遮去天空，裁去湖面、平台与近岸。仅随游戏分发衍生贴图。
+包内名 shudu-ridge.webp，2560 × 364，137774 字节。
+SHA-256 92ac5c3e2a9de87ff5114d8e7ba77e33b02cddddd1e938a285c45fa5aec34cbd

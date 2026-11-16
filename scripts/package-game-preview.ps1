@@ -44,7 +44,7 @@ foreach ($name in $hostFiles) { $members["app/$name"] = Join-Path $buildRoot.Ful
 foreach ($name in $pageFiles) { $members["app/page/$name"] = Join-Path $buildRoot.FullName "page/$name" }
 $members['Readme-zh-CN.txt'] = Join-Path $player 'Readme-zh-CN.txt'
 $members['app/SCENE-ASSET-CREDITS.txt'] = Join-Path $buildRoot.FullName 'SCENE-ASSET-CREDITS.txt'
-foreach($name in 'forest-ground.jpg','river-pebbles.jpg','coastal-rock.jpg'){
+foreach($name in 'forest-ground.jpg','river-pebbles.jpg','coastal-rock.jpg','shudu-ridge.webp'){
   $members["app/page/scene-assets/$name"]=Join-Path $buildRoot.FullName "page/scene-assets/$name"
 }
 $members['app/page/camp.css']=Join-Path $buildRoot.FullName 'page/camp.css'

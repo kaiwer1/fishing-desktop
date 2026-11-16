@@ -24,7 +24,7 @@ if($Game){
   $assetSource=Join-Path $PSScriptRoot '../../desktop/game-scene/assets'
   $assetDestination=Join-Path $taskPage 'scene-assets'
   New-Item -ItemType Directory -Path $assetDestination|Out-Null
-  foreach($asset in 'forest-ground.jpg','river-pebbles.jpg','coastal-rock.jpg','lake-shore.jpg','river-shore.jpg','coast-shore.jpg'){Copy-Item -LiteralPath (Join-Path $assetSource $asset) -Destination $assetDestination}
+  foreach($asset in 'forest-ground.jpg','river-pebbles.jpg','coastal-rock.jpg','lake-shore.jpg','river-shore.jpg','coast-shore.jpg','shudu-ridge.webp'){Copy-Item -LiteralPath (Join-Path $assetSource $asset) -Destination $assetDestination}
   Copy-Item -LiteralPath (Join-Path $assetSource 'SCENE-ASSET-CREDITS.txt') -Destination $taskRun
   & node (Join-Path $PSScriptRoot 'build-game-scene.mjs') $taskPage;if($LASTEXITCODE -ne 0){throw 'Game fishing scene did not build.'}
 }

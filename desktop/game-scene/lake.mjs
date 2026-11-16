@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { disposeGroup } from './water-space.mjs';
 import { weatherUniforms, setWeatherUniforms, skyWeatherGLSL, waterWeatherGLSL } from './weather-lighting.mjs';
+import { gravelHeight, riverRidge, riverSedges } from './river-bank.mjs';
 
 function randomSource(seed) {
   return () => { seed = (Math.imul(1664525, seed) + 1013904223) >>> 0; return seed / 4294967296; };
@@ -209,7 +210,14 @@ function bedColumns(water) {
 }
 
 function waterSurfaceGeometry(water,width,depth){
-  const columns=bedColumns(water),rows=water.bed,bounds=water.waterBounds;
+  const columns=bedColumns(water),bounds=water.waterBounds;
+  let rows=water.bed;
+  if(water.waterId==='river-bend'){
+    // The visual waterline passes under the irregular gravel banks. Continue
+    // the edge's exact cross-bank depth so the water colour stays continuous.
+    const first=rows[0],last=rows.at(-1);
+    rows=[{...first,zMm:first.zMm-4000},...rows,{...last,zMm:last.zMm+4000}];
+  }
   const geometry=new THREE.PlaneGeometry(width,depth,columns.length-1,rows.length-1);
   const pos=geometry.attributes.position,soundings=[];
   const middleX=(bounds.minXmm+bounds.maxXmm)/2,middleZ=(bounds.minZmm+bounds.maxZmm)/2;
@@ -313,16 +321,16 @@ function coastalHeadland(random,group,cx,width,far,sy) {
   rocks.name='distant-headland';group.add(rocks);
 }
 
-function distantTrees(group, random, farZ, cx, width, sy, height, river) {
+function distantTrees(group, random, farZ, cx, width, sy, height) {
   const transform = new THREE.Object3D(), color = new THREE.Color();
   for (let kind = 0; kind < 3; kind++) {
     const geom = new THREE.PlaneGeometry(1,1).translate(0,.5,0);
     const mat = new THREE.MeshLambertMaterial({ map: treeTexture(kind), alphaTest: .43, side: THREE.DoubleSide });
-    const count = river ? (kind===2?22:73) : (kind===2?132:114);
+    const count = kind===2?132:114;
     const mesh = new THREE.InstancedMesh(geom, mat, count);
     for (let i = 0; i < count; i++) {
       const x = cx + (random() - .5) * Math.max(158, width * 2.35), z = farZ - .6 - random() * 30;
-      const h = (6 + random() * 7.9) * (kind === 1 ? .87 : 1) * (river?.72:1);
+      const h = (6 + random() * 7.9) * (kind === 1 ? .87 : 1);
       transform.position.set(x, sy + height(x, z) - .12, z);
       transform.scale.set(h * (kind === 2 ? .8 : 1.13), h, 1);
       transform.rotation.set(0, (random() - .5) * .51, (random() - .5) * .07);
@@ -334,16 +342,15 @@ function distantTrees(group, random, farZ, cx, width, sy, height, river) {
   }
 }
 
-function nearShore(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX, kind, rockMaterial) {
+function lakeGrass(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX) {
   const p = [], c = [], t = new THREE.Color(), dryGrass=new THREE.Color(0x9c9354);
-  const grassCount=kind==='sea'?0:kind==='river'?1300:2200;
-  for (let i = 0; i < grassCount; i++) {
+  for (let i = 0; i < 2200; i++) {
     const side = i % 2 ? -1 : 1;
     const offset = side * (1.8 + Math.pow(random(), 1.4) * 14);
     const x = anchorX + offset;
     if (x < waterMinX || x > waterMaxX) continue;
     const z = nearZ + (random() - .38) * 2 + .28 * Math.sin(offset * 1.5);
-    const h = (.23 + random() * .72) * Math.min(1, Math.abs(offset) / 3) * (kind==='river'?.59:1);
+    const h = (.23 + random() * .72) * Math.min(1, Math.abs(offset) / 3);
     const r = .007 + random() * .024, lean = (random() - .36) * h * .49, y = sy - .047;
     p.push(x-r,y,z,x+r,y,z,x+lean*.35+r*.4,y+h*.65,z-.02,
       x-r,y,z,x+lean*.35+r*.4,y+h*.65,z-.02,x+lean*.35-r*.45,y+h*.65,z-.02,
@@ -353,8 +360,13 @@ function nearShore(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX, kind
   }
   const g = new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(p,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(c,3));
   const grass = new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide}));grass.name='bank-vegetation';group.add(grass);
+}
+function nearShore(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX, kind, rockMaterial) {
+  if(kind==='river')group.add(riverSedges(random,anchorX,nearZ,sy,waterMinX,waterMaxX));
+  if(kind==='lake')lakeGrass(group,random,anchorX,nearZ,sy,waterMinX,waterMaxX);
+  const t = new THREE.Color();
   const tform = new THREE.Object3D();
-  const rock=new THREE.IcosahedronGeometry(1,2), points=rock.attributes.position;
+  const rock=new THREE.IcosahedronGeometry(1,kind==='river'?1:2), points=rock.attributes.position;
   const roundNormal=new THREE.Vector3(),shelfNormal=new THREE.Vector3();
   for(let i=0;i<points.count;i++){
     const x=points.getX(i),y=points.getY(i),z=points.getZ(i),scale=1+.09*Math.sin(4*x+3*z)+.043*Math.cos(5*y-3*x);
@@ -367,13 +379,14 @@ function nearShore(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX, kind
     }
     rock.attributes.normal.setXYZ(i,roundNormal.x,roundNormal.y,roundNormal.z);
   }
-  const stones = new THREE.InstancedMesh(rock,rockMaterial,kind==='sea'?107:64);
+  const stones = new THREE.InstancedMesh(rock,rockMaterial,kind==='sea'?107:kind==='river'?112:64);
   const shades=[0xc1c4b4,0xc9b8a6,0x969f99,0xb7bbb8,0xc4c4b7];
   stones.name=kind==='sea'?'tidal-rocks':'shore-pebbles';
   for (let i = 0; i < stones.count; i++) {
     const x = anchorX + (random() - .5) * 30, z = nearZ + (random() - .2) * 2.3;
     const s = .02 + random() ** 2 * (kind==='sea'?.88:kind==='river'?.12:.19);
-    tform.position.set(x,sy+.025+Math.max(0,z-nearZ)*.05,z);tform.rotation.set(random()*.3,random()*6,random()*.15);
+    const ground=kind==='river'?gravelHeight(x,z,nearZ)+s*.06:.025+Math.max(0,z-nearZ)*.05;
+    tform.position.set(x,sy+ground,z);tform.rotation.set(random()*.3,random()*6,random()*.15);
     tform.scale.set(s*(1.27+random()*.5),s*(kind==='sea'?.55:.47),s);tform.updateMatrix();stones.setMatrixAt(i,tform.matrix);
     t.set(kind==='sea'?shades[i%shades.length]:0xbcb5a7).multiplyScalar(.72+random()*.35);stones.setColorAt(i,t);
   }
@@ -393,8 +406,15 @@ export function createLake(water,assetUrl=null) {
   sky.position.set(x,sy,far+.5*depth); sky.renderOrder=-10; group.add(sky);
   const farHeight = (px,pz) => {
     const inland = Math.max(0,far-pz);
-    return -.09 + Math.min(inland/5,1)*(.42+.16*Math.sin(px*.22)) + inland*(.12+.08*Math.sin(px*.086+inland*.021)+.045*Math.cos(px*.15-inland*.057))*(river?1.9:1);
+    if(river){
+      const shore=far+.96*Math.sin(px*.13)+.67*Math.sin(px*.26)-pz;
+      return -.065 + THREE.MathUtils.clamp(shore,-5,5)*(.11+.045*Math.sin(px*.077))
+        + Math.min(inland,16)*(.022+.016*Math.sin(px*.074+inland*.036));
+    }
+    return -.09 + Math.min(inland/5,1)*(.42+.16*Math.sin(px*.22)) + inland*(.12+.08*Math.sin(px*.086+inland*.021)+.045*Math.cos(px*.15-inland*.057));
   };
+  const ridge=river?riverRidge(x,near,sy):null;
+  if(ridge)group.add(ridge.mesh);
   const groundTexture=earthTexture(random,kind);
   const bankColor=ocean?0x666b6b:river?0xa29475:0x77694e;
   const bankMaterial=new THREE.MeshLambertMaterial({color:bankColor,map:groundTexture,vertexColors:true});
@@ -409,16 +429,25 @@ export function createLake(water,assetUrl=null) {
       const cove=.55*Math.sin((px-x)*1.27)+.35*Math.sin((px-x)*.49+.6);
       return (pz-near+cove-.03)*.09;
     },false,bankMaterial,tileMetres);
+  }else if(river){
+    terrain(group,width+3,20,x,near+7,sy,(px,pz)=>gravelHeight(px,pz,near),false,bankMaterial,tileMetres);
   }else{
     terrain(group,width+3,16,x,near+8,sy,(px,pz)=>-.025+(pz-near)*.053+.05*Math.sin(px*.89)*Math.min(1,(pz-near)),false,bankMaterial,tileMetres);
   }
   if(!ocean){
-    terrain(group,Math.max(300,width*3.6),100,x,far-50,sy,farHeight,true,new THREE.MeshLambertMaterial({color:0x637054,vertexColors:true}));
+    const opposite=new THREE.MeshLambertMaterial({color:river?0x636249:0x637054,vertexColors:true});
+    if(river)opposite.onBeforeCompile=shader=>{
+      // The captured ridge already carries atmospheric haze. Keep the closer
+      // alluvial edge from fogging out to white in front of that backdrop.
+      shader.vertexShader=shader.vertexShader.replace('#include <fog_vertex>',
+        '#include <fog_vertex>\n#ifdef USE_FOG\nvFogDepth *= .36;\n#endif');
+    };
+    terrain(group,Math.max(300,width*3.6),river?104:100,x,far-50,sy,farHeight,true,opposite);
     for (const side of [-1,1]) {
       const edge = side===1?b.maxXmm/1000:b.minXmm/1000;
-      terrain(group,18,depth,x+(width/2+9)*side,(near+far)/2,sy,(px,pz)=>Math.abs(px-edge)*(.18+.055*Math.cos(pz*.28))-.03,false,bankMaterial,tileMetres);
+      terrain(group,18,depth,x+(width/2+9)*side,(near+far)/2,sy,(px,pz)=>Math.abs(px-edge)*(river?.045+.019*Math.sin(pz*.097):.18+.055*Math.cos(pz*.28))-.03,false,bankMaterial,tileMetres);
     }
-    distantTrees(group,random,far,x,width,sy,farHeight,river);
+    if(!river)distantTrees(group,random,far,x,width,sy,farHeight);
   }else{
     // These distant rocks stand beyond the surveyed rectangle. They and the
     // horizon are scenic only. Input still intersects the surveyed surface.
@@ -459,6 +488,14 @@ export function createLake(water,assetUrl=null) {
   // resource leaves the procedural material visible. Navigation invalidates
   // pending image loads before they can mutate a replacement location.
   if(assetUrl){
+    if(ridge){
+      let pending;
+      pending=new THREE.TextureLoader().load(assetUrl('shudu-ridge.webp'),texture=>{
+        if(disposed){texture.dispose();return;}
+        texture.colorSpace=THREE.SRGBColorSpace;
+        ridge.setTexture(texture);loadedMaterials++;mirrorDirty=true;forceMirror=true;
+      },undefined,()=>pending?.dispose());
+    }
     const soil=ocean?'coastal-rock.jpg':river?'river-pebbles.jpg':'forest-ground.jpg';
     for(const name of new Set([soil,'coastal-rock.jpg'])){
       let texture;
@@ -481,6 +518,7 @@ export function createLake(water,assetUrl=null) {
   return {group,kind,waterId:water.waterId,
     setConditions(value){
       setWeatherUniforms(uniforms,value);setWeatherUniforms(surface.material.uniforms,value);
+      ridge?.setConditions(value);
       if(ocean){
         const day=value?THREE.MathUtils.smoothstep(value.waterLight,.28,.53):0;
         const skyFill=day*(.12+2.95*(value?.cloudCover??0)**1.2);

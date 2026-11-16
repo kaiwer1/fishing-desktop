@@ -196,7 +196,8 @@ sealed partial class DualWindowContext
                 game.Snapshot.State.Sequence==1 && gameFlightEmissions==0,"Coast ray did not freeze the chosen hosted cast.");
             await SceneProbeMouse(pane,aimPoint,false);
             await Wait(pane,s=>PlayerProbeDrawn(s,coast)&&(string)SceneProbeRenderer(s)["rodPhase"]=="casting"&&
-                (bool)SceneProbeRenderer(s)["lineVisible"],5000);
+                (bool)SceneProbeRenderer(s)["lineVisible"] && Field(s,"flightState")!=null &&
+                Number(Field(s,"flightState"),"elapsedMilliseconds")>=280,5000);
             await WardrobeProbePhoto(pane,"cast-forward.png");
             await Wait(pane,s=>game.Snapshot.State.Sequence==2 && game.Snapshot.State.Session!=null && gameFlightEmissions==1);
             var flight=await WaterProbeLanding(pane,true);

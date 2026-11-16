@@ -217,6 +217,8 @@ function waterSurfaceGeometry(water,width,depth){
     // the edge's exact cross-bank depth so the water colour stays continuous.
     const first=rows[0],last=rows.at(-1);
     rows=[{...first,zMm:first.zMm-4000},...rows,{...last,zMm:last.zMm+4000}];
+  }else if(water.waterId==='coastal-bay'){
+    rows=[{...rows[0],zMm:rows[0].zMm-4000},...rows];
   }
   const geometry=new THREE.PlaneGeometry(width,depth,columns.length-1,rows.length-1);
   const pos=geometry.attributes.position,soundings=[];
@@ -385,12 +387,20 @@ function nearShore(group, random, anchorX, nearZ, sy, waterMinX, waterMaxX, kind
   for (let i = 0; i < stones.count; i++) {
     const x = anchorX + (random() - .5) * 30, z = nearZ + (random() - .2) * 2.3;
     const s = .02 + random() ** 2 * (kind==='sea'?.88:kind==='river'?.12:.19);
-    const ground=kind==='river'?gravelHeight(x,z,nearZ)+s*.06:.025+Math.max(0,z-nearZ)*.05;
+    const ground=kind==='river'?gravelHeight(x,z,nearZ)+s*.06:
+      kind==='sea'?coastalBankHeight(x-anchorX,z-nearZ)+s*.12:.025+Math.max(0,z-nearZ)*.05;
     tform.position.set(x,sy+ground,z);tform.rotation.set(random()*.3,random()*6,random()*.15);
     tform.scale.set(s*(1.27+random()*.5),s*(kind==='sea'?.55:.47),s);tform.updateMatrix();stones.setMatrixAt(i,tform.matrix);
     t.set(kind==='sea'?shades[i%shades.length]:0xbcb5a7).multiplyScalar(.72+random()*.35);stones.setColorAt(i,t);
   }
   group.add(stones);
+}
+
+// Rock shelves remain outside the shallow landing channel along the walkable bank.
+function coastalBankHeight(x,z) {
+  const inlet=1-THREE.MathUtils.smoothstep(Math.abs(x),8.5,13);
+  const cove=.55*Math.sin(x*1.27)+.35*Math.sin(x*.49+.6);
+  return (z+cove-.03)*.09-inlet*.24;
 }
 
 export function createLake(water,assetUrl=null) {
@@ -425,10 +435,7 @@ export function createLake(water,assetUrl=null) {
   }
   const tileMetres=ocean?1.5:river?3:3.2;
   if(ocean){
-    terrain(group,width+3,18,x,near+7,sy,(px,pz)=>{
-      const cove=.55*Math.sin((px-x)*1.27)+.35*Math.sin((px-x)*.49+.6);
-      return (pz-near+cove-.03)*.09;
-    },false,bankMaterial,tileMetres);
+    terrain(group,width+3,18,x,near+7,sy,(px,pz)=>coastalBankHeight(px-x,pz-near),false,bankMaterial,tileMetres);
   }else if(river){
     terrain(group,width+3,20,x,near+7,sy,(px,pz)=>gravelHeight(px,pz,near),false,bankMaterial,tileMetres);
   }else{
@@ -469,9 +476,6 @@ export function createLake(water,assetUrl=null) {
       const plane=new THREE.Mesh(new THREE.PlaneGeometry(w,d).translate(cx,cy,0),surface.material);
       plane.position.copy(surface.position);plane.quaternion.copy(surface.quaternion);plane.layers.set(1);plane.renderOrder=1;plane.name='open-sea-horizon';group.add(plane);
     }
-    const wash=new THREE.Mesh(new THREE.PlaneGeometry(width,2).translate(0,-depth/2-1,0),surface.material);
-    wash.name='tidal-wash';wash.position.copy(surface.position);wash.quaternion.copy(surface.quaternion);
-    wash.layers.set(1);wash.renderOrder=1;group.add(wash);
   }
   // A stationary camera reuses its last shore reflection. During a walk the
   // reflection is projected from its last camera and refreshed at most 10 Hz.

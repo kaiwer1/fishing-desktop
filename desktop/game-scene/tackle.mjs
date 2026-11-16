@@ -238,11 +238,12 @@ export function createTackle() {
   // displacement, increasing towards the tip. No wave or local bite clock.
   const tipShares=[.12,.33,.55];
   const gripOffset=new THREE.Vector3(),gripTarget=new THREE.Vector3();
+  const leftShoulder=new THREE.Vector3(),rightShoulder=new THREE.Vector3();
   const previousTip=new THREE.Vector3(),hangingEnd=new THREE.Vector3();
   const swing=new THREE.Vector2(),swingVelocity=new THREE.Vector2();
   let hangingRod=null;
   return {group, root, float, spoon, sinker, line, tip,
-    animate(views, time, dt, viewYaw=0, verticalFov=60) {
+    animate(views, time, dt, viewYaw=0, verticalFov=60, netGrip=null) {
       const pose=rodPose(views,time,viewYaw);
       const isBottom=pose.bottomTipPermille!==null;
       const selectedRod=views.bottomSelected || isBottom ? 'bottom' : views.lureSelected ? 'spinning' : 'float';
@@ -293,7 +294,10 @@ export function createTackle() {
         reel.rotor.rotation.z+=spin*3.8;
         reel.spool.position.z=reel.rotor.position.z-.006*Math.sin(reel.crank.rotation.x*.7);
       }
-      hands.update(pose,views.flight,dt);
+      // The upper ends stay attached to the angler through the overhead swing.
+      leftShoulder.set(a.xMm/1000-.24*c+.39*s,a.yMm/1000-.23,-a.zMm/1000+.24*s+.39*c);
+      rightShoulder.set(a.xMm/1000+.24*c+.39*s,a.yMm/1000-.23,-a.zMm/1000-.24*s+.39*c);
+      hands.update(pose,views.flight,dt,netGrip,leftShoulder,rightShoulder);
       // Read one up-to-date set of transforms for the moving roller and every guide.
       // The line leaves the wound pack on the same side as the rotating pickup.
       tip.updateWorldMatrix(true,false);

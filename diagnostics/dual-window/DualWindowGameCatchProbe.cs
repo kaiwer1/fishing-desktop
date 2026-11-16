@@ -153,7 +153,7 @@ sealed partial class DualWindowContext
             await WardrobeProbePhoto(pane,"landing-net-ready.png");
             await SceneProbeButton(pane,"scene-land");
             await GameWaitForFight(pane,FloatFightPhase.Landed,10000);
-            await Wait(pane,s=>SceneProbeRenderer(s)!=null && (bool)SceneProbeRenderer(s)["netLifting"]);
+            await Wait(pane,s=>SceneProbeRenderer(s)!=null && (bool)SceneProbeRenderer(s)["netRaised"]);
             await WardrobeProbePhoto(pane,"landing-net-catch.png");
             var landed=game.Snapshot.State;
             Require(landed.Sequence==5 && landed.Session==null && landed.WalletMinor==9600 && landed.Creel.Count==1 && gameNaturalLandings==1,

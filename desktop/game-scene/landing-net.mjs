@@ -30,6 +30,8 @@ export function createLandingNet() {
   const bag=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(threads),
     new THREE.LineBasicMaterial({color:0x56675f,transparent:true,opacity:.85}));
   basket.add(bag);group.add(basket);
+  const skyFill=new THREE.PointLight(0xe4ecef,0,.95,2);
+  skyFill.position.set(-.12,.38,.25);basket.add(skyFill);
   const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.012,.019,1,10),
     new THREE.MeshStandardMaterial({color:0x4f5954,metalness:.46,roughness:.51}));
   group.add(shaft);
@@ -52,11 +54,15 @@ export function createLandingNet() {
   }
   return {
     group, clear,
+    handlePosition:()=>group.visible?hand:null,
     update(views,dt,viewYaw) {
       const water=views.water, fight=views.fight, receipt=views.netCatch;
       if(!water?.anchor || !views.netAllowed){clear();return;}
+      const daylight=views.weather?.waterId===water.waterId?views.weather.lightPermille:1000;
+      skyFill.intensity=.08+1.1*THREE.MathUtils.clamp((daylight??1000)/1000,0,1);
       toWorld(water.anchor,hand);
-      hand.x-=.31*Math.cos(viewYaw);hand.z+=.09+.31*Math.sin(viewYaw);hand.y-=.39;
+      const c=Math.cos(viewYaw),s=Math.sin(viewYaw);
+      hand.x-=.26*c+.51*s;hand.z+=.26*s-.51*c;hand.y-=.18;
       const live=fight?.sessionId && fight.sessionId===views.flight?.sessionId &&
         ['landing-eligible','landing-pending'].includes(fight.phase) &&
         [fight.xMm,fight.yMm,fight.zMm].every(Number.isFinite);
@@ -65,7 +71,7 @@ export function createLandingNet() {
         if(session!==fight.sessionId)clear();
         session=fight.sessionId;receiptWait=0;
         toWorld(fight,front);
-        basket.position.set(front.x-.18,water.surfaceYmm/1000+.065,front.z+.22);
+        basket.position.set(front.x-.12,water.surfaceYmm/1000+.11,front.z-.16);
         group.visible=true;place(hand);return;
       }
       if(!lifting && session && receipt?.id && receipt.id!==lastReceipt && receipt.session===session && receipt.waterId===water.waterId){
@@ -86,12 +92,13 @@ export function createLandingNet() {
       elapsed+=dt;
       if(elapsed>1.65){clear();return;}
       const t=THREE.MathUtils.smoothstep(elapsed,0,.82);
-      end.copy(hand);end.x-=.05+1.12*Math.sin(viewYaw);end.y-=.23;end.z-=1.12*Math.cos(viewYaw);
+      end.copy(hand);end.x-=.05+.76*s;end.y-=.16;end.z-=.76*c;
       basket.position.lerpVectors(start,end,t);
       basket.position.y+=.10*Math.sin(t*Math.PI);
       place(hand);group.visible=true;
     },
     lifting:()=>lifting,
+    raised:()=>lifting && elapsed>=.82,
     dispose(){clear();disposeGroup(group);}
   };
 }

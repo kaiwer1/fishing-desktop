@@ -53,9 +53,9 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
     elapsed+=dt;
     if(pendingImpact){lake.impact(pendingImpact,elapsed);pendingImpact=null;}
     lake.animate(elapsed);
-    rodPhase=tackle.animate(views,elapsed,dt,viewYaw,camera.fov);
     if(!net && views.netAllowed && views.fight?.phase==='landing-eligible'){net=createLandingNet();scene.add(net.group);}
     net?.update(views,dt,viewYaw);
+    rodPhase=tackle.animate(views,elapsed,dt,viewYaw,camera.fov,net?.handlePosition());
     lake.lure(views.flight?.phase==='waiting'&&tackle.spoon.visible&&tackle.group.visible?tackle.spoon:null);
     renderer.render(scene,camera);frames++;
   },onError(){fault('webgl-render-failed');}});
@@ -131,7 +131,7 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
     return {ready:Boolean(lake&&!disposed&&!error),active,running:scheduler.getState().running,frames,width,height,quality,frameLimit:frameLimits[quality],
       triangles:renderer.info.render.triangles,calls:renderer.info.render.calls,geometryVersion:water?.geometryVersion??null,rodPhase,
       weather:lighting.state(),shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
-      netVisible:net?.group.visible??false,netLifting:net?.lifting()??false,
+      netVisible:net?.group.visible??false,netLifting:net?.lifting()??false,netRaised:net?.raised()??false,
       sceneBuilds,mirrorUpdates:lake?.mirrorUpdates()??0,loadedMaterials:lake?.loadedMaterials()??0,cameraXmm:lake&&aspect>0?Math.round(camera.position.x*1000):null,
       rodType:lake&&tackle.group.visible?tackle.rodType():null,rodAnchorXmm:lake?tackle.anchorXmm():null,
       bottomTipPermille:lake?tackle.bottomTipPermille():null,stand:stand?.state()??null,

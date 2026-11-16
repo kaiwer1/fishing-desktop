@@ -93,19 +93,25 @@ export function createAnglerHands(root,crank,knob){
   const gripWrist=makeGrip(root,palette);
   const rightSleeve=sleeve(root,'grip-sleeve',fabric,palette.cuff);
   rightSleeve.position.copy(gripWrist.position);
-  rightSleeve.quaternion.setFromUnitVectors(up,vector(.21,-.12,.20).normalize());
   const hand=new THREE.Group();hand.name='winding-hand';root.add(hand);
   const wrist=makeCrankGrip(hand,palette);
   const leftSleeve=sleeve(root,'winding-sleeve',leftFabric,palette.cuff);
-  const elbow=vector(-.34,-.21,.31), butt=vector(-.015,-.008,.183);
+  const butt=vector(-.015,-.008,.183);
   const crankPoint=new THREE.Vector3(), wristAt=new THREE.Vector3(), axis=new THREE.Vector3();
+  function aimSleeve(sleeve,shoulder){
+    axis.copy(shoulder);
+    root.worldToLocal(axis);
+    axis.sub(sleeve.position);
+    sleeve.scale.y=axis.length()/.31;
+    sleeve.quaternion.setFromUnitVectors(up,axis.normalize());
+  }
   let transfer=0;
   return {
     dress(color){
       fabric.color.set(color??0x526451);
       leftFabric.color.copy(fabric.color).multiplyScalar(.93);
     },
-    update(pose,flight,dt){
+    update(pose,flight,dt,netGrip,leftShoulder,rightShoulder){
       // The knob orbits around X. Its freely rotating grip does not spin the
       // wrist upside down. Follow it exactly without a separate elapsed clock.
       crankPoint.copy(knob.position).applyQuaternion(crank.quaternion).add(crank.position);
@@ -117,10 +123,15 @@ export function createAnglerHands(root,crank,knob){
       hand.position.copy(crankPoint).lerp(butt,eased);
       hand.position.y-=.032*Math.sin(Math.PI*eased);
       hand.rotation.y=-1.1*eased;
+      if(netGrip){
+        hand.position.copy(netGrip);
+        root.worldToLocal(hand.position);
+        hand.rotation.y=-.55;
+      }
       wristAt.copy(wrist.position).applyQuaternion(hand.quaternion).add(hand.position);
       leftSleeve.position.copy(wristAt);
-      axis.copy(elbow).sub(wristAt).normalize();
-      leftSleeve.quaternion.setFromUnitVectors(up,axis);
+      aimSleeve(leftSleeve,leftShoulder);
+      aimSleeve(rightSleeve,rightShoulder);
     }
   };
 }

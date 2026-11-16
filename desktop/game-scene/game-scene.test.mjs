@@ -172,10 +172,13 @@ test('the coastal bay opens to a scenic horizon beyond the surveyed bed',()=>{
     const horizon=coast.group.children.filter(o=>o.name==='open-sea-horizon');
     assert.equal(horizon.length,3);
     assert.ok(horizon.every(o=>o.material===surface.material&&!o.layers.isEnabled(0)));
-    const wash=coast.group.getObjectByName('tidal-wash');
-    assert.ok(wash.material===surface.material&&!wash.layers.isEnabled(0));
-    wash.geometry.computeBoundingBox();surface.geometry.computeBoundingBox();
-    assert.equal(wash.geometry.boundingBox.max.y,surface.geometry.boundingBox.min.y);
+    surface.geometry.computeBoundingBox();
+    assert.equal(surface.geometry.boundingBox.min.y,-77/2-4);
+    const sounding=surface.geometry.attributes.sounding;
+    const columns=surface.geometry.parameters.widthSegments+1;
+    for(let col=0;col<columns;col++){
+      assert.equal(sounding.getX(sounding.count-columns+col),sounding.getX(sounding.count-2*columns+col));
+    }
     const cape=coast.group.getObjectByName('distant-headland');
     cape.geometry.computeBoundingBox();
     assert.ok(cape.geometry.boundingBox.max.z < -water.waterBounds.maxZmm/1000);

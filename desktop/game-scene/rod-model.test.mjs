@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { createTackle } from './tackle.mjs';
+import { createTackle, rodPose } from './tackle.mjs';
 
 const water={anchor:{xMm:2500,yMm:1500,zMm:1000},surfaceYmm:0,
   waterBounds:{minXmm:-30000,maxXmm:30000,minZmm:3000,maxZmm:80000}};
@@ -14,6 +14,48 @@ const world=node=>node.getWorldPosition(new THREE.Vector3());
 const attributePoint=(attribute,index)=>new THREE.Vector3().fromBufferAttribute(attribute,index);
 const close=(actual,expected)=>assert.ok(actual.distanceTo(expected)<2e-6,
   'expected '+actual.toArray()+' to reach '+expected.toArray());
+
+test('a ready or charging rig hangs from the live tip until a confirmed flight takes over',()=>{
+  for(const [mode,kind,drop] of [[{},'float',.52],[{bottomSelected:true},'sinker',.64],[{lureSelected:true},'spoon',.35]]){
+    const rig=createTackle(),end=rig[kind];
+    try{
+      for(const rate of [18,30,60]){
+        const dt=1/rate;
+        rig.animate({water,...mode},0,dt);
+        assert.equal(rig.line.visible,false);
+        const baseView={water,...mode,canAim:true};
+        rig.animate(baseView,0,dt);
+        close(end.position,world(rig.tip).add(new THREE.Vector3(0,-drop,0)));
+        let swing=0;
+        for(let i=1;i<=rate;i++){
+          rig.animate({...baseView,canAim:false,cast:{phase:'charging',powerPermille:i*1000/rate}},i*dt,dt);
+          const delta=end.position.clone().sub(world(rig.tip));
+          assert.ok(rig.line.visible && end.visible && delta.y<0);
+          assert.ok(Math.abs(delta.length()-drop)<1e-6,'constant length under load');
+          swing=Math.max(swing,Math.hypot(delta.x,delta.z));
+        }
+        assert.ok(swing>.04,'moving tip draws the rig behind it');
+        rig.animate({water,...mode,flight:inAir},1.1,dt);
+        close(end.position,new THREE.Vector3(.5,4.5,-13));
+        rig.animate({water,...mode,flight:{...flight,phase:'ended'}},2,dt);
+        assert.ok(!end.visible && !rig.line.visible);
+      }
+    }finally{rig.dispose();}
+  }
+});
+
+test('each method follows the loaded hand position at release and drives forward as the weight departs',()=>{
+  const start=mode=>rodPose({water,...mode,cast:{phase:'charging',powerPermille:1000}});
+  const launch=(mode,t)=>rodPose({water,...mode,flight:{...inAir,elapsedMilliseconds:t,powerPermille:1000}});
+  const bottom={bottomSelected:true},spin={lureSelected:true};
+  assert.ok(start(bottom).pitch>start({}).pitch && start({}).pitch>start(spin).pitch);
+  assert.ok(start(spin).yaw<start({}).yaw && start({}).yaw<start(bottom).yaw);
+  for(const mode of [{},bottom,spin]){
+    for(const prop of ['pitch','roll','yaw','shiftX','shiftY','shiftZ','flex'])assert.equal(start(mode)[prop],launch(mode,0)[prop]);
+    assert.ok(launch(mode,230).shiftZ < 0 && start(mode).shiftZ>0);
+    assert.ok(Math.abs(launch(mode,1800).shiftZ)<.001);
+  }
+});
 
 test('selected kits change the blank, grip and tip at the bank before the first cast',()=>{
   const rig=createTackle();

@@ -53,7 +53,7 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
     if(pendingImpact){lake.impact(pendingImpact,elapsed);pendingImpact=null;}
     lake.animate(elapsed);
     rodPhase=tackle.animate(views,elapsed,dt,viewYaw,camera.fov);
-    lake.lure(tackle.spoon.visible&&tackle.group.visible?tackle.spoon:null);
+    lake.lure(views.flight?.phase==='waiting'&&tackle.spoon.visible&&tackle.group.visible?tackle.spoon:null);
     renderer.render(scene,camera);frames++;
   },onError(){fault('webgl-render-failed');}});
   function fault(code){
@@ -100,7 +100,7 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
     try {
       const oldWaterKey=key;
       for(const name of viewNames)if(Object.hasOwn(data,name))views[name]=data[name];
-      if(Object.hasOwn(data,'canAim')){canAim=data.canAim===true;if(!canAim)hideAim();}
+      if(Object.hasOwn(data,'canAim')){canAim=data.canAim===true;views.canAim=canAim;if(!canAim)hideAim();}
       if(Object.hasOwn(data,'water'))resetLake(data.water);
       lighting.update(views.weather??null,lake);
       if(Object.hasOwn(data,'weather')||Object.hasOwn(data,'water')){

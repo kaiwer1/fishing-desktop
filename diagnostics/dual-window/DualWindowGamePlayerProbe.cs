@@ -186,11 +186,17 @@ sealed partial class DualWindowContext
             await SceneProbeMouse(pane,aimPoint,true);
             var charging=await Wait(pane,s=>PlayerProbeDrawn(s,coast) && (string)SceneProbeRenderer(s)["rodPhase"]=="charging" &&
                 Field(Field(s,"inputState"),"aim")!=null && gameCast.Snapshot.PowerPermille==1000,20000);
+            Require((bool)SceneProbeRenderer(charging)["bobberVisible"]&&(bool)SceneProbeRenderer(charging)["lineVisible"],
+                "The raised rod lost the rig before release.");
+            await WardrobeProbePhoto(pane,"cast-drawn.png");
             var aim=Field(Field(charging,"inputState"),"aim");
             Require(Number(aim,"geometryVersion")==coast.Geometry.Version && gameWaterPlan.U==Number(aimPoint,"u") &&
                 gameWaterPlan.V==Number(aimPoint,"v") && Number(aim,"u")==gameWaterPlan.U && Number(aim,"v")==gameWaterPlan.V &&
                 game.Snapshot.State.Sequence==1 && gameFlightEmissions==0,"Coast ray did not freeze the chosen hosted cast.");
             await SceneProbeMouse(pane,aimPoint,false);
+            await Wait(pane,s=>PlayerProbeDrawn(s,coast)&&(string)SceneProbeRenderer(s)["rodPhase"]=="casting"&&
+                (bool)SceneProbeRenderer(s)["lineVisible"],5000);
+            await WardrobeProbePhoto(pane,"cast-forward.png");
             await Wait(pane,s=>game.Snapshot.State.Sequence==2 && game.Snapshot.State.Session!=null && gameFlightEmissions==1);
             var flight=await WaterProbeLanding(pane,true);
             var landing=gameWaterLanding.Sample;

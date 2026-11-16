@@ -8,10 +8,18 @@ const bottomPhases = new Set(['sinking','settling','settled','touch','bite','hoo
 const clamp = THREE.MathUtils.clamp;
 function smooth(t) { t = clamp(t,0,1); return t * t * (3 - 2 * t); }
 
-function loadedGrip(powerPermille) {
+const castStrokes = {
+  float:    { lift:1.02, turn:.48, roll:.25, flex:.29, side:.06,  rise:.11,  draw:.12,  drive:.085, drop:.52 },
+  bottom:   { lift:1.13, turn:.27, roll:.25, flex:.36, side:.06,  rise:.11,  draw:.155, drive:.125, drop:.64 },
+  spinning: { lift:.72,  turn:.81, roll:.38, flex:.29, side:.135, rise:.065, draw:.095, drive:.046, drop:.35 },
+};
+
+function loadedGrip(powerPermille, stroke) {
   const load=smooth(powerPermille/1000);
-  return {pitch:.31+load*1.02,yaw:.12-load*.48,roll:-.12-load*.25,
-    flex:-.08-load*.29,shiftX:.06*load,shiftY:.11*load};
+  // A short spoon rod sweeps to the side. The heavier bottom rig is drawn
+  // further behind the shoulder before both hands drive it over the top.
+  return {pitch:.31+load*stroke.lift,yaw:.12-load*stroke.turn,roll:-.12-load*stroke.roll,
+    flex:-.08-load*stroke.flex,shiftX:load*stroke.side,shiftY:load*stroke.rise,shiftZ:load*stroke.draw};
 }
 
 function bottomLineEnd(point, water) {
@@ -26,10 +34,11 @@ export function rodPose({water,cast,flight,bite,fight,bottom,bottomSelected,lure
   const f = flight?.sessionId ? flight : null;
   const hooked = f && fight?.sessionId === f.sessionId ? fight : null;
   const b = f && bite?.sessionId === f.sessionId ? bite : null;
+  const stroke = bottomSelected ? castStrokes.bottom : lureSelected ? castStrokes.spinning : castStrokes.float;
   const pose = {phase:'idle', pitch:.115, yaw:.16, roll:-.1, flex:.04,
-    shiftX:0, shiftY:0, reeling:false, reelLevel:0, end:null, float:false, spoon:false, sinker:false, bottomTipPermille:null};
+    shiftX:0, shiftY:0, shiftZ:0, reeling:false, reelLevel:0, end:null, float:false, spoon:false, sinker:false, bottomTipPermille:null};
   if (cast?.phase === 'charging' || cast?.phase === 'prepared') {
-    return Object.assign(pose,{phase:'charging'},loadedGrip(cast.powerPermille||0));
+    return Object.assign(pose,{phase:'charging'},loadedGrip(cast.powerPermille||0,stroke));
   }
   if (!f || (hooked && endedFights.has(hooked.phase))) return pose;
   const bottomHere=bottom?.sessionId===f.sessionId && bottomPhases.has(bottom.phase) &&
@@ -58,8 +67,8 @@ export function rodPose({water,cast,flight,bite,fight,bottom,bottomSelected,lure
   }
   if (f.phase==='flying') {
     const t=f.elapsedMilliseconds/1000;
-    const power=f.powerPermille??1000, start=loadedGrip(power), effort=clamp(power/1000,0,1);
-    const stroke=.13+.085*effort, sweep=smooth(t/stroke), settle=Math.max(0,t-stroke);
+    const power=f.powerPermille??1000, start=loadedGrip(power,stroke), effort=clamp(power/1000,0,1);
+    const driveTime=.13+effort*stroke.drive, sweep=smooth(t/driveTime), settle=Math.max(0,t-driveTime);
     const recoil=Math.exp(-settle*8)*Math.sin(settle*20);
     pose.phase='casting';
     pose.pitch=THREE.MathUtils.lerp(start.pitch,.035,sweep)+recoil*(.055+.11*effort);
@@ -68,6 +77,7 @@ export function rodPose({water,cast,flight,bite,fight,bottom,bottomSelected,lure
     pose.flex=THREE.MathUtils.lerp(start.flex,.04,sweep)+Math.sin(sweep*Math.PI)*(.17+.48*effort)+recoil*(.07+.12*effort);
     pose.shiftX=start.shiftX*(1-sweep);
     pose.shiftY=THREE.MathUtils.lerp(start.shiftY,-.02,sweep);
+    pose.shiftZ=THREE.MathUtils.lerp(start.shiftZ,-.045-.095*effort,sweep)*Math.exp(-3.8*settle);
     if([f.xMm,f.yMm,f.zMm].every(Number.isFinite)){
       pose.end=toWorld(f);pose.spoon=isLure;pose.sinker=bottomSelected===true;pose.float=!isLure&&!pose.sinker;
     }
@@ -227,6 +237,10 @@ export function createTackle() {
   // Each flexible tip section contributes a share of the observed 0–46 mm
   // displacement, increasing towards the tip. No wave or local bite clock.
   const tipShares=[.12,.33,.55];
+  const gripOffset=new THREE.Vector3(),gripTarget=new THREE.Vector3();
+  const previousTip=new THREE.Vector3(),hangingEnd=new THREE.Vector3();
+  const swing=new THREE.Vector2(),swingVelocity=new THREE.Vector2();
+  let hangingRod=null;
   return {group, root, float, spoon, sinker, line, tip,
     animate(views, time, dt, viewYaw=0, verticalFov=60) {
       const pose=rodPose(views,time,viewYaw);
@@ -246,11 +260,12 @@ export function createTackle() {
       if(color!==shownColor){hands.dress(color);shownColor=color;}
       const approach=previousPhase===null?1:1-Math.exp(-dt*(pose.phase==='casting'?31:17));
       const a=views.water.anchor;
-      const gripX=.215+pose.shiftX,gripZ=-.74,c=Math.cos(viewYaw),s=Math.sin(viewYaw);
+      gripOffset.lerp(gripTarget.set(pose.shiftX,pose.shiftY,pose.shiftZ),approach);
+      const gripX=.215+gripOffset.x,gripZ=-.74+gripOffset.z,c=Math.cos(viewYaw),s=Math.sin(viewYaw);
       // The wider shoreline view has a narrower vertical field. Raise the
       // near-field grip enough to keep the palm in frame at the crank's low point.
       const gripLift=.075*smooth((60-verticalFov)/13);
-      root.position.set(a.xMm/1000+gripX*c+gripZ*s,a.yMm/1000-.105+gripLift+pose.shiftY,-a.zMm/1000+.5-gripX*s+gripZ*c);
+      root.position.set(a.xMm/1000+gripX*c+gripZ*s,a.yMm/1000-.105+gripLift+gripOffset.y,-a.zMm/1000+.5-gripX*s+gripZ*c);
       anchorXmm=a.xMm;
       root.rotation.order='YXZ';
       root.rotation.x=THREE.MathUtils.lerp(root.rotation.x,pose.pitch,approach);
@@ -298,6 +313,22 @@ export function createTackle() {
       guidePoints.setXYZ(guides.length+2,tipWorld.x,tipWorld.y,tipWorld.z);
       guidePoints.needsUpdate=true;
       previousPhase=pose.phase;
+      const hanging=pose.phase==='charging' || (views.canAim && !views.flight?.sessionId && pose.phase==='idle');
+      if(hanging){
+        const drop=castStrokes[selectedRod].drop;
+        if(hangingRod!==selectedRod || dt<=0 || dt>.12 || tipWorld.distanceToSquared(previousTip)>1){
+          swing.set(0,0);swingVelocity.set(0,0);
+        } else {
+          // World-space inertia while the angler moves the tip. Constrain the
+          // drop to its actual length; a hand-held weight cannot stretch line.
+          swing.x-=tipWorld.x-previousTip.x;swing.y-=tipWorld.z-previousTip.z;
+          swingVelocity.addScaledVector(swing,-9.81/drop*dt).multiplyScalar(Math.exp(-2.8*dt));
+          swing.addScaledVector(swingVelocity,dt).clampLength(0,drop*.82);
+        }
+        hangingEnd.set(tipWorld.x+swing.x,tipWorld.y-Math.sqrt(drop*drop-swing.lengthSq()),tipWorld.z+swing.y);
+        previousTip.copy(tipWorld);hangingRod=selectedRod;
+        pose.end=hangingEnd;pose.float=selectedRod==='float';pose.sinker=selectedRod==='bottom';pose.spoon=selectedRod==='spinning';
+      }else hangingRod=null;
       line.visible=Boolean(pose.end);float.visible=Boolean(pose.float);spoon.visible=pose.spoon;sinker.visible=pose.sinker;
       if(pose.end){
         if(pose.float)float.position.copy(pose.end);
@@ -307,7 +338,7 @@ export function createTackle() {
           spoon.rotation.y=Math.atan2(a.xMm/1000-pose.end.x,-a.zMm/1000-pose.end.z);
           spoon.rotation.z=pose.reeling?.6*Math.sin(time*(8+pose.reelLevel)):.16*Math.sin(time*3);
         }
-        const slack=pose.phase==='fighting'?Math.min(.45,(views.fight?.slackMm||0)/1000*.15):pose.phase==='casting'?.09:.2;
+        const slack=hanging?0:pose.phase==='fighting'?Math.min(.45,(views.fight?.slackMm||0)/1000*.15):pose.phase==='casting'?.09:.2;
         for(let i=0;i<positions.count;i++){
           const t=i/(positions.count-1);
           positions.setXYZ(i,THREE.MathUtils.lerp(tipWorld.x,pose.end.x,t),THREE.MathUtils.lerp(tipWorld.y,pose.end.y,t)-slack*4*t*(1-t),

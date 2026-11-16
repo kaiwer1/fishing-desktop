@@ -65,7 +65,9 @@ sealed partial class DualWindowContext
         string stage="opening the private player";
         try{
             Require(GameMultiRodSelfTest&&windows.Count==1&&windows.ContainsKey(true),"Expected one private player pane.");
-            var pane=windows[true];await Ready(pane);pane.ClientSize=new Size(1280,800);await Activate(pane);
+            var pane=windows[true];await Ready(pane);pane.ClientSize=new Size(1280,800);
+            await pane.View.CoreWebView2.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled","{\"enabled\":true}");
+            await Activate(pane);
             var lake=FloatFishingAtlas.Find("development-still-water");
             await Wait(pane,p=>PlayerProbeDrawn(p,lake),30000);
             var start=game.Snapshot.State;
@@ -98,6 +100,30 @@ sealed partial class DualWindowContext
             Require(gameBankStand.Held==Guid.Empty&&gameBankStand.At(1)==rigs[0]&&gameBankStand.At(2)==rigs[1]&&
                 gameBankStand.At(3)==rigs[2]&&gameBankStand.StandId==paid.OwnedBankRodStand.Id&&GameShopJournalDigest()==digest,"Incorrect stand admission.");
             checks.Add("activating the paid stand places its three owned rigs at distinct reachable posts without spending bait or silver");
+
+            stage="enabling the parked rod bells";
+            // Tap the two existing audio envelopes inside this isolated test page.
+            // The analyser observes the synthesized signal and has no microphone input.
+            await pane.View.CoreWebView2.ExecuteScriptAsync(@"(()=>{
+                window.bellTones=[];
+                const connect=GainNode.prototype.connect;
+                GainNode.prototype.connect=function(target,...ports){
+                    const result=connect.call(this,target,...ports);
+                    if(target===this.context.destination){
+                        const analyser=this.context.createAnalyser(); analyser.fftSize=512;
+                        connect.call(this,analyser); const wave=new Float32Array(512);
+                        const tone={peak:0}; bellTones.push(tone);
+                        const timer=setInterval(()=>{analyser.getFloatTimeDomainData(wave);
+                            for(const sample of wave)tone.peak=Math.max(tone.peak,Math.abs(sample));},15);
+                        setTimeout(()=>{clearInterval(timer);analyser.disconnect();},450);
+                    }
+                    return result;
+                };
+            })()");
+            await PlayerQualityKey(pane,"F1",112);
+            await SceneProbeButton(pane,"stand-bell");
+            Require(await pane.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('stand-bell').checked && localStorage.getItem('fishing-desktop.stand-bell.v1')==='on'")=="true"&&GameShopJournalDigest()==digest,"Bell choice was not retained or changed the tackle journal.");
+            await PlayerQualityKey(pane,"F1",112);
 
             stage="casting and parking three paid rods";
             var rods=new FloatSession[3];
@@ -149,6 +175,8 @@ sealed partial class DualWindowContext
 
             stage="verifying parked tip signals and manually retrieving the other rods";
             await Wait(pane,p=>BankLastParkedBite(rigs[0])!=null&&BankLastParkedBite(rigs[1])!=null,60000);
+            var sound=await SceneProbeScript(pane,"({tones:bellTones.length,nonzero:bellTones.filter(t=>t.peak>0.001).length})");
+            Require(Number(sound,"tones")>=4&&Number(sound,"nonzero")>=2,"Parked rods did not produce the bell audio: "+json.Serialize(sound));
             for(int i=0;i<2;i++){
                 var alarm=BankLastParkedBite(rigs[i]);
                 Require(alarm.RigId==rigs[i]&&alarm.SessionId==rods[i].Id&&alarm.Kind==BankTipKind.Bite&&alarm.Slot==i+1&&
@@ -186,7 +214,8 @@ sealed partial class DualWindowContext
             checks.Add("reopening the private file preserves three paid kits, the stand, net, catch and exact debits with no active session");
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new{
                 passed=true,checks=checks.ToArray(),gameLoaded=true,multiRodConnected=true,ownedBottomKits=3,standSlots=3,peakBankSessions=3,
-                parkedBites=2,manualRecalls=2,naturalBottomBite=true,manualReel=true,closedJournalVerified=true,nativePhysicalMouse=false,
+                parkedBites=2,parkedBellTones=Number(sound,"tones"),measuredBellSignals=Number(sound,"nonzero"),
+                manualRecalls=2,naturalBottomBite=true,manualReel=true,closedJournalVerified=true,nativePhysicalMouse=false,
                 devToolsMouseInput=true,controlledFishFacts=false,controlledFightTime=false,personalSaveRead=false,desktopLayer=false,
                 schemaVersion=final.SchemaVersion,sequence=final.Sequence,value=final.WalletMinor,baitCount=final.BaitCount,stamina=final.Stamina,
                 creelCount=final.Creel.Count,speciesId=fish.SpeciesKey,massMg=fish.MassMg,saleValueMinor=fish.SaleValueMinor,

@@ -23,6 +23,7 @@ import { BankWalk } from './bank-walk.mjs';
 import { BottomView, bottomPrompt, createBottomTipPanel } from './bottom-view.mjs';
 import { BottomShop, BottomStrike, confirmedLineEnd } from './bottom-controls.mjs';
 import { StandView, createStandPanel } from './stand-view.mjs';
+import { StandBells } from './stand-bell.mjs';
 import { BankKit, bindBankShop } from './bank-kit.mjs';
 import { LureView, createLurePanel, lureMetrics, lurePrompt } from './lure-view.mjs';
 import { LureShop, LureInput } from './lure-controls.mjs';
@@ -248,6 +249,24 @@ const scene = new ScenePresentation({ canvas: $('scene-canvas'), load: () => imp
     !snapshot.Faulted && !saveFaulted && (readOnly || !snapshot.MenuOpen),
   cancelHeld: () => { bankWalk.stop(); castInput.cancel(); lureInput.reset(); fightInput.cancel(); speedKeyHeld = false; }, changed: renderSceneShell });
 const qualityKey = 'fishing-desktop.shore-quality.v1';
+const bellKey = 'fishing-desktop.stand-bell.v1';
+const bellToggle = $('stand-bell');
+const bells = new StandBells(() => new window.AudioContext());
+$('stand-bell-label').hidden = typeof window.AudioContext !== 'function';
+try { bellToggle.checked = window.localStorage?.getItem(bellKey) === 'on'; } catch { bellToggle.checked = false; }
+function bellAllowed() {
+  return bellToggle.checked && !readOnly && canControl() && !snapshot.MenuOpen && !document.hidden &&
+    document.hasFocus() && !visualPaused && hostPolicy?.canRun === true;
+}
+function activateBells() { if (bankKit.selected && bellAllowed()) bells.activate(); }
+bellToggle.addEventListener('change', () => {
+  if (!canUseSceneHelp() || $('scene-help-sheet').hidden) return;
+  try { window.localStorage?.setItem(bellKey, bellToggle.checked ? 'on' : 'off'); } catch { /* Session setting. */ }
+  if (bellToggle.checked) activateBells(); else bells.silence();
+});
+// A browser may require an actual click or key before restoring the audio device after focus loss.
+document.addEventListener('pointerdown', activateBells);
+document.addEventListener('keydown', activateBells);
 function applyQuality(value) {
   const quality = ['low','medium','high'].includes(value) ? value : 'medium';
   $('scene-quality').value = quality;
@@ -264,9 +283,11 @@ $('scene-quality').addEventListener('change', () => {
   applyQuality($('scene-quality').value);
   try { window.localStorage?.setItem(qualityKey,$('scene-quality').value); } catch { /* Applies for this session. */ }
 });
-for (const name of ['keydown','keyup']) $('scene-quality').addEventListener(name,event=>{
-  if (event.key !== 'Escape' && event.code !== 'F1') event.stopPropagation();
-});
+for (const control of [$('scene-quality'), bellToggle]) {
+  for (const name of ['keydown','keyup']) control.addEventListener(name,event=>{
+    if (event.key !== 'Escape' && event.code !== 'F1') event.stopPropagation();
+  });
+}
 const bankWalk = new BankWalk({ documentId, post:send, newTransportId:() => crypto.randomUUID(), readContext:() => {
   const water = waterView.state();
   return { lease:authority.state().lease, waterId:water?.waterId, geometryVersion:water?.geometryVersion,
@@ -426,6 +447,7 @@ function specimenButton(fish) {
   return button;
 }
 function render() {
+  if (!bellAllowed() || !bankKit.selected) bells.silence();
   castInput.reconcile();
   strikeInput.reconcile();
   fightInput.reconcile();
@@ -791,6 +813,7 @@ function renderCampNavigation() {
   }
 }
 function revoke(reason) {
+  bells.silence();
   stand.clearInput();
   lureInput.reset();
   bankWalk.stop();
@@ -912,7 +935,10 @@ window.chrome.webview.addEventListener('message', event => {
     return;
   }
   if (m.kind === 'game-stand-state') {
-    if (stand.apply(m)) { castInput.reconcile(); fightInput.reconcile(); renderCast(); renderFight(); updateButtons(); }
+    if (stand.apply(m)) {
+      bells.observe(m.state, bellAllowed() && bankKit.selected);
+      castInput.reconcile(); fightInput.reconcile(); renderCast(); renderFight(); updateButtons();
+    }
     return;
   }
   if (m.kind === 'game-bottom-shop-state') {
@@ -1241,12 +1267,12 @@ const typing = target => target instanceof Element && (target.isContentEditable 
 document.addEventListener('focusin', event => { if (typing(event.target)) bankWalk.stop(); });
 document.addEventListener('keydown', event => {
   if (!$('scene-help-toggle').disabled && scene.visible && !snapshot?.MenuOpen &&
-      (!typing(event.target) || event.target === $('scene-quality')) && !event.isComposing && !event.defaultPrevented && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+      (!typing(event.target) || event.target === $('scene-quality') || event.target === bellToggle) && !event.isComposing && !event.defaultPrevented && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
       (event.code === 'F1' || event.key === 'Escape' && !$('scene-help-sheet').hidden)) {
     event.preventDefault();
     const open = event.code === 'F1' && $('scene-help-sheet').hidden;
     setSceneHelp(open);
-    if (!open && (document.activeElement === $('scene-help-toggle') || event.target === $('scene-quality'))) $('scene-canvas').focus();
+    if (!open && (document.activeElement === $('scene-help-toggle') || event.target === $('scene-quality') || event.target === bellToggle)) $('scene-canvas').focus();
     return;
   }
   if (bankKit.selected && stand.key(event,true)) { event.preventDefault(); updateButtons(); return; }

@@ -51,6 +51,7 @@ body[data-scene-mode=loading] #scene-stage{visibility:hidden;pointer-events:none
 #scene-help-sheet dt{color:#cbd8a8}#scene-help-sheet dd{margin:0}
 #scene-quality-label{display:grid;gap:4px;border-top:1px solid #657265;margin-top:9px;padding-top:7px;font-size:13px}
 #scene-quality{display:block;width:100%;background:#26342b;color:#f1f1e6;border:1px solid #8b9787;padding:4px}
+#stand-bell-label:not([hidden]){display:flex;gap:6px;align-items:center;margin-top:9px;font-size:13px;cursor:pointer}
 @media(max-width:720px){.scene-actions{gap:4px}.scene-hud .scene-actions button{font-size:12px;padding:4px 6px}.scene-place{max-width:42vw}}
 body[data-role=observer] .scene-hud,body[data-scene-mode=scene][data-scene-menu=closed] main{display:none}
 body[data-scene-mode=scene][data-scene-menu=open] main{position:fixed;inset:6vh max(4vw,calc((100vw - 1100px)/2));z-index:2;overflow:auto;overscroll-behavior:contain;background:#202822f7;border:1px solid #86917d;box-shadow:0 14px 45px #0c130c91}
@@ -99,7 +100,8 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <dt>抄鱼</dt><dd>鱼进入抄网范围时按空格。</dd>
 <dt id="scene-help-walk" hidden>走位</dt><dd id="scene-help-walk-keys" hidden>A、D 或左右方向键沿岸走，Shift 快走。</dd>
 </dl><label id="scene-quality-label" for="scene-quality">钓场画质<select id="scene-quality">
-<option value="low">省电 · 720p / 18 帧上限</option><option value="medium" selected>标准 · 1080p / 30 帧上限</option><option value="high">高清 · 1440p / 60 帧上限</option></select></label></div></div>
+<option value="low">省电 · 720p / 18 帧上限</option><option value="medium" selected>标准 · 1080p / 30 帧上限</option><option value="high">高清 · 1440p / 60 帧上限</option></select></label>
+<label id="stand-bell-label" hidden><input id="stand-bell" type="checkbox"> 竿架鱼讯铃 · 只在竿尖下压时响</label></div></div>
 <aside id="scene-stand" class="bank-stand-box" hidden></aside>
 <div id="scene-charge" hidden>抛竿力度<span id="scene-power-percent" aria-hidden="true">0%</span><progress id="scene-power" max="1000" value="0" aria-label="抛竿蓄力" hidden></progress></div>
 <div id="scene-readout" class="scene-readout"><div role="status" aria-atomic="true"><strong id="scene-action">等待钓场</strong><span id="scene-input-cue" class="scene-sr-only"></span></div><p id="scene-hint" hidden></p>

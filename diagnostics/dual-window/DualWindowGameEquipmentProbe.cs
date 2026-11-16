@@ -9,6 +9,78 @@ using Microsoft.Web.WebView2.Core;
 
 sealed partial class DualWindowContext
 {
+    async Task BagProbeKey(ProbeWindow pane,string key,string code,int vk,int modifiers=0)
+    {
+        foreach(bool down in new[]{true,false})
+            await pane.View.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",json.Serialize(new{
+                type=down?"rawKeyDown":"keyUp",key=key,code=code,windowsVirtualKeyCode=vk,modifiers=modifiers}));
+    }
+
+    async Task BagProbeClick(ProbeWindow pane,string selector)
+    {
+        var point=await SceneProbeScript(pane,@"(()=>{
+            const n=document.querySelector("+json.Serialize(selector)+@");if(!n)return null;
+            const b=n.closest('button')||n;b.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
+            const r=b.getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height/2);
+            return !b.disabled&&b.contains(document.elementFromPoint(x,y))?{x,y}:null;
+        })()");
+        await SceneProbeMouse(pane,point,true);await SceneProbeMouse(pane,point,false);
+    }
+
+    async Task<object> GamePlayerBag(ProbeWindow pane,FloatFishingWater water)
+    {
+        string digest=GameShopJournalDigest();var state=game.Snapshot.State;
+        var originalSize=pane.ClientSize;
+        int toolbarHeight=originalSize.Height-pane.View.ClientSize.Height;
+        pane.ClientSize=new System.Drawing.Size(1280,720+toolbarHeight);
+        await pane.View.CoreWebView2.ExecuteScriptAsync("document.activeElement?.blur()");
+        await BagProbeKey(pane,"i","KeyI",73);
+        await Wait(pane,p=>Field(p,"snapshot")!=null&&(bool)Field(p,"snapshot")["MenuOpen"]&&Field(p,"equipmentState")!=null);
+        string samples=@"(()=>{
+            const detail=document.querySelector('#bag-detail'),cards=[...document.querySelectorAll('#bag-items [data-bag-item]')];
+            const panel=document.getElementById('camp-panels'),facts=[...detail.querySelectorAll('dd')].map(n=>n.textContent);
+            return {gear:document.body.dataset.campPage==='gear',count:cards.length,art:cards.filter(c=>c.querySelector('svg[data-tackle]')).length,
+              selected:cards.filter(c=>c.getAttribute('aria-pressed')==='true').length,title:detail.querySelector('h3')?.textContent||'',
+              countText:document.getElementById('bag-count').textContent,empty:!document.getElementById('bag-empty').hidden,
+              detailHidden:detail.hidden,facts:facts.join('/'),width:innerWidth,height:innerHeight,
+              fits:panel.scrollWidth<=panel.clientWidth+1&&document.documentElement.scrollWidth<=innerWidth+1};
+        })()";
+        var normal=await SceneProbeScript(pane,samples);
+        Require((bool)normal["gear"]&&Number(normal,"count")==6&&Number(normal,"art")==6&&Number(normal,"selected")==1&&
+            (bool)normal["fits"]&&!((bool)normal["detailHidden"]),"I did not open the six illustrated starting items.");
+        await BagProbeClick(pane,"#bag-items svg[data-tackle=line]");
+        var selected=await SceneProbeScript(pane,samples);
+        Require(((string)selected["title"]).Contains("尼龙线")&&((string)selected["facts"]).Contains("50 米")&&
+            ((string)selected["facts"]).Contains("0.18 毫米")&&((string)selected["facts"]).Contains("线杯"),
+            "Line card did not show the installed spool, diameter and saved 50 m of line.");
+        await WardrobeProbePhoto(pane,"bag-landscape.png");
+        await BagProbeClick(pane,"#bag-types [data-kind=rod]");
+        var rods=await SceneProbeScript(pane,samples);
+        Require(Number(rods,"count")==1&&((string)rods["title"]).Contains("浮漂竿"),"Rod filter did not select only the owned rod.");
+        await BagProbeClick(pane,"#bag-types [data-kind=all]");
+        await BagProbeClick(pane,"#bag-search");
+        await pane.View.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.insertText",json.Serialize(new{text="尼龙"}));
+        var line=await SceneProbeScript(pane,samples);
+        Require(Number(line,"count")==1&&(string)line["title"]==(string)selected["title"],"Searching for nylon did not return the same installed line.");
+        await pane.View.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.insertText",json.Serialize(new{text="无匹配"}));
+        var empty=await SceneProbeScript(pane,samples);
+        Require(Number(empty,"count")==0&&(bool)empty["empty"]&&(bool)empty["detailHidden"],"An empty search left a stale equipment detail.");
+        await BagProbeKey(pane,"a","KeyA",65,2);await BagProbeKey(pane,"Backspace","Backspace",8);
+        Require(Number(await SceneProbeScript(pane,samples),"count")==6,"Clearing the query did not restore all owned plates.");
+        pane.ClientSize=new System.Drawing.Size(812,375+toolbarHeight);
+        await Wait(pane,p=>Number(SceneProbeRenderer(p),"width")>0);
+        await BagProbeClick(pane,"#bag-items svg[data-tackle=reel]");
+        var compact=await SceneProbeScript(pane,samples);
+        Require(Number(compact,"height")<Number(normal,"height")&&Number(compact,"width")>Number(compact,"height")&&
+            (bool)compact["fits"]&&Number(compact,"art")==6&&((string)compact["title"]).Contains("纺车轮"),
+            "The short landscape view overflowed or the selected reel was inaccessible.");
+        await WardrobeProbePhoto(pane,"bag-short-landscape.png");
+        pane.ClientSize=originalSize;await SceneProbeButton(pane,"menu");await Wait(pane,p=>PlayerProbeDrawn(p,water));
+        Require(state==game.Snapshot.State&&digest==GameShopJournalDigest(),"Browsing the backpack wrote an equipment or economy transaction.");
+        return new {ownedCount=6,filterVerified=true,searchVerified=true,lineOnSpool=true,journalUnchanged=true,
+            landscape=new {width=Number(normal,"width"),height=Number(normal,"height")},shortLandscape=new {width=Number(compact,"width"),height=Number(compact,"height")}};
+    }
+
     Dictionary<string,object> GameEquipmentProbeMessage(ProbeWindow pane,string lease,string action,string document=null)
     {
         return new Dictionary<string,object>{{"kind","game-equipment"},{"documentId",document??pane.Ticket.DocumentId},{"lease",lease},

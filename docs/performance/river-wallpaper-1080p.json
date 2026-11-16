@@ -1,0 +1,575 @@
+{
+  "water": "river-bend",
+  "quality": "medium",
+  "drawWidth": 1920,
+  "drawHeight": 1080,
+  "frames": 4536,
+  "seconds": 151.1854,
+  "meanFps": 30,
+  "intervalFps": {
+    "count": 30,
+    "first": 30.01,
+    "last": 29.98,
+    "min": 29.83,
+    "max": 30.19,
+    "mean": 30
+  },
+  "desktopGridPoints": 35,
+  "desktopHits": {
+    "count": 31,
+    "first": 0,
+    "last": 0,
+    "min": 0,
+    "max": 0,
+    "mean": 0
+  },
+  "privateMiB": {
+    "count": 29,
+    "first": 689.2734375,
+    "last": 591.6015625,
+    "min": 585.98828125,
+    "max": 689.2734375,
+    "mean": 601.98
+  },
+  "summedWorkingSetMiB": {
+    "count": 29,
+    "first": 731.34765625,
+    "last": 655.5390625,
+    "min": 648.2890625,
+    "max": 731.34765625,
+    "mean": 662.89
+  },
+  "busiestGpuEnginePercent": {
+    "count": 29,
+    "first": 22,
+    "last": 5,
+    "min": 5,
+    "max": 26,
+    "mean": 21.21
+  },
+  "dedicatedGpuMiB": {
+    "count": 29,
+    "first": 281.92578125,
+    "last": 276.07421875,
+    "min": 276.07421875,
+    "max": 281.92578125,
+    "mean": 276.73
+  },
+  "sharedGpuMiB": {
+    "count": 29,
+    "first": 37.8046875,
+    "last": 2.23828125,
+    "min": 2.23828125,
+    "max": 37.8046875,
+    "mean": 36.58
+  },
+  "resources": [
+    {
+      "seconds": 8.94,
+      "processes": 8,
+      "privateMiB": 689.2734375,
+      "summedWorkingSetMiB": 731.34765625,
+      "busiestGpuEnginePercent": 22,
+      "dedicatedGpuMiB": 281.92578125,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 13.38,
+      "processes": 8,
+      "privateMiB": 667.98828125,
+      "summedWorkingSetMiB": 710.48046875,
+      "busiestGpuEnginePercent": 24,
+      "dedicatedGpuMiB": 281.92578125,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 18.34,
+      "processes": 8,
+      "privateMiB": 669.79296875,
+      "summedWorkingSetMiB": 712.2734375,
+      "busiestGpuEnginePercent": 23,
+      "dedicatedGpuMiB": 281.92578125,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 23.31,
+      "processes": 8,
+      "privateMiB": 607.76953125,
+      "summedWorkingSetMiB": 668.51953125,
+      "busiestGpuEnginePercent": 25,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 28.31,
+      "processes": 8,
+      "privateMiB": 608.8046875,
+      "summedWorkingSetMiB": 670.1953125,
+      "busiestGpuEnginePercent": 5,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 33.3,
+      "processes": 8,
+      "privateMiB": 608.390625,
+      "summedWorkingSetMiB": 670.03125,
+      "busiestGpuEnginePercent": 25,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 38.36,
+      "processes": 8,
+      "privateMiB": 609.7421875,
+      "summedWorkingSetMiB": 671.71484375,
+      "busiestGpuEnginePercent": 23,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 43.39,
+      "processes": 8,
+      "privateMiB": 606.77734375,
+      "summedWorkingSetMiB": 669.47265625,
+      "busiestGpuEnginePercent": 20,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 48.31,
+      "processes": 8,
+      "privateMiB": 606.84375,
+      "summedWorkingSetMiB": 669.68359375,
+      "busiestGpuEnginePercent": 25,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 53.34,
+      "processes": 8,
+      "privateMiB": 585.98828125,
+      "summedWorkingSetMiB": 648.2890625,
+      "busiestGpuEnginePercent": 25,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 58.34,
+      "processes": 8,
+      "privateMiB": 587.359375,
+      "summedWorkingSetMiB": 649.92578125,
+      "busiestGpuEnginePercent": 24,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 63.4,
+      "processes": 8,
+      "privateMiB": 592.1015625,
+      "summedWorkingSetMiB": 654.93359375,
+      "busiestGpuEnginePercent": 22,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 68.36,
+      "processes": 8,
+      "privateMiB": 587.67578125,
+      "summedWorkingSetMiB": 650.6328125,
+      "busiestGpuEnginePercent": 23,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 73.35,
+      "processes": 8,
+      "privateMiB": 587.16796875,
+      "summedWorkingSetMiB": 650.43359375,
+      "busiestGpuEnginePercent": 22,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 78.39,
+      "processes": 8,
+      "privateMiB": 587.09765625,
+      "summedWorkingSetMiB": 650.28125,
+      "busiestGpuEnginePercent": 21,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 83.41,
+      "processes": 8,
+      "privateMiB": 587.02734375,
+      "summedWorkingSetMiB": 650.54296875,
+      "busiestGpuEnginePercent": 25,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 88.48,
+      "processes": 8,
+      "privateMiB": 586.40234375,
+      "summedWorkingSetMiB": 650.1953125,
+      "busiestGpuEnginePercent": 5,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 93.37,
+      "processes": 8,
+      "privateMiB": 586.83984375,
+      "summedWorkingSetMiB": 650.4375,
+      "busiestGpuEnginePercent": 26,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 98.39,
+      "processes": 8,
+      "privateMiB": 588.8359375,
+      "summedWorkingSetMiB": 652.11328125,
+      "busiestGpuEnginePercent": 25,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 103.44,
+      "processes": 8,
+      "privateMiB": 589.80078125,
+      "summedWorkingSetMiB": 652.484375,
+      "busiestGpuEnginePercent": 20,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 108.47,
+      "processes": 8,
+      "privateMiB": 589.0390625,
+      "summedWorkingSetMiB": 652.07421875,
+      "busiestGpuEnginePercent": 23,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 113.42,
+      "processes": 8,
+      "privateMiB": 589.30859375,
+      "summedWorkingSetMiB": 653.0859375,
+      "busiestGpuEnginePercent": 21,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 118.39,
+      "processes": 8,
+      "privateMiB": 591.3984375,
+      "summedWorkingSetMiB": 654.76953125,
+      "busiestGpuEnginePercent": 22,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 123.45,
+      "processes": 8,
+      "privateMiB": 590.3515625,
+      "summedWorkingSetMiB": 654.1875,
+      "busiestGpuEnginePercent": 22,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 128.45,
+      "processes": 8,
+      "privateMiB": 591.43359375,
+      "summedWorkingSetMiB": 655.35546875,
+      "busiestGpuEnginePercent": 23,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 133.42,
+      "processes": 8,
+      "privateMiB": 591.0390625,
+      "summedWorkingSetMiB": 654.9375,
+      "busiestGpuEnginePercent": 23,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 138.45,
+      "processes": 8,
+      "privateMiB": 590.671875,
+      "summedWorkingSetMiB": 654.68359375,
+      "busiestGpuEnginePercent": 25,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 143.5,
+      "processes": 8,
+      "privateMiB": 590.984375,
+      "summedWorkingSetMiB": 655.06640625,
+      "busiestGpuEnginePercent": 21,
+      "dedicatedGpuMiB": 276.13671875,
+      "sharedGpuMiB": 37.8046875,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    },
+    {
+      "seconds": 148.61,
+      "processes": 8,
+      "privateMiB": 591.6015625,
+      "summedWorkingSetMiB": 655.5390625,
+      "busiestGpuEnginePercent": 5,
+      "dedicatedGpuMiB": 276.07421875,
+      "sharedGpuMiB": 2.23828125,
+      "gpuEnginePids": 1,
+      "gpuMemoryPids": 1
+    }
+  ],
+  "frameIntervals": [
+    {
+      "elapsedMs": 0,
+      "frames": 0,
+      "fps": null,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 5032.3,
+      "frames": 151,
+      "fps": 30.01,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 10067,
+      "frames": 302,
+      "fps": 29.99,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 15100.2,
+      "frames": 453,
+      "fps": 30,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 20135.7,
+      "frames": 604,
+      "fps": 29.99,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 25171.8,
+      "frames": 755,
+      "fps": 29.98,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 30203.2,
+      "frames": 906,
+      "fps": 30.01,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 35239.1,
+      "frames": 1057,
+      "fps": 29.98,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 40277,
+      "frames": 1208,
+      "fps": 29.97,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 45312.5,
+      "frames": 1360,
+      "fps": 30.19,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 50356.3,
+      "frames": 1511,
+      "fps": 29.94,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 55391.5,
+      "frames": 1662,
+      "fps": 29.99,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 60421.5,
+      "frames": 1813,
+      "fps": 30.02,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 65497.6,
+      "frames": 1965,
+      "fps": 29.94,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 70539.9,
+      "frames": 2116,
+      "fps": 29.95,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 75573.5,
+      "frames": 2267,
+      "fps": 30,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 80618.3,
+      "frames": 2419,
+      "fps": 30.13,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 85675.9,
+      "frames": 2570,
+      "fps": 29.86,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 90714.6,
+      "frames": 2722,
+      "fps": 30.17,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 95746.1,
+      "frames": 2873,
+      "fps": 30.01,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 100792.8,
+      "frames": 3024,
+      "fps": 29.92,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 105833.8,
+      "frames": 3175,
+      "fps": 29.95,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 110872.8,
+      "frames": 3326,
+      "fps": 29.97,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 115906.9,
+      "frames": 3477,
+      "fps": 30,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 120943,
+      "frames": 3628,
+      "fps": 29.98,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 126011.7,
+      "frames": 3781,
+      "fps": 30.19,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 131040.4,
+      "frames": 3931,
+      "fps": 29.83,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 136073,
+      "frames": 4082,
+      "fps": 30,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 141106,
+      "frames": 4233,
+      "fps": 30,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 146148.6,
+      "frames": 4385,
+      "fps": 30.14,
+      "desktopGridHits": 0
+    },
+    {
+      "elapsedMs": 151185.4,
+      "frames": 4536,
+      "fps": 29.98,
+      "desktopGridHits": 0
+    }
+  ]
+}

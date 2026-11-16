@@ -398,8 +398,10 @@ sealed partial class DualWindowContext : ApplicationContext
         if(args.Length==1 && args[0]=="--game-lure-self-test")gameMode="lure-self-test";
         if(args.Length==1 && args[0]=="--game-multi-rod-self-test")gameMode="multi-rod-self-test";
         if(args.Length==1 && args[0]=="--game-bottom-self-test")gameMode="bottom-self-test";
-        if(args.Length==1 && args[0]=="--game-wallpaper-prepare-self-test")gameMode="wallpaper-prepare-self-test";
-        if(args.Length==1 && args[0]=="--game-wallpaper-self-test")gameMode="wallpaper-self-test";
+        bool gameWallpaperSoak=args.Length==2 && args[1]=="150" &&
+            (args[0]=="--game-wallpaper-self-test" || args[0]=="--game-wallpaper-prepare-self-test");
+        if((args.Length==1 || gameWallpaperSoak) && args[0]=="--game-wallpaper-prepare-self-test")gameMode="wallpaper-prepare-self-test";
+        if((args.Length==1 || gameWallpaperSoak) && args[0]=="--game-wallpaper-self-test")gameMode="wallpaper-self-test";
         if(args.Length==1 && args[0]=="--game-catch-self-test")gameMode="catch-self-test";
         if(args.Length==1 && args[0]=="--game-bread-bait-self-test")gameMode="bread-bait-self-test";
         if(args.Length==1 && args[0]=="--game-specimen-self-test")gameMode="specimen-self-test";
@@ -428,7 +430,7 @@ sealed partial class DualWindowContext : ApplicationContext
         if(manual && (args.Length!=2 || !Int32.TryParse(args[1],out manualSeconds) || manualSeconds<60 || manualSeconds>600))return 5;
         bool threeSceneSoak=args.Length>0 && args[0]=="--three-scene-soak-self-test";
         bool displaySoak=args.Length>0 && args[0]=="--display-soak-self-test";
-        int soak=0;bool soakRequested=threeSceneSoak || displaySoak || (args.Length>0 && args[0]=="--wallpaper-soak-self-test");
+        int soak=gameWallpaperSoak?150:0;bool soakRequested=threeSceneSoak || displaySoak || (args.Length>0 && args[0]=="--wallpaper-soak-self-test");
         if(soakRequested && (args.Length!=2 || !Int32.TryParse(args[1],out soak) || soak<120 || soak>7200))return 5;
         string sceneWatchdogCase=null;
         if(args.Length>0 && args[0]=="--three-watchdog-self-test"){

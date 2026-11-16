@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -16,6 +17,52 @@ sealed partial class DualWindowContext
     bool GameWallpaperSelfTest {get{return gameMode=="wallpaper-self-test" || GameWallpaperPrepareSelfTest;}}
     bool wallpaperInitialLayerAvailable,wallpaperPreparedLayer;
     int WallpaperMessageAttempts {get{return shellLayerRequest==null?0:shellLayerRequest.MessageAttempts;}}
+
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point screenPoint);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr window,uint flags);
+
+    static int DesktopGridHits(Rectangle display,DesktopCandidate candidate)
+    {
+        int hits=0;
+        for(int row=0;row<5;row++)for(int column=0;column<7;column++){
+            var point=new Point(display.Left+(2*column+1)*display.Width/14,display.Top+(2*row+1)*display.Height/10);
+            var top=GetAncestor(WindowFromPoint(point),2).ToInt64(); // GA_ROOT
+            if(top==candidate.IconHostHandle || top==candidate.WorkerHandle)hits++;
+        }
+        return hits;
+    }
+
+    async Task<bool> MeasureRiverWallpaper(ProbeWindow read)
+    {
+        const string script="(()=>{const r=window.dualProbe.visual.state();return {frames:r.frames,time:performance.now(),width:r.width,height:r.height,quality:r.quality,textures:r.loadedMaterials,running:r.running,visible:document.visibilityState==='visible'};})()";
+        var rows=new List<object>();var binding=desktopLeases[read];var display=Screen.PrimaryScreen.Bounds;
+        var started=DateTime.UtcNow;
+        double startMs=0,lastMs=0;long firstFrame=0,lastFrame=0,width=0,height=0;
+        await Wait(read,v=>Number(SceneProbeRenderer(v),"loadedMaterials")==3,10000);
+        for(int i=0;i<=soakSeconds/5;i++){
+            if(i>0)await Task.Delay(5000);
+            if(!WallpaperProbeCanRun())return false;
+            CheckDesktop(read);
+            Require(binding.IsActive && read.Visible && gameFishingWater.Id=="river-bend","River wallpaper lost its desktop attachment.");
+            var state=await SceneProbeScript(read,script);
+            Require((bool)state["running"] && (bool)state["visible"] && (string)state["quality"]=="medium" && Number(state,"textures")==3,"Visible standard-quality river renderer interrupted.");
+            double ms=Convert.ToDouble(state["time"]);long frames=Number(state,"frames");
+            if(i==0){
+                startMs=ms;firstFrame=frames;width=Number(state,"width");height=Number(state,"height");
+                File.WriteAllText(Path.Combine(root,"wallpaper-soak-start.txt"),started.ToString("o"),Encoding.UTF8);
+            }else Require(ms>lastMs && frames>lastFrame && width==Number(state,"width") && height==Number(state,"height"),"River wallpaper stalled or changed drawing resolution.");
+            rows.Add(new {elapsedMs=Math.Round(ms-startMs,1),frames=frames-firstFrame,
+                fps=i==0?(double?)null:Math.Round((frames-lastFrame)*1000.0/(ms-lastMs),2),
+                desktopGridHits=DesktopGridHits(display,binding.Candidate),utc=DateTime.UtcNow.ToString("o")});
+            lastMs=ms;lastFrame=frames;
+        }
+        var result=new {water="river-bend",quality="medium",monitorWidth=display.Width,monitorHeight=display.Height,
+            requestedSeconds=soakSeconds,sampleIntervalSeconds=5,desktopGridPoints=35,drawWidth=width,
+            drawHeight=height,samples=rows,elapsedMs=Math.Round(lastMs-startMs,1),
+            frames=lastFrame-firstFrame,meanFps=Math.Round((lastFrame-firstFrame)*1000.0/(lastMs-startMs),2)};
+        File.WriteAllText(Path.Combine(root,"wallpaper-soak-frames.json"),json.Serialize(result),Encoding.UTF8);
+        return true;
+    }
 
     void WallpaperProbeBlocked(string reason,EnvironmentSample sample,int nativeError=0)
     {
@@ -199,6 +246,7 @@ sealed partial class DualWindowContext
             await Wait(read,v=>PlayerProbeDrawn(v,river),15000);
             Revoke(pane);await Wait(pane,v=>v["lease"]==null);
             await Wait(read,v=>PlayerProbeDrawn(v,river) && v["lease"]==null);
+            if(soakSeconds>0 && !await MeasureRiverWallpaper(read))return;
             if(!WallpaperProbeCanRun())return;
             CheckDesktop(read);Require(gameFishingWater==river && GameShopJournalDigest()==digest && presentationChecks>0 && !presentationFailed &&
                 GetForegroundWindow()!=pane.Handle && GetForegroundWindow()!=read.Handle,"Travel or revocation changed the desktop lease, foreground or save.");

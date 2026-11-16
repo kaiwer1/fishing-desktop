@@ -1,5 +1,6 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait,[ValidateSet('yellow-catfish','black-rockfish','topmouth-culter','large-yellow-croaker')][string]$GameSpecies,[uint32]$GameSampleSeed,[switch]$GameFloatSkill,[switch]$GameShoreStations)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait,[ValidateSet('yellow-catfish','black-rockfish','topmouth-culter','large-yellow-croaker')][string]$GameSpecies,[uint32]$GameSampleSeed,[switch]$GameFloatSkill,[switch]$GameShoreStations,[switch]$GameWallpaperSoak)
 $ErrorActionPreference='Stop'
+if($GameWallpaperSoak){$GameWallpaper=$true}
 if($GameShoreStations){$GameWalk=$true}
 if($GameFloatSkill){
   if($GameBreadBait -or $GameSpecies -or $GameSpecimen){throw 'Run the float skill check on a separate profile.'}
@@ -82,6 +83,7 @@ $taskRun=$taskBuild.outputDirectory
 $taskProfile=Join-Path $taskRun 'private-profile'
 $taskKnown=@{}
 $taskProcess=$null;$taskRootIdentity=$null;$taskFailure=$null;$taskForcedCleanup=$false
+$taskMemoryJob=$null
 $taskCleanupConfirmed=$false;$taskObservedExit=$null
 
 function Read-DualIdentity($Metadata) {
@@ -149,6 +151,7 @@ try{
   if($GameMultiRod){$taskMode='--game-multi-rod-self-test'}
   if($GameBottom){$taskMode='--game-bottom-self-test'}
   if($GameWallpaper){$taskMode=if($GameWallpaperPrepare){'--game-wallpaper-prepare-self-test'}else{'--game-wallpaper-self-test'}}
+  if($GameWallpaperSoak){$taskMode+=" 150"}
   if($GameCatch){$taskMode='--game-catch-self-test'}
   if($GameSpecimen){$taskMode='--game-specimen-self-test'}
   if($GameAnglerLog){$taskMode='--game-angler-log-self-test'}
@@ -167,6 +170,14 @@ try{
   $taskTimer=[Diagnostics.Stopwatch]::StartNew()
   while(-not $taskProcess.WaitForExit(500)){
     Update-DualOwned | Out-Null
+    if($GameWallpaperSoak -and $null -eq $taskMemoryJob -and (Test-Path -LiteralPath (Join-Path $taskRun 'wallpaper-soak-start.txt'))){
+      $meter=Join-Path $PSScriptRoot '../lively-host/measure-gpu.ps1'
+      $taskMemoryJob=Start-Job -ArgumentList $meter,$taskBuild.executable,$taskRun -ScriptBlock {
+        param($meter,$hostExe,$folder)
+        $ErrorActionPreference='Stop'
+        & $meter -OwnerExecutable $hostExe -OutputDirectory $folder -Phase active -Seconds 140 -IntervalSeconds 5 | Out-Null
+      }
+    }
     $taskTimeout=if($Game){255}elseif($NativePolicy){105+$SoakSeconds+$(if($OperatorFullscreen){180}else{0})}else{75}
     if($taskTimer.Elapsed.TotalSeconds -gt $taskTimeout){throw 'Dual-window self-test timed out.'}
   }
@@ -241,6 +252,14 @@ try{
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Walking shutdown was not confirmed.'}
   }elseif($GameWallpaper){
     if($taskReport.blocked){throw ('Desktop environment did not permit wallpaper verification: '+$taskReport.reason)}
+    if($GameWallpaperSoak){
+      if($null -eq $taskMemoryJob){throw 'River sampling never started.'}
+      Wait-Job $taskMemoryJob -Timeout 20 | Out-Null
+      Receive-Job $taskMemoryJob -ErrorAction Stop | Out-Null
+      if($taskMemoryJob.State -ne 'Completed'){throw 'The scoped resource sampler did not complete.'}
+      & node (Join-Path $PSScriptRoot 'wallpaper-soak-report.mjs') $taskRun
+      if($LASTEXITCODE){throw 'River wallpaper frame/resource evidence mismatch.'}
+    }
     $taskDesktopReport=Get-Content -LiteralPath (Join-Path $taskRun 'desktop-summary.json') -Raw | ConvertFrom-Json
     if(-not $taskReport.passed -or $taskReport.checks.Count -ne 9 -or -not $taskReport.wallpaperAccepted -or -not $taskReport.ownedWindowBehindIcons -or -not $taskReport.observerReadOnly -or -not $taskReport.actualWebGL -or -not $taskReport.noActivateVerified -or ((-not $GameWallpaperPrepare) -and -not $taskReport.passiveExistingLayer) -or -not $taskReport.fullscreenPolicyApplied -or $taskReport.desktopIconInteractionTested -or $taskReport.desktopCompositionCaptured -or $taskReport.systemWallpaperPreferenceChanged){throw 'Wallpaper scene evidence mismatch.'}
     if($GameWallpaperPrepare -and (-not $taskReport.prepareEnabled -or $taskReport.messageAttempts -gt 1 -or $taskReport.requestCalls -gt 1)){throw 'Unexpected desktop layer preparation evidence.'}
@@ -369,6 +388,7 @@ try{
   }
 }catch{$taskFailure=$_}
 finally{
+  if($null -ne $taskMemoryJob){Remove-Job $taskMemoryJob -Force -ErrorAction SilentlyContinue}
   try{
     if($null -ne $taskProcess -and -not $taskProcess.HasExited){
       Update-DualOwned | Out-Null

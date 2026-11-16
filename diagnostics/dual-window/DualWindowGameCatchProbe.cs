@@ -149,8 +149,12 @@ sealed partial class DualWindowContext
             await Wait(pane,s=>runtime.Snapshot.Phase==FloatFightPhase.LandingEligible && !runtime.Snapshot.Reeling);
             checks.Add("wheel drag adjustment and R plus wheel speed adjustment affect the live fight and a held mouse button reels the fish into net range");
 
+            await Wait(pane,s=>SceneProbeRenderer(s)!=null && (bool)SceneProbeRenderer(s)["netVisible"] && !(bool)SceneProbeRenderer(s)["netLifting"]);
+            await WardrobeProbePhoto(pane,"landing-net-ready.png");
             await SceneProbeButton(pane,"scene-land");
             await GameWaitForFight(pane,FloatFightPhase.Landed,10000);
+            await Wait(pane,s=>SceneProbeRenderer(s)!=null && (bool)SceneProbeRenderer(s)["netLifting"]);
+            await WardrobeProbePhoto(pane,"landing-net-catch.png");
             var landed=game.Snapshot.State;
             Require(landed.Sequence==5 && landed.Session==null && landed.WalletMinor==9600 && landed.Creel.Count==1 && gameNaturalLandings==1,
                 "Net landing did not create exactly one owned fish before sale.");

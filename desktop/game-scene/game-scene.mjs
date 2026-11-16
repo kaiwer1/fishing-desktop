@@ -3,12 +3,13 @@ import { createFrameScheduler } from '../../src/frame-scheduler.js';
 import { renderSize } from '../../src/display.js';
 import { createLake } from './lake.mjs';
 import { createTackle } from './tackle.mjs';
+import { createLandingNet } from './landing-net.mjs';
 import { createWeatherLighting } from './weather-lighting.mjs';
 import { createRodStand, standAtWater } from './rod-stand.mjs';
 import { sampleFightFish } from './fight-fish.mjs';
 import { aimPoint, pickAim, projectAim, setBankCamera, waterGeometryKey } from './water-space.mjs';
 
-const viewNames=['water','cast','flight','bite','fight','bottom','bottomSelected','sleeveColor','stand','lureSelected','lure','weather'];
+const viewNames=['water','cast','flight','bite','fight','netCatch','netAllowed','bottom','bottomSelected','sleeveColor','stand','lureSelected','lure','weather'];
 
 // All inputs are read-only page projections. The renderer neither advances a
 // fishing clock nor posts input. Projection helpers use live CSS client pixels.
@@ -44,7 +45,7 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
     aimMarker.scale.setScalar(Math.min(2.2,Math.max(1,camera.position.distanceTo(aimMarker.position)/19)));
     aimMarker.visible=true;
   }
-  let lake=null,stand=null,key=null,water=null,disposed=false,error=null,active=false;
+  let lake=null,stand=null,net=null,key=null,water=null,disposed=false,error=null,active=false;
   let width=0,height=0,aspect=0,frames=0,elapsed=0,lastFlight=null,pendingImpact=null,rodPhase='idle',fish=null;
   let viewYaw=0,sceneBuilds=0;
   const views={water:null,cast:null,flight:null,bite:null,fight:null,bottom:null};
@@ -53,6 +54,8 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
     if(pendingImpact){lake.impact(pendingImpact,elapsed);pendingImpact=null;}
     lake.animate(elapsed);
     rodPhase=tackle.animate(views,elapsed,dt,viewYaw,camera.fov);
+    if(!net && views.netAllowed && views.fight?.phase==='landing-eligible'){net=createLandingNet();scene.add(net.group);}
+    net?.update(views,dt,viewYaw);
     lake.lure(views.flight?.phase==='waiting'&&tackle.spoon.visible&&tackle.group.visible?tackle.spoon:null);
     renderer.render(scene,camera);frames++;
   },onError(){fault('webgl-render-failed');}});
@@ -88,6 +91,7 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
       return;
     }
     if(lake)lake.dispose();
+    if(net){scene.remove(net.group);net.dispose();net=null;}
     if(stand){stand.dispose();stand=null;}tackle.group.visible=true;
     lake=null;water=null;key=null;aspect=0;pendingImpact=null;lastFlight=null;fish=null;hideAim();
     if(nextKey){
@@ -127,6 +131,7 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
     return {ready:Boolean(lake&&!disposed&&!error),active,running:scheduler.getState().running,frames,width,height,quality,frameLimit:frameLimits[quality],
       triangles:renderer.info.render.triangles,calls:renderer.info.render.calls,geometryVersion:water?.geometryVersion??null,rodPhase,
       weather:lighting.state(),shoreKind:lake?.kind??null,aimVisible:aimMarker.visible,sleeveColor:tackle.sleeveColor(),fightFishVisible:Boolean(fish),
+      netVisible:net?.group.visible??false,netLifting:net?.lifting()??false,
       sceneBuilds,mirrorUpdates:lake?.mirrorUpdates()??0,loadedMaterials:lake?.loadedMaterials()??0,cameraXmm:lake&&aspect>0?Math.round(camera.position.x*1000):null,
       rodType:lake&&tackle.group.visible?tackle.rodType():null,rodAnchorXmm:lake?tackle.anchorXmm():null,
       bottomTipPermille:lake?tackle.bottomTipPermille():null,stand:stand?.state()??null,
@@ -144,7 +149,7 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
   doc?.defaultView?.addEventListener('blur',hideAim);
   return {update,resize,state,
     setQuality(value){if(!disposed&&!error&&Object.hasOwn(frameLimits,value)&&value!==quality){quality=value;resize();}},
-    setActive(value){if(disposed||error)return;active=value===true;if(!active)hideAim();resize();},
+    setActive(value){if(disposed||error)return;active=value===true;if(!active){hideAim();net?.clear();}resize();},
     pickAim(x,y){if(!water||disposed||error||!width||!height)return null;return pickAim(camera,water,canvas.getBoundingClientRect(),x,y);},
     projectAim(u,v){if(!water||disposed||error||!width||!height)return null;return projectAim(camera,water,canvas.getBoundingClientRect(),u,v);},
     dispose(){
@@ -154,7 +159,7 @@ export function createGameScene(canvas,{onFault,quality='medium'}={}) {
       for(const name of ['pointerleave','pointerdown','pointercancel'])canvas.removeEventListener(name,hideAim);
       aimMarker.geometry.dispose();aimMarker.material.dispose();
       doc?.removeEventListener('visibilitychange',sync);doc?.defaultView?.removeEventListener('blur',hideAim);
-      lake?.dispose();lake=null;stand?.dispose();stand=null;tackle.dispose();renderer.dispose();scene.clear();
+      lake?.dispose();lake=null;stand?.dispose();stand=null;net?.dispose();net=null;tackle.dispose();renderer.dispose();scene.clear();
     }
   };
 }

@@ -59,6 +59,7 @@ const $ = id => document.getElementById(id);
 installFishIllustrations(document, $('fish-symbol-bank'));
 const creel = createCreelPanel(document,specimenButton);
 let catchTimer = null;
+let netCatch = null;
 let specimen = null;
 const send = message => window.chrome.webview.postMessage({ ...message, documentId });
 const landscape = () => innerWidth > innerHeight;
@@ -302,6 +303,7 @@ function sceneProjection() {
     elapsedMilliseconds: castState.elapsedMilliseconds, inputSequence: castState.inputSequence } : null;
   const canAim = canPrepare() && bankWalk.canCast(water) && !castInput.state() && !document.hidden && !visualPaused && hostPolicy?.canRun === true;
   return { water, cast, flight: current(flightView.state()), bite: current(biteView.state()), fight: current(fightView.state()),
+    netCatch,netAllowed:!readOnly && canControl() && !snapshot?.MenuOpen && !document.hidden && document.hasFocus() && !visualPaused && hostPolicy?.canRun===true,
     bottomSelected:bottomMethod(),bottom:bottom ? { ...bottom, lineEnd:bottomLineEnd && { ...bottomLineEnd } } : null,
     weather:currentConditions(),lureSelected:lureMethod(),lure:currentLure(),canAim,stand:bankKit.selected ? stand.state() : null,bank:bankWalk.forWater(water),sleeveColor:wardrobe.sleeveColor };
 }
@@ -426,11 +428,12 @@ function decimal(value, scale = 2) {
 }
 function hideCatch() {
   if (catchTimer !== null) clearTimeout(catchTimer);
-  catchTimer = null; $('catch-card').hidden = true;
+  catchTimer = null; netCatch = null; $('catch-card').hidden = true;
 }
-function showCatch(caught) {
+function showCatch(caught,session) {
   if (!caught || !canControl() || snapshot.MenuOpen || document.hidden) return;
   hideCatch(); const plate = fishFigure(document,caught.speciesKey);
+  netCatch = {...caught,session,waterId:waterView.state()?.waterId};
   $('catch-art').replaceChildren(...(plate ? [plate] : [])); $('catch-name').textContent = fishName(caught.speciesKey);
   $('catch-mass').textContent = `${decimal(caught.massMg,6).replace(/\.?0+$/, '')} kg`;
   $('catch-card').hidden = false; catchTimer = setTimeout(hideCatch, 6500);
@@ -1032,7 +1035,8 @@ window.chrome.webview.addEventListener('message', event => {
       send({ kind: 'revoke', lease: m.lease, cancellationEpoch: authority.state().epoch, transportId: crypto.randomUUID(), reason: 'late-grant' });
   }
   if (m.kind === 'game-snapshot' && Number.isSafeInteger(m.revision) && m.revision > revision) {
-    const caught = newCreelCatch(snapshot, m.snapshot); snapshot = m.snapshot; revision = m.revision; showCatch(caught);
+    const previous = snapshot; snapshot = m.snapshot; revision = m.revision;
+    showCatch(newCreelCatch(previous,snapshot),previous?.SessionId);
   }
   if (m.kind === 'game-reply') {
     if(studyRequest?.transportId===m.transportId && m.code!=='steady-strike-learned')studyRequest=null;

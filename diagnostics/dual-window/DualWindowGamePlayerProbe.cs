@@ -151,6 +151,7 @@ sealed partial class DualWindowContext
             await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
             checks.Add("the standalone player starts at the lake in a single hidden interaction pane with all eleven sale rules");
             var qualityModes=await PlayerProbeQuality(pane);
+            var backpack=await GamePlayerBag(pane,lake);
 
             await SceneProbeButton(pane,"scene-menu");
             await Wait(pane,s=>Field(s,"snapshot")!=null&&(bool)Field(s,"snapshot")["MenuOpen"]);
@@ -165,7 +166,7 @@ sealed partial class DualWindowContext
             await WardrobeProbePhoto(pane,"camp-home.png");
             await SceneProbeButton(pane,"menu");
             await Wait(pane,s=>PlayerProbeDrawn(s,lake));
-            checks.Add("real camp tiles and side navigation isolate the three-water map and food shop, and return to the same bank with no purchase");
+            checks.Add("I opens six owned equipment cards in two landscape sizes; selecting, filtering, searching and browsing camp leave the journal unchanged");
 
             var materials=new Dictionary<string,int>();
             await PlayerProbeTravel(pane,lease,river);
@@ -226,7 +227,7 @@ sealed partial class DualWindowContext
             File.WriteAllText(Path.Combine(root,"webview-summary.json"),json.Serialize(new {
                 passed=true,checks=checks.ToArray(),gameLoaded=true,playerWindowConnected=true,singleInteractionWindow=true,
                 observerOpened=false,desktopLayer=false,personalSaveRead=false,playerPreviewCount=3,distinctScenery=true,loadedMaterials=materials,
-                mapCount=3,speciesCount=final.Rules.Species.Count,coastalCast=true,reloadRetainedStation=true,qualityRetained=true,qualityModes,
+                mapCount=3,speciesCount=final.Rules.Species.Count,coastalCast=true,reloadRetainedStation=true,qualityRetained=true,qualityModes,backpack,
                 devToolsMouseInput=true,nativePhysicalMouse=false,controlledCharge=false,realHostFlight=true,
                 schemaVersion=final.SchemaVersion,sequence=final.Sequence,value=final.WalletMinor,baitCount=final.BaitCount,stamina=final.Stamina,
                 equipmentInstances=final.Equipment.Instances.Count,remainingLineMm=final.Equipment.RemainingLineMm,lostLineMm=final.Equipment.LostLineMm,

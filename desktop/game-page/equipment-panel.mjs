@@ -1,3 +1,5 @@
+import {TackleBagPanel} from './tackle-bag-panel.mjs';
+
 const slotNames = { rod: '鱼竿', reel: '渔轮', hook: '鱼钩', bobber: '浮漂', sinker: '沉子' };
 const names = { 'starter-rod': '基础浮漂竿', 'starter-reel': '基础纺车轮', 'nylon-018': '0.18 毫米尼龙线', 'single-hook': '单钩', 'float-3g': '基础浮漂', 'sinker-2_5g': '2.5 克沉子' };
 const reasons = { 'control-required': '开启交互后可以换件。', 'menu-required': '打开菜单后可以换件。', 'session-busy': '请先收回这一竿或处理当前鱼。',
@@ -16,8 +18,13 @@ const archivedMeters = mm => {
 // All displayed ownership comes from the validated host projection. This
 // panel sends existing-instance choices only; it never creates equipment.
 export class EquipmentPanel {
-  #view; #input; #snapshot; #changed; #canAct; #signature = ''; #chosen = new Set();
+  #bag; #view; #input; #snapshot; #changed; #canAct; #signature = ''; #chosen = new Set();
   constructor({ view, input, snapshot, changed, canAct = () => true }) {
+    this.#bag=new TackleBagPanel(document);
+    document.getElementById('bag-assembly-jump').addEventListener('click',()=>{
+      document.getElementById('equipment-assembly').open=true;
+      document.getElementById('equipment-assembly-label').focus();
+    });
     this.#view = view; this.#input = input; this.#snapshot = snapshot; this.#changed = changed; this.#canAct = canAct;
     const container = document.getElementById('equipment-slots');
     for (const [slot, label] of Object.entries(slotNames)) {
@@ -53,6 +60,8 @@ export class EquipmentPanel {
   render() {
     const $ = id => document.getElementById(id), state = this.#view.state(), input = this.#input.state();
     $('equipment').hidden = !this.#snapshot()?.MenuOpen;
+    if(!$('equipment').hidden)this.#bag.render(this.#view.bag);
+    $('bag-assembly-jump').hidden=$('equipment-assembly').hidden=state?.schemaVersion!==3;
     $('equipment-status').textContent = !state ? '等待装备信息' : state.schemaVersion !== 3 ? reasons[state.reason] ?? '此存档尚未支持装备编辑。' :
       input.retry ? '上次装备操作确认未写入，请重试原操作或取消。' : input.inflight || input.awaitingState ? '正在确认装备变更…' : state.available ? '装配会立即保存；卸下的部件回到背包。' : reasons[state.reason] ?? '当前不能换件。';
     const items = state?.items ?? [], issues = state?.issues ?? [], equipped = slot => items.find(item => item.location === 'rig-slot' && item.slot === slot);

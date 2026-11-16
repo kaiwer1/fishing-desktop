@@ -16,7 +16,7 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'view.html'),(Join-Path $PSScrip
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'manual-input-panel.mjs'),(Join-Path $PSScriptRoot '../input-window/input-session.mjs'),(Join-Path $PSScriptRoot '../input-window/manual-evidence.mjs') -Destination $taskPage
 if($Game){
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../../desktop/game-page/camp.css') -Destination $taskPage
-  foreach($taskName in @('game.html','page.mjs','cast-input.mjs','flight-view.mjs','bite-view.mjs','fight-view.mjs','shop-view.mjs','equipment-view.mjs','equipment-panel.mjs','spares-view.mjs','spares-panel.mjs','camp-view.mjs','camp-panel.mjs','water-aim.mjs','water-view.mjs','scene-presentation.mjs','spot-menu.mjs','wardrobe.mjs','fish-illustration.mjs','creel-panel.mjs','bank-walk.mjs','stand-view.mjs','stand-bell.mjs','bank-kit.mjs','water-conditions.mjs','angler-log.mjs','specimen-view.mjs','lure-view.mjs','lure-controls.mjs','bottom-view.mjs','bottom-controls.mjs')){
+  foreach($taskName in @('game.html','page.mjs','cast-input.mjs','flight-view.mjs','bite-view.mjs','fight-view.mjs','shop-view.mjs','equipment-view.mjs','equipment-panel.mjs','tackle-bag.mjs','tackle-bag-panel.mjs','tackle-illustration.mjs','spares-view.mjs','spares-panel.mjs','camp-view.mjs','camp-panel.mjs','water-aim.mjs','water-view.mjs','scene-presentation.mjs','spot-menu.mjs','wardrobe.mjs','fish-illustration.mjs','creel-panel.mjs','bank-walk.mjs','stand-view.mjs','stand-bell.mjs','bank-kit.mjs','water-conditions.mjs','angler-log.mjs','specimen-view.mjs','lure-view.mjs','lure-controls.mjs','bottom-view.mjs','bottom-controls.mjs')){
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot ('../../desktop/game-page/'+$taskName)) -Destination $taskPage
   }
 }

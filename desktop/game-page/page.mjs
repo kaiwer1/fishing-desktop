@@ -764,7 +764,7 @@ function areaAvailable(area) {
     case 'map': return Boolean(spotMenu.activeId);
     case 'creel': return Boolean(snapshot?.HasConfirmedState);
     case 'log': return !snapshot?.MenuOpen || (anglerLog.sequence !== null && String(anglerLog.sequence) === snapshot.Sequence);
-    case 'gear': return equipmentView.state()?.schemaVersion >= 3;
+    case 'gear': return equipmentView.state()?.schemaVersion >= 3 || Boolean(equipmentView.bag?.length);
     case 'tackle':
     case 'food': return shopView.state()?.schemaVersion >= 2;
     case 'clothes': return wardrobe.state()?.available === true;

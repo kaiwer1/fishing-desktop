@@ -89,6 +89,28 @@ test('page initializes after empty placeholders with current equipment selected 
   assert.equal(f.nodes.get('equipment-move-line').disabled, true); assert.equal(f.messages.length, 0);
 });
 
+test('bag browsing filters by type and Chinese name, keeps focus across unchanged state, and never edits the rig',async()=>{
+  const f=await pageFixture(), grid=f.nodes.get('bag-items'), search=f.nodes.get('bag-search'),detail=f.nodes.get('bag-detail');
+  const cards=()=>grid.children.map(n=>n.dataset.bagItem);
+  const filter=kind=>f.nodes.get('bag-types').children.find(n=>n.dataset.kind===kind).dispatch('click');
+  const query=word=>{search.value=word;search.dispatch('input');};
+  assert.equal(cards().length,7);assert.equal(cards()[0],id(1));
+  f.nodes.get('bag-assembly-jump').dispatch('click');assert.equal(f.nodes.get('equipment-assembly').open,true);
+  assert.equal(document.activeElement,f.nodes.get('equipment-assembly-label'));
+  filter('line');assert.deepEqual(cards(),[id(3)]);
+  assert.match(detail.children.at(-1).children.map(n=>n.textContent).join(' '),/32 米/);
+  const current=grid.children[0];current.focus();f.broadcast();
+  assert.equal(grid.children[0],current);assert.equal(document.activeElement,current);
+  filter('all');query('基础浮漂竿');assert.deepEqual(cards(),[id(1),id(7)]);
+  grid.children[1].dispatch('click');assert.equal(grid.children[1].attributes['aria-pressed'],'true');
+  assert.match(detail.children.at(-1).children.map(n=>n.textContent).join(' '),/背包/);
+  query('不存在的名字');assert.deepEqual(cards(),[]);assert.equal(detail.hidden,true);
+  query('');assert.equal(cards().length,7);filter('line');
+  f.equipment.items=f.equipment.items.map(row=>row.id===id(3)?{...row,location:'lost',reelId:null,remainingLineMm:0}:row);f.advance();f.broadcast();
+  assert.deepEqual(cards(),[]);assert.equal(detail.hidden,true);
+  assert.equal(f.messages.length,0);
+});
+
 const spots = [
   { id: 'development-still-water', name: '静水湾', region: '江南', description: '湖湾芦苇', species: ['鲫鱼','鲤鱼'] },
   { id: 'river-bend', name: '江湾', region: '长江', description: '江岸回水', species: ['草鱼','鳊鱼'] },

@@ -45,7 +45,7 @@ sealed partial class DualWindowContext
     {
         var before=game.Snapshot.State;string digest=GameShopJournalDigest();
         string id=fish.Id.ToString("D");
-        Require(GameSpecimenSelfTest&&before.Creel.Count==1&&before.Creel[0].Id==fish.Id&&before.Session==null,
+        Require((GameSpecimenSelfTest||catalogSpecies!=null)&&before.Creel.Count==1&&before.Creel[0].Id==fish.Id&&before.Session==null,
             "Inspection requires the fish from the confirmed landing.");
         var opener=await SceneProbeScript(pane,@"(()=>{
             const b=document.querySelector('#creel button[data-specimen-id]');if(!b)return null;

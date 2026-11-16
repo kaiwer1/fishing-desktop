@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait,[ValidateSet('yellow-catfish','black-rockfish')][string]$GameSpecies,[uint32]$GameSampleSeed,[switch]$GameFloatSkill,[switch]$GameShoreStations)
+param([Parameter(Mandatory=$true)][string]$SdkDirectory,[Parameter(Mandatory=$true)][string]$OutputDirectory,[switch]$DesktopLayer,[switch]$VisibleDesktop,[switch]$HostPolicy,[switch]$NativePolicy,[switch]$RendererPolicy,[switch]$WallpaperPolicy,[switch]$DisplayPolicy,[ValidateRange(0,7200)][int]$SoakSeconds=0,[switch]$StartupPreparation,[switch]$OperatorFullscreen,[switch]$DisplaySoak,[switch]$ThreeScene,[switch]$Game,[ValidateSet('known-close','after-flush','after-prefix')][string]$GameFailureCase,[switch]$GameSpares,[switch]$GameCamp,[switch]$GameLineBreak,[switch]$GameWater,[switch]$GameScene,[switch]$GameAtlas,[switch]$GamePlayer,[switch]$GameWardrobe,[switch]$GameCatch,[switch]$GameWallpaper,[switch]$GameWallpaperPrepare,[switch]$GameWalk,[switch]$GameBottom,[switch]$GameMultiRod,[switch]$GameLure,[switch]$GameEcology,[switch]$GameSpecimen,[switch]$GameAnglerLog,[switch]$GameBreadBait,[ValidateSet('yellow-catfish','black-rockfish','topmouth-culter','large-yellow-croaker')][string]$GameSpecies,[uint32]$GameSampleSeed,[switch]$GameFloatSkill,[switch]$GameShoreStations)
 $ErrorActionPreference='Stop'
 if($GameShoreStations){$GameWalk=$true}
 if($GameFloatSkill){
@@ -13,7 +13,12 @@ if($GameSpecies){
     # Earn every result in an isolated save. Weather progresses on the live
     # clock, so a nearby seed can draw another eligible fish. Retry only after
     # validating its complete cast, inspection, sale and reopened journal.
-    $catalogSeeds=if($GameSpecies -eq 'yellow-catfish'){@(1188997,584645,304332)}else{@(779167,39524,212325,333982,760291,43)}
+    $catalogSeeds=switch($GameSpecies){
+      'topmouth-culter' {1}
+      'large-yellow-croaker' {1,25760,104242,165027,170223}
+      'yellow-catfish' {1188997,584645,304332}
+      'black-rockfish' {779167,39524,212325,333982,760291,43}
+    }
     $sampleArguments=@{}+$PSBoundParameters
     foreach($candidateSeed in $catalogSeeds){
       $sampleArguments['GameSampleSeed']=$candidateSeed
@@ -22,7 +27,11 @@ if($GameSpecies){
     }
     throw "The natural catches from the selected location did not include $GameSpecies."
   }
-  $GameSpecimen=$true;$GameAnglerLog=$true
+  if($GameSpecies -eq 'topmouth-culter'){
+    if($GameSampleSeed -ne 1){throw 'The spoon probe uses its default first private sample.'}
+    $GameLure=$true
+  }elseif($GameSpecies -eq 'large-yellow-croaker'){$GameBottom=$true}
+  else{$GameSpecimen=$true;$GameAnglerLog=$true}
 }
 if($GameSpecimen -or $GameAnglerLog -or $GameBreadBait){$GameCatch=$true}
 if($GameLineBreak -and ($GameSpares -or $GameCamp)){throw 'Run line-break integration separately.'}
@@ -166,6 +175,18 @@ try{
   if($taskObservedExit -ne $taskExpectedExit){throw ('Dual-window self-test exited '+$taskObservedExit+'.')}
   $taskReport=Get-Content -LiteralPath (Join-Path $taskRun 'webview-summary.json') -Raw | ConvertFrom-Json
   $taskExpectedChecks=if($Game){60}elseif($ThreeScene){if($SoakSeconds -gt 0){31}else{30}}elseif($DisplaySoak){29}elseif($OperatorFullscreen){34}elseif($StartupPreparation){16}elseif($DisplayPolicy){28}elseif($SoakSeconds -gt 0){34}elseif($WallpaperPolicy){33}elseif($RendererPolicy){21}elseif($NativePolicy){26}elseif($HostPolicy){17}elseif($VisibleDesktop){16}elseif($DesktopLayer){15}else{11}
+  $methodChecks=0
+  if($GameSpecies -and ($GameLure -or $GameBottom)){
+    $methodChecks=5
+    $targetWater=if($GameLure){'river-bend'}else{'coastal-bay'}
+    if($taskReport.waterId -ne $targetWater -or $taskReport.habitat -notin @('shallow','deep') -or $taskReport.catalogSpecies -ne $GameSpecies -or $taskReport.catchSeed -ne $GameSampleSeed){throw 'The method-specific cast did not use its expected water and private seed.'}
+    if(-not $taskReport.specimenInspectionVerified -or $taskReport.specimen.speciesId -ne $taskReport.speciesId -or $taskReport.specimen.massMg -ne $taskReport.massMg -or $taskReport.specimen.changedPixels -lt 12 -or -not $taskReport.specimen.readOnlyJournalVerified){throw 'The landed fish was not rendered and rotated.'}
+    if(-not $taskReport.anglerLog.profileReopened -or $taskReport.anglerLog.speciesId -ne $taskReport.speciesId -or $taskReport.anglerLog.saleMinor -ne $taskReport.saleValueMinor -or $taskReport.anglerLog.maximumMassMg -ne $taskReport.massMg){throw 'The reopened log disagrees with the landed fish or its sale.'}
+    foreach($photo in 'creel-specimen.png','angler-log.png'){
+      if(-not(Test-Path -LiteralPath (Join-Path $taskRun $photo) -PathType Leaf)){throw "Missing landed fish evidence: $photo"}
+    }
+    if($taskReport.speciesId -ne $GameSpecies){$catalogMiss="Sample $GameSampleSeed naturally landed $($taskReport.speciesId) at $targetWater."}
+  }
   if($GameFailureCase){
     $taskReopened=if($GameFailureCase -eq 'known-close'){'interrupted-recovery'}elseif($GameFailureCase -eq 'after-flush'){if($GameLineBreak){'confirmed-line-break'}else{'confirmed-unhook'}}else{'corrupt-rejected'}
     if($GameLineBreak -and (-not $taskReport.lineBreakConnected -or $taskReport.controlledSlackSetup)){throw 'Physical loss failure scope mismatch.'}
@@ -181,7 +202,7 @@ try{
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session'){throw 'Ecology shutdown mismatch.'}
   }elseif($GameLure){
-    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 8 -or -not $taskReport.lureFishingConnected -or -not $taskReport.closedJournalVerified -or -not $taskReport.naturalLureAttack -or -not $taskReport.manualReel -or -not $taskReport.shoreRetrieveVerified -or -not $taskReport.saleVerified -or -not $taskReport.originalFloatGearUnchanged -or $taskReport.controlledFishFacts -or $taskReport.personalSaveRead){throw 'Lure fishing integration evidence mismatch.'}
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne (8+$methodChecks) -or -not $taskReport.lureFishingConnected -or -not $taskReport.closedJournalVerified -or -not $taskReport.naturalLureAttack -or -not $taskReport.manualReel -or -not $taskReport.shoreRetrieveVerified -or -not $taskReport.saleVerified -or -not $taskReport.originalFloatGearUnchanged -or $taskReport.controlledFishFacts -or $taskReport.personalSaveRead){throw 'Lure fishing integration evidence mismatch.'}
     if($taskReport.sequence -ne 9 -or $taskReport.value -ne (4000+$taskReport.saleValueMinor) -or $taskReport.baitCount -ne 0 -or $taskReport.stamina -ne 96 -or $taskReport.lureIds -ne 6 -or $taskReport.lineMm -ne 50000 -or $taskReport.creelCount -ne 0 -or $taskReport.gameFlightEmissions -ne 2 -or $taskReport.gameHookedEmissions -ne 1 -or $taskReport.gameNaturalLandings -ne 1){throw 'Lure transaction or catch evidence mismatch.'}
     foreach($photo in 'lure-retrieve.png','lure-catch.png'){if(-not (Test-Path -LiteralPath (Join-Path $taskRun $photo) -PathType Leaf)){throw 'Lure player screenshot missing.'}}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
@@ -193,7 +214,7 @@ try{
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session'){throw 'Multi-rod shutdown mismatch.'}
   }elseif($GameBottom){
-    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 10 -or -not $taskReport.gameLoaded -or -not $taskReport.bottomFishingConnected -or -not $taskReport.realMouseCast -or -not $taskReport.naturalBottomBite -or -not $taskReport.realMouseStrike -or -not $taskReport.manualReel -or -not $taskReport.netPurchased -or -not $taskReport.saleVerified -or $taskReport.controlledFishFacts -or $taskReport.controlledFightTime -or $taskReport.personalSaveRead -or $taskReport.desktopLayer){throw 'Bottom fishing input or natural catch evidence mismatch.'}
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne (10+$methodChecks) -or -not $taskReport.gameLoaded -or -not $taskReport.bottomFishingConnected -or -not $taskReport.realMouseCast -or -not $taskReport.naturalBottomBite -or -not $taskReport.realMouseStrike -or -not $taskReport.manualReel -or -not $taskReport.netPurchased -or -not $taskReport.saleVerified -or $taskReport.controlledFishFacts -or $taskReport.controlledFightTime -or $taskReport.personalSaveRead -or $taskReport.desktopLayer){throw 'Bottom fishing input or natural catch evidence mismatch.'}
     if(-not $taskReport.closedJournalVerified -or -not $taskReport.originalFloatGearUnchanged -or $taskReport.schemaVersion -ne 3 -or $taskReport.sequence -ne 7 -or $taskReport.ownedBottomIds -ne 7 -or $taskReport.remainingBottomLineMm -ne 50000 -or $taskReport.equipmentInstances -ne 6 -or $taskReport.remainingLineMm -ne 50000){throw 'Bottom kit or original float equipment changed on journal replay.'}
     if($taskReport.kitPriceMinor -ne 6400 -or $taskReport.netPriceMinor -ne 2400 -or $taskReport.saleValueMinor -le 0 -or $taskReport.value -ne (3200+$taskReport.saleValueMinor) -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.creelCount -ne 0 -or $taskReport.gameFlightEmissions -ne 1 -or $taskReport.gameHookedEmissions -ne 1 -or $taskReport.gameNaturalLandings -ne 1){throw 'Bottom sale, cast costs or catch counts differ from the settled journal.'}
     foreach($image in 'bottom-settled.png','bottom-catch.png'){
@@ -258,12 +279,12 @@ try{
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Wardrobe shutdown was not confirmed.'}
   }elseif($GamePlayer){
     if(-not $taskReport.passed -or $taskReport.checks.Count -ne 9 -or -not $taskReport.playerWindowConnected -or -not $taskReport.singleInteractionWindow -or -not $taskReport.distinctScenery -or -not $taskReport.coastalCast -or -not $taskReport.reloadRetainedStation -or $taskReport.observerOpened -or $taskReport.personalSaveRead -or $taskReport.desktopLayer -or $taskReport.controlledCharge){throw 'Player window scope mismatch.'}
-    if($taskReport.sequence -ne 3 -or $taskReport.value -ne 12000 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.mapCount -ne 3 -or $taskReport.speciesCount -ne 9 -or $taskReport.playerPreviewCount -ne 3 -or $taskReport.gameFlightEmissions -ne 1){throw 'Player window resources mismatch.'}
+    if($taskReport.sequence -ne 3 -or $taskReport.value -ne 12000 -or $taskReport.baitCount -ne 11 -or $taskReport.stamina -ne 98 -or $taskReport.mapCount -ne 3 -or $taskReport.speciesCount -ne 11 -or $taskReport.playerPreviewCount -ne 3 -or $taskReport.gameFlightEmissions -ne 1){throw 'Player window resources mismatch.'}
     foreach($image in 'player-lake.png','player-river.png','player-coast.png','camp-home.png','camp-map.png'){if(-not (Test-Path -LiteralPath (Join-Path $taskRun $image) -PathType Leaf)){throw 'Player or camp capture missing.'}}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Player window shutdown was not confirmed.'}
   }elseif($GameAtlas){
-    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 10 -or -not $taskReport.atlasConnected -or $taskReport.mapCount -ne 3 -or $taskReport.speciesCount -ne 9 -or $taskReport.actualPoolDraws -ne 2 -or $taskReport.riverPool -ne 'shallow' -or $taskReport.coastalPool -ne 'deep' -or -not $taskReport.returnedToStartingWater -or $taskReport.spotPersisted -or $taskReport.controlledCharge){throw 'Atlas travel and habitat evidence mismatch.'}
+    if(-not $taskReport.passed -or $taskReport.checks.Count -ne 10 -or -not $taskReport.atlasConnected -or $taskReport.mapCount -ne 3 -or $taskReport.speciesCount -ne 11 -or $taskReport.actualPoolDraws -ne 2 -or $taskReport.riverPool -ne 'shallow' -or $taskReport.coastalPool -ne 'deep' -or -not $taskReport.returnedToStartingWater -or $taskReport.spotPersisted -or $taskReport.controlledCharge){throw 'Atlas travel and habitat evidence mismatch.'}
     if($taskReport.sequence -ne 5 -or $taskReport.value -ne 12000 -or $taskReport.baitCount -ne 10 -or $taskReport.stamina -ne 96 -or $taskReport.gameFlightEmissions -ne 2 -or $taskReport.remainingLineMm -ne 50000 -or -not (Test-Path -LiteralPath (Join-Path $taskRun 'game-atlas-panel.png') -PathType Leaf)){throw 'Atlas accounting or map screen missing.'}
     $taskGameExit=Get-Content -LiteralPath (Join-Path $taskRun 'game-shutdown.json') -Raw | ConvertFrom-Json
     if(-not $taskGameExit.normalExit -or $taskGameExit.code -ne 'no-active-session' -or (Test-Path -LiteralPath (Join-Path $taskRun 'dual-window-error.txt'))){throw 'Atlas shutdown was not confirmed.'}

@@ -404,8 +404,12 @@ sealed partial class DualWindowContext : ApplicationContext
         if(args.Length==1 && args[0]=="--game-bread-bait-self-test")gameMode="bread-bait-self-test";
         if(args.Length==1 && args[0]=="--game-specimen-self-test")gameMode="specimen-self-test";
         if(args.Length==3 && args[0]=="--game-species-self-test"){
-            if((args[1]!="yellow-catfish"&&args[1]!="black-rockfish")||!UInt32.TryParse(args[2],out catchSeed))return 5;
-            gameMode="specimen-self-test";catalogSpecies=args[1];
+            if(!UInt32.TryParse(args[2],out catchSeed))return 5;
+            catalogSpecies=args[1];
+            if(catalogSpecies=="yellow-catfish"||catalogSpecies=="black-rockfish")gameMode="specimen-self-test";
+            else if(catalogSpecies=="topmouth-culter"&&catchSeed==1)gameMode="lure-self-test";
+            else if(catalogSpecies=="large-yellow-croaker")gameMode="bottom-self-test";
+            else return 5;
         }
         if(args.Length==1 && args[0]=="--game-angler-log-self-test")gameMode="angler-log-self-test";
         if(args.Length==1 && args[0]=="--game-float-skill-self-test")gameMode="float-skill-self-test";

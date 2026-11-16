@@ -10,6 +10,8 @@ sealed partial class DualWindowContext
     bool GameFloatSkillSelfTest {get{return gameMode=="float-skill-self-test";}}
     bool GameAnglerLogSelfTest {get{return gameMode=="angler-log-self-test"||catalogSpecies!=null||GameFloatSkillSelfTest;}}
     bool gameLogReopening;
+    string AnglerProbeMethod {get{return GameLureSelfTest?"lure":GameBottomSelfTest?"bottom":"float";}}
+    int AnglerProbeCasts {get{return GameLureSelfTest?2:1;}}
 
     static long AnglerProbeXp(FloatFish fish)
     {
@@ -25,13 +27,13 @@ sealed partial class DualWindowContext
         await SceneProbeButton(pane,"camp-go-log");
         var shown=await Wait(pane,p=>(bool)p["anglerLogOpen"]&&Number(Field(p,"anglerLogState"),"sequence")==state.Sequence);
         var log=Field(shown,"anglerLogState");long xp=AnglerProbeXp(fish),value=sold?fish.SaleValueMinor:0;
-        Require(Number(log,"totalCasts")==1&&Number(log,"totalCaught")==1&&Number(log,"totalSold")==(sold?1:0)&&
+        Require(Number(log,"totalCasts")==AnglerProbeCasts&&Number(log,"totalCaught")==1&&Number(log,"totalSold")==(sold?1:0)&&
             Number(log,"saleMinor")==value&&Number(log,"totalXp")==xp&&state.Creel.Count==(sold?0:1),
             "The current log has a different catch, sale or experience total.");
         var dom=await SceneProbeScript(pane,@"(()=>{
             const dialog=document.querySelector('#angler-log-dialog[open]');if(!dialog)return null;
             const get=k=>dialog.querySelector('[data-log-field='+k+']')?.textContent;
-            const method=dialog.querySelector('[data-log-method=float]');
+            const method=dialog.querySelector('[data-log-method="+AnglerProbeMethod+@"]');
             const rows=dialog.querySelectorAll('[data-log-species]');if(!method||rows.length!==1)return null;
             const row=rows[0];return {casts:get('totalCasts'),caught:get('totalCaught'),sold:get('totalSold'),xp:get('totalXp'),
                 value:get('saleMinor'),methodCounts:[...method.querySelectorAll('td')].map(n=>n.textContent).join('/'),
@@ -41,8 +43,8 @@ sealed partial class DualWindowContext
         string money=(value/100m).ToString("F2",CultureInfo.InvariantCulture);
         string mass=(fish.MassMg/(fish.MassMg<1000000?1000m:1000000m)).ToString("0.######",CultureInfo.InvariantCulture)+
             (fish.MassMg<1000000?" 克":" 千克");
-        Require(Number(dom,"casts")==1&&Number(dom,"caught")==1&&Number(dom,"sold")==(sold?1:0)&&Number(dom,"xp")==xp&&
-            (string)dom["value"]==money&&(string)dom["methodCounts"]=="1/1/"+xp.ToString(CultureInfo.InvariantCulture)&&
+        Require(Number(dom,"casts")==AnglerProbeCasts&&Number(dom,"caught")==1&&Number(dom,"sold")==(sold?1:0)&&Number(dom,"xp")==xp&&
+            (string)dom["value"]==money&&(string)dom["methodCounts"]==AnglerProbeCasts+"/1/"+xp.ToString(CultureInfo.InvariantCulture)&&
             (string)dom["species"]==fish.SpeciesKey&&(string)dom["name"]==name&&Number(dom,"speciesCaught")==1&&(string)dom["heaviest"]==mass,
             "The visible figures, method breakdown or personal record disagree with the landed fish.");
         if(photo){
@@ -89,11 +91,11 @@ sealed partial class DualWindowContext
         await SceneProbeButton(pane,"scene-menu");
         string reopenedLog=await AnglerProbeRead(pane,fish,name,true,true);
         var reopened=game.Snapshot.State;var domain=FloatAnglerLog.Build(reopened);
-        var best=domain.Species.Single();var m=domain.Methods.Single(row=>row.Id=="float");
+        var best=domain.Species.Single();var m=domain.Methods.Single(row=>row.Id==AnglerProbeMethod);
         Require(reopened!=original&&reopened.ProfileId==original.ProfileId&&reopened.BranchId==original.BranchId&&
-            reopened.Sequence==(GameFloatSkillSelfTest?7:6)&&reopened.SteadyStrikeLearned==GameFloatSkillSelfTest&&reopened.WalletMinor==original.WalletMinor&&reopened.Creel.Count==0&&reopened.Session==null&&
-            reopened.Stamina==98&&reopened.BaitCount==11&&reopened.EquippedNetId==original.EquippedNetId&&
-            best.Id==fish.SpeciesKey&&best.Caught==1&&best.MaxMassMg==fish.MassMg&&m.Casts==1&&m.Caught==1&&
+            reopened.Sequence==original.Sequence&&reopened.SteadyStrikeLearned==GameFloatSkillSelfTest&&reopened.WalletMinor==original.WalletMinor&&reopened.Creel.Count==0&&reopened.Session==null&&
+            reopened.Stamina==original.Stamina&&reopened.BaitCount==original.BaitCount&&reopened.EquippedNetId==original.EquippedNetId&&
+            best.Id==fish.SpeciesKey&&best.Caught==1&&best.MaxMassMg==fish.MassMg&&m.Casts==AnglerProbeCasts&&m.Caught==1&&
             m.Xp==AnglerProbeXp(fish)&&domain.TotalSold==1&&domain.SaleMinor==fish.SaleValueMinor&&
             reopenedLog==soldLog&&digest==GameShopJournalDigest(),"Reopening the saved history changed the log, catch or economy.");
         checks.Add("a new owner and a newly authorized real document reopen the same file and show the identical log with an empty creel and no extra credits");

@@ -20,9 +20,10 @@ sealed partial class DualWindowContext
 
     async Task<Dictionary<string,object>> BottomProbeAim(ProbeWindow pane)
     {
+        string aims=catalogSpecies=="large-yellow-croaker"?"[[5000,6000],[4800,5700],[5200,5400]]":"[[5000,9500],[4700,9250],[5400,9000],[5000,8500]]";
         return await SceneProbeScript(pane,@"(()=>{
             const canvas=document.getElementById('scene-canvas');
-            for(const [u,v] of [[5000,9500],[4700,9250],[5400,9000],[5000,8500]]) {
+            for(const [u,v] of "+aims+@") {
                 const p=dualProbe.projectSceneAim(u,v);if(!p)continue;
                 const x=Math.round(p.clientX),y=Math.round(p.clientY);
                 if(document.elementFromPoint(x,y)!==canvas)continue;
@@ -39,6 +40,7 @@ sealed partial class DualWindowContext
             Require(GameBottomSelfTest&&windows.Count==1&&windows.ContainsKey(true),"Bottom mode requires a private standalone player.");
             var pane=windows[true];await Ready(pane);pane.ClientSize=new Size(1280,800);await Activate(pane);
             var lake=FloatFishingAtlas.Find("development-still-water");
+            var water=catalogSpecies=="large-yellow-croaker"?FloatFishingAtlas.Find("coastal-bay"):lake;
             var ini=game.Snapshot.State;
             var entryView=await Wait(pane,s=>PlayerProbeDrawn(s,lake)&&(string)SceneProbeRenderer(s)["rodType"]=="float",30000);
             await WardrobeProbePhoto(pane,"rod-float.png");
@@ -74,13 +76,17 @@ sealed partial class DualWindowContext
             checks.Add("a second menu purchase costs twenty-four silver and equipping the purchased net leaves thirty-two silver");
 
             stage="selecting the paid bottom rig";
+            if(water!=lake){
+                await SceneProbeButton(pane,"spot-select-"+water.Id);
+                await Wait(pane,s=>AtlasProbeProjected(s,water.Id)&&Field(s,"bottomShopState")!=null&&(bool)Field(s,"bottomShopState")["allowed"]);
+            }
             journal=GameShopJournalDigest();await SceneProbeButton(pane,"select-bottom");
             await Wait(pane,s=>Field(s,"bottomShopState")!=null&&(string)Field(s,"bottomShopState")["method"]=="bottom"&&
                 s["bottomShopPending"]==null&&gameBottomSelected);
             Require(journal==GameShopJournalDigest()&&game.Snapshot.State.Sequence==4,"Selecting an owned method spent resources.");
-            await SceneProbeButton(pane,"menu");var selectedView=await Wait(pane,s=>PlayerProbeDrawn(s,lake)&&
+            await SceneProbeButton(pane,"menu");var selectedView=await Wait(pane,s=>PlayerProbeDrawn(s,water)&&
                 (string)SceneProbeRenderer(s)["rodType"]=="bottom"&&(string)SceneProbeRenderer(s)["rodPhase"]=="idle",30000);
-            checks.Add("selecting bottom fishing projects the chosen method and makes no journal transaction");
+            checks.Add("selecting bottom fishing at "+water.Id+" projects the chosen method and makes no journal transaction");
 
             stage="aiming and casting";
             var point=await BottomProbeAim(pane);await SceneProbeMouse(pane,point,true);
@@ -97,6 +103,7 @@ sealed partial class DualWindowContext
             await Wait(pane,s=>gameBottom!=null&&gameFlight!=null&&gameFlight.Snapshot.SessionId==cast.Id&&
                 BottomProbePhase(s,"sinking",cast.Id),15000);
             var bottom=gameBottom;var entry=bottom.Snapshot;
+            var pool=gameFishingPool;
             Require(entry.Phase==BottomPhase.Sinking&&entry.RigId==kit.Equipment.RigId&&entry.RigRevision==kit.Equipment.RigRevision&&
                 entry.SessionId==cast.Id&&entry.SinkerYmm>=entry.Contact.SinkerYmm&&entry.Contact.BaitYmm< -300&&
                 entry.Contact.BaitZmm<entry.Contact.Zmm&&game.Snapshot.State.Creel.Count==0,"Bottom water contact was not surveyed.");
@@ -145,6 +152,8 @@ sealed partial class DualWindowContext
             Require(landed.Sequence==6&&landed.Creel.Count==1&&landed.Session==null&&landed.WalletMinor==3200&&
                 gameNaturalLandings==1,"Landing did not commit exactly once.");
             var fish=landed.Creel[0];var price=landed.Rules.Find(fish.SpeciesKey);
+            string name=water.SpeciesFor(landed.Rules).Single(s=>s.Id==fish.SpeciesKey).Name;
+            Require(pool!=null&&pool.Environment.Candidates.Any(s=>s.SpeciesId==fish.SpeciesKey),"Fish outside the observed bottom pool.");
             Require(price!=null&&fish.MassMg==hooked.Target.MassMg&&fish.SpeciesKey==hooked.Target.SpeciesId&&fish.SessionId==cast.Id&&
                 fish.EncounterId==encounter&&fish.SaleValueMinor==price.Value(fish.MassMg),"Saved fish differs from physical target.");
             await WardrobeProbePhoto(pane,"bottom-catch.png");
@@ -154,6 +163,7 @@ sealed partial class DualWindowContext
             await SceneProbeButton(pane,"scene-menu");
             await Wait(pane,s=>Field(s,"snapshot")!=null&&(bool)Field(s,"snapshot")["MenuOpen"]&&Number(Field(s,"snapshot"),"CreelCount")==1);
             await SceneProbeButton(pane,"camp-go-creel");
+            object specimen=catalogSpecies!=null?await SpecimenProbeInspect(pane,fish,name):null;
             var row=await SceneProbeScript(pane,@"(()=>{
                 const rows=document.querySelectorAll('#creel .fish');if(rows.length!==1)return null;
                 const checkbox=rows[0].querySelector('input[type=checkbox]');checkbox.scrollIntoView({block:'center'});
@@ -168,6 +178,7 @@ sealed partial class DualWindowContext
             checks.Add("selecting the sole owned fish and selling it credits precisely its saved price and clears the creel");
 
             stage="reopening the private journal";
+            object anglerLog=catalogSpecies!=null?await AnglerProbeReopen(pane,fish,name):null;
             PrepareGameShutdown();Require(ExitCode==0&&gameShutdownCode=="no-active-session","Unexpected recovery after sale.");
             DisposeGame();var final=FloatJournalArchive.Inspect(Path.Combine(root,"game.fltj")).State;
             Require(final.Sequence==7&&final.OwnedBottomKit!=null&&final.OwnedBottomKit.Ids.SequenceEqual(kit.Ids)&&
@@ -182,6 +193,7 @@ sealed partial class DualWindowContext
                 strikingTipPermille=SceneProbeRenderer(bitePage)["bottomTipPermille"],
                 naturalBottomBite=true,realMouseStrike=true,manualReel=true,netPurchased=true,saleVerified=true,
                 originalFloatGearUnchanged=true,closedJournalVerified=true,personalSaveRead=false,desktopLayer=false,nativePhysicalMouse=false,
+                waterId=water.Id,habitat=pool.Id,catalogSpecies,catchSeed,specimen,anglerLog,specimenInspectionVerified=specimen!=null,
                 controlledFishFacts=false,controlledFightTime=false,schemaVersion=final.SchemaVersion,sequence=final.Sequence,value=final.WalletMinor,
                 kitPriceMinor=6400,netPriceMinor=2400,ownedBottomIds=kit.Ids.Count,remainingBottomLineMm=kit.Equipment.RemainingLineMm,
                 equipmentInstances=final.Equipment.Instances.Count,remainingLineMm=final.Equipment.RemainingLineMm,

@@ -35,8 +35,8 @@ sealed partial class DualWindowContext
         var state=game.Snapshot.State;var paid=state.Session;var lure=gameLure;var live=lure.Snapshot;var k=state.OwnedLureKit;
         Require(paid.IsLure&&!paid.IsBottom&&paid.LureKit==k&&live.Rig.LureId==k.LureId&&live.Rig.RigId==k.RigId&&
             live.SessionId==paid.Id&&paid.RequiredLineMm==gameLurePlan.RequiredLineMm&&gameFlight.Snapshot.Phase==FloatFlightPhase.Waiting&&
-            gameLurePlan.Geometry.WaterId=="coastal-bay"&&state.BaitCount==0&&state.Stamina==old.Stamina-2&&state.WalletMinor==old.WalletMinor,
-            "Real coast flight or paid reusable lure binding is inconsistent.");
+            gameLurePlan.Geometry.WaterId==gameFishingWater.Id&&state.BaitCount==0&&state.Stamina==old.Stamina-2&&state.WalletMinor==old.WalletMinor,
+            "The fishing water, flight or paid reusable lure binding is inconsistent.");
         return lure;
     }
 
@@ -46,12 +46,13 @@ sealed partial class DualWindowContext
         try{
             Require(GameLureSelfTest&&windows.Count==1&&windows.ContainsKey(true),"Lure probe requires a standalone private player.");
             var pane=windows[true];await Ready(pane);pane.ClientSize=new Size(1280,800);await Activate(pane);
-            var lake=FloatFishingAtlas.Find("development-still-water");var coast=FloatFishingAtlas.Find("coastal-bay");
+            var lake=FloatFishingAtlas.Find("development-still-water");
+            var water=FloatFishingAtlas.Find(catalogSpecies=="topmouth-culter"?"river-bend":"coastal-bay");
             await Wait(pane,p=>PlayerProbeDrawn(p,lake),30000);
             var initial=game.Snapshot.State;byte[] floatGear=FloatEquipmentCodec.Encode(initial.Equipment);
             Require(initial.Sequence==1&&initial.Stamina==100&&initial.BaitCount==0&&initial.WalletMinor==12000&&
-                initial.OwnedLureKit==null&&initial.OwnedNet==null&&initial.Creel.Count==0&&initial.Rules.Species.Count==9,"Wrong private genesis.");
-            checks.Add("one landscape player opens a private nine-species profile with 120 silver, zero worms and no lure equipment");
+                initial.OwnedLureKit==null&&initial.OwnedNet==null&&initial.Creel.Count==0&&initial.Rules.Species.Count==11,"Wrong private genesis.");
+            checks.Add("one landscape player opens a private eleven-species profile with 120 silver, zero worms and no lure equipment");
 
             stage="buying the reusable spoon kit and net";
             await SceneProbeButton(pane,"scene-menu");await Wait(pane,p=>Field(p,"lureShopState")!=null&&(bool)Field(p,"snapshot")["MenuOpen"]);
@@ -64,28 +65,28 @@ sealed partial class DualWindowContext
             var kit=game.Snapshot.State.OwnedLureKit;
             Require(kit.Ids.Distinct().Count()==6&&game.Snapshot.State.WalletMinor==6400&&
                 await pane.View.CoreWebView2.ExecuteScriptAsync("document.getElementById('lure-select').disabled")=="true",
-                "Lure ownership, price or inland method gate changed.");
+                "Lure ownership, price or starting lake method restriction changed.");
             var quote=Field(Field(await CatchProbeShop(pane,"quote-net","shop-quoted",false),"shopState"),"quote");
             Require(Number(quote,"totalPriceMinor")==2400,"Wrong net price.");
             await CatchProbeShop(pane,"shop-buy","purchase-candidate",true);await CatchProbeShop(pane,"net-equip","equip-candidate",true);
             var net=game.Snapshot.State.EquippedNetId;
             Require(net!=Guid.Empty&&game.Snapshot.State.Sequence==4&&game.Snapshot.State.WalletMinor==4000,"Net settlement.");
-            checks.Add("menu confirmations buy a 56-silver kit and equip a 24-silver net; the inland map disables lure selection");
+            checks.Add("menu confirmations buy a 56-silver kit and equip a 24-silver net; the starting lake disables lure selection");
 
-            stage="travelling to the coastal rock bank";
-            await SceneProbeButton(pane,"spot-select-coastal-bay");
-            await Wait(pane,p=>AtlasProbeProjected(p,coast.Id)&&Field(p,"lureShopState")!=null&&(bool)Field(p,"lureShopState")["allowed"]);
+            stage="travelling to "+water.Id;
+            await SceneProbeButton(pane,"spot-select-"+water.Id);
+            await Wait(pane,p=>AtlasProbeProjected(p,water.Id)&&Field(p,"lureShopState")!=null&&(bool)Field(p,"lureShopState")["allowed"]);
             await SceneProbeButton(pane,"lure-select");
             await Wait(pane,p=>Field(p,"lureShopState")!=null&&(bool)Field(p,"lureShopState")["selected"]&&p["lureShopPending"]==null&&gameLureSelected);
-            await SceneProbeButton(pane,"menu");var selectedView=await Wait(pane,p=>PlayerProbeDrawn(p,coast)&&
+            await SceneProbeButton(pane,"menu");var selectedView=await Wait(pane,p=>PlayerProbeDrawn(p,water)&&
                 (string)SceneProbeRenderer(p)["rodType"]=="spinning"&&(string)SceneProbeRenderer(p)["rodPhase"]=="idle",30000);
-            Require(gameWater.SpotId=="rock-bank"&&game.Snapshot.State.Sequence==4,"Selecting lure changed wallet or location.");
-            checks.Add("the coast menu enables the owned method at the rock bank and returns to the real three-dimensional fishing view");
+            Require(gameWater.SpotId==water.Geometry.SpotId&&game.Snapshot.State.Sequence==4,"Selecting lure changed wallet or location.");
+            checks.Add("the menu enables the owned spoon at "+water.Id+" and returns to the fishing view");
 
             pane.ClientSize=new Size(1680,749);
-            await Wait(pane,p=>PlayerProbeDrawn(p,coast)&&Number(SceneProbeRenderer(p),"width")>2.2*Number(SceneProbeRenderer(p),"height"),15000);
+            await Wait(pane,p=>PlayerProbeDrawn(p,water)&&Number(SceneProbeRenderer(p),"width")>2.2*Number(SceneProbeRenderer(p),"height"),15000);
             var canvas=await SceneProbeScript(pane,@"(()=>{const r=document.getElementById('scene-canvas').getBoundingClientRect();return {width:r.width,height:r.height};})()");
-            Require(Number(canvas,"width")>2.2*Number(canvas,"height"),"The actual coastal fishing canvas did not resize to ultrawide.");
+            Require(Number(canvas,"width")>2.2*Number(canvas,"height"),"The fishing canvas did not resize to ultrawide.");
 
             stage="retrieving the first cast to shore";
             var shortPoint=await LureProbePoint(pane,true);var first=await LureProbeCast(pane,shortPoint);
@@ -111,6 +112,7 @@ sealed partial class DualWindowContext
             stage="casting the same spoon and striking a natural attack";
             await Wait(pane,p=>Field(p,"snapshot")!=null&&Number(Field(p,"snapshot"),"Sequence")==6&&Field(p,"snapshot")["SessionId"]==null);
             var point=await LureProbePoint(pane,false);var second=await LureProbeCast(pane,point);
+            var pool=water.CreatePool(gameWaterLanding.Sample,game.Snapshot.State.Rules,FishingPresentation.Spoon);
             Require(second.Snapshot.SpeedLevel==2&&second.Snapshot.SessionId!=shortStart.SessionId&&second.Snapshot.Rig.LureId==shortStart.Rig.LureId,"Second cast changed the spoon.");
             await SceneProbeMouse(pane,point,true);
             stage="winding at the normal speed until the real attack window opens";
@@ -139,9 +141,9 @@ sealed partial class DualWindowContext
                 Math.Abs(origin.X-locked.Position.X)<1e-6&&Math.Abs(origin.Y-locked.Position.Y)<1e-6&&Math.Abs(origin.Z-locked.Position.Z)<1e-6,
                 "Attack handoff lost the fish, lure position or fresh input requirement.");
             await SceneProbeMouse(pane,point,false);
-            checks.Add("normal winding draws a coastal bass to the reusable spoon and a fresh right press transfers its actual underwater position and target into the fight");
+            checks.Add("normal winding draws the local predator to the spoon and a fresh right press transfers its position and target into the fight");
 
-            stage="manually landing the coastal bass";
+            stage="manually landing the spoon catch";
             int drag=hooked.DragLevel;await CatchProbeWheel(pane,point);
             await Wait(pane,p=>fight.Snapshot.DragLevel==Math.Min(10,drag+1));
             await CatchProbeKeyR(pane,true);
@@ -154,17 +156,20 @@ sealed partial class DualWindowContext
             await SceneProbeMouse(pane,point,false);await Wait(pane,p=>!fight.Snapshot.Reeling);await SceneProbeButton(pane,"scene-land");
             await Wait(pane,p=>game.Snapshot.State.Sequence==8&&game.Snapshot.State.Creel.Count==1&&Field(p,"snapshot")!=null&&Number(Field(p,"snapshot"),"Sequence")==8);
             var solved=game.Snapshot.State;var fish=solved.Creel.Single();
-            Require(solved.Session==null&&gameNaturalLandings==1&&fish.SpeciesKey=="spotted-seabass"&&fish.SessionId==locked.SessionId&&
+            string name=water.SpeciesFor(solved.Rules).Single(s=>s.Id==fish.SpeciesKey).Name;
+            Require(solved.Session==null&&gameNaturalLandings==1&&fish.SpeciesKey==(catalogSpecies??"spotted-seabass")&&fish.SessionId==locked.SessionId&&
+                pool!=null&&pool.Environment.Candidates.Any(s=>s.SpeciesId==fish.SpeciesKey)&&
                 fish.EncounterId==encounter&&fish.MassMg==locked.Target.MassMg&&fish.SaleValueMinor==solved.Rules.Find(fish.SpeciesKey).Value(fish.MassMg),
-                "Saved bass differs from the actual encounter.");
-            checks.Add("a separate mouse hold, drag adjustment and net action land exactly the hooked bass at its saved weight and price");
+                "Saved fish differs from the actual encounter.");
+            checks.Add("a separate mouse hold, drag adjustment and net action land "+fish.SpeciesKey+" at its saved weight and price");
 
-            stage="viewing and selling the bass";
+            stage="viewing and selling the spoon catch";
             await pane.View.CoreWebView2.ExecuteScriptAsync("document.activeElement?.blur()");
             foreach(bool down in new[]{true,false})
                 await pane.View.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",json.Serialize(new{
                     type=down?"rawKeyDown":"keyUp",key="c",code="KeyC",windowsVirtualKeyCode=67}));
             await Wait(pane,p=>Field(p,"snapshot")!=null&&(bool)Field(p,"snapshot")["MenuOpen"]&&Number(Field(p,"snapshot"),"CreelCount")==1);
+            object specimen=catalogSpecies!=null?await SpecimenProbeInspect(pane,fish,name):null;
             var row=await SceneProbeScript(pane,@"(()=>{
                 const fish=document.querySelectorAll('#creel .fish');if(fish.length!==1)return null;
                 const box=fish[0].querySelector('input[type=checkbox]');box.scrollIntoView({block:'center'});
@@ -177,9 +182,10 @@ sealed partial class DualWindowContext
             long expectedWallet=4000+fish.SaleValueMinor;
             Require(game.Snapshot.State.WalletMinor==expectedWallet&&game.Snapshot.State.Receipts.Last().FishIds.Single()==fish.Id,
                 "Selling the checked fish changed unexpected resources.");
-            checks.Add("the real creel shows the bass and a checked sale credits precisely its persisted price");
+            checks.Add("the real creel shows "+fish.SpeciesKey+" and a checked sale credits precisely its persisted price");
 
             stage="reopening the privately closed journal";
+            object anglerLog=catalogSpecies!=null?await AnglerProbeReopen(pane,fish,name):null;
             PrepareGameShutdown();Require(gameShutdownCode=="no-active-session"&&ExitCode==0,"Unexpected startup or shutdown recovery.");
             DisposeGame();var final=FloatJournalArchive.Inspect(Path.Combine(root,"game.fltj")).State;
             Require(final.Sequence==9&&final.WalletMinor==expectedWallet&&final.OwnedLureKit.Ids.SequenceEqual(kit.Ids)&&final.EquippedNetId==net&&
@@ -191,11 +197,12 @@ sealed partial class DualWindowContext
                 passed=true,checks=checks.ToArray(),gameLoaded=true,lureFishingConnected=true,closedJournalVerified=true,realMouseCast=true,
                 equippedRod=SceneProbeRenderer(selectedView)["rodType"],retrievingRod=SceneProbeRenderer(reelingView)["rodType"],
                 naturalLureAttack=true,manualReel=true,shoreRetrieveVerified=true,saleVerified=true,originalFloatGearUnchanged=true,
+                waterId=water.Id,habitat=pool.Id,catalogSpecies,catchSeed,specimen,anglerLog,specimenInspectionVerified=specimen!=null,
                 controlledFishFacts=false,controlledFightTime=false,privateSeed=1,nativePhysicalMouse=false,personalSaveRead=false,desktopLayer=false,
                 schemaVersion=final.SchemaVersion,sequence=final.Sequence,value=final.WalletMinor,baitCount=final.BaitCount,stamina=final.Stamina,
                 lureKitPriceMinor=5600,lureIds=kit.Ids.Count,lineMm=kit.LineLengthMm,creelCount=final.Creel.Count,speciesId=fish.SpeciesKey,
                 massMg=fish.MassMg,saleValueMinor=fish.SaleValueMinor,gameFlightEmissions,gameHookedEmissions,gameNaturalLandings,shutdown=gameShutdownCode}),Encoding.UTF8);
             Shutdown();
-        }catch(Exception e){Fail(new InvalidOperationException("Coast lure probe failed while "+stage+": "+e.Message,e));}
+        }catch(Exception e){Fail(new InvalidOperationException("Lure probe failed while "+stage+": "+e.Message,e));}
     }
 }

@@ -2,9 +2,11 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 离线版 0.7.0](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.7.0)**。选择 `FishingDesktop-0.7.0-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 离线版 0.8.0](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.8.0)**。选择 `FishingDesktop-0.8.0-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
 在水面按住左键，看到力度条后松开抛竿。漂尾下沉时按右键提竿，中鱼后按住左键收线。**F1** 可随时在岸边查操作。按 **Esc** 打开营地，**M** 选钓场，**C** 进鱼护，**T** 进食品店。在菜单内就能买装备、换衣和卖鱼。
+
+**0.8.0 更新了从备投到抄鱼的第一人称动作。** 松开左键时，重底钓竿从肩上送出，短路亚竿从侧面挥出。把鱼遛到跟前后按空格，左手会接住抄网，提起刚入护的鱼。按 **I** 能按名称找装备，点一盘鱼线可看到它装在哪个轮上、还剩多少米。江湾的回流口与草滩尾可步行抵达。[抛竿实景](docs/preview-0.8/cast-forward.png) · [海湾抄鱼](docs/preview-0.8/landing-net.png) · [装备背包](docs/preview-0.8/bag.png) · [江湾回流口](docs/river-bank/river-channel.png)
 
 **0.7.0 可以在江湾用亮片钓翘嘴鲌，在海湾用蚯蚓底钓大黄鱼。** 按 M 选水域，到渔具店选择已购套装。找翘嘴鲌可在晨昏走到草滩尾，松开左键抛出亮片，入水后再次按住左键沿上层收饵。找大黄鱼可在夜间从礁台向外侧沙底抛竿。等竿尖明显下压再用右键提竿。静水湾架多支竿时，按 F1 可开启竿架鱼讯铃，听音高分辨槽号。[翘嘴鲌实机画面](docs/preview-0.7/topmouth-culter.png) · [大黄鱼实机画面](docs/preview-0.7/large-yellow-croaker.png)
 
@@ -87,7 +89,7 @@ npm ci
 $sdk = Join-Path $env:USERPROFILE '.nuget/packages/microsoft.web.webview2/1.0.3405.78'
 $output = (New-Item -ItemType Directory -Force -Path '../fishing-windows-build').FullName
 $build = & ./diagnostics/dual-window/build.ps1 -Game -SdkDirectory $sdk -OutputDirectory $output
-& ./scripts/package-game-preview.ps1 -BuildDirectory $build.outputDirectory -ArchivePath (Join-Path $output 'FishingDesktop-0.7.0-win-x64.zip')
+& ./scripts/package-game-preview.ps1 -BuildDirectory $build.outputDirectory -ArchivePath (Join-Path $output 'FishingDesktop-0.8.0-win-x64.zip')
 ```
 
 运行 `diagnostics/dual-window/test-webviews.ps1` 并指定同一组 `-SdkDirectory` 和 `-OutputDirectory`，加上 `-GameSpecimen` 可验证从抛竿到看鱼、卖鱼的流程，加上 `-GameWallpaper` 可单独验证壁纸挂载。每次选择其中一项。

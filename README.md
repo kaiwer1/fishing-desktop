@@ -2,9 +2,11 @@
 
 面向 Windows 的写实互动钓鱼动态壁纸项目。
 
-**[下载 Windows x64 离线版 0.6.0](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.6.0)**。选择 `FishingDesktop-0.6.0-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
+**[下载 Windows x64 离线版 0.7.0](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.7.0)**。选择 `FishingDesktop-0.7.0-win-x64.zip`，整包解压后双击根目录的 `FishingDesktop.exe`。选择「窗口试玩」，在横向窗口顶部点「开启交互」。选择「设为桌面」则在桌面图标后播放钓场，双击托盘图标可打开交互窗。安装好 .NET Framework 4.6.2 或更高版本及 Microsoft Edge WebView2 运行时后，可在 64 位 Windows 上离线游玩。
 
 在水面按住左键，看到力度条后松开抛竿。漂尾下沉时按右键提竿，中鱼后按住左键收线。**F1** 可随时在岸边查操作。按 **Esc** 打开营地，**M** 选钓场，**C** 进鱼护，**T** 进食品店。在菜单内就能买装备、换衣和卖鱼。
+
+**0.7.0 可以在江湾用亮片钓翘嘴鲌，在海湾用蚯蚓底钓大黄鱼。** 按 M 选水域，到渔具店选择已购套装。找翘嘴鲌可在晨昏走到草滩尾，松开左键抛出亮片，入水后再次按住左键沿上层收饵。找大黄鱼可在夜间从礁台向外侧沙底抛竿。等竿尖明显下压再用右键提竿。静水湾架多支竿时，按 F1 可开启竿架鱼讯铃，听音高分辨槽号。[翘嘴鲌实机画面](docs/preview-0.7/topmouth-culter.png) · [大黄鱼实机画面](docs/preview-0.7/large-yellow-croaker.png)
 
 ![岸边营地总览](docs/preview-0.4/camp-home-041.png)
 
@@ -14,7 +16,7 @@
 
 **0.5.0 新玩法。** 江湾的回湾深槽可以用浮漂找黄颡鱼，在海湾外侧的礁坡可以钓许氏平鲉。按 **T** 进食品店，买一份面包，揉成三份面饵，再点「挂面饵」。回岸边抛一竿，在淡水里对照鲤鱼和鲫鱼的鱼口。取消蓄力会保留挂好的饵，只有实际抛出才扣一份。[食品店实机画面](docs/preview-0.5/bread-bait.png) · [升级与退回旧存档](desktop/game-core/FISH_CATALOG.md)
 
-抄鱼入护后按 **C**，点那条鱼旁边的「查看鱼体」。按住左键拖动可以把鱼从侧面转到正面，滚轮放大看鳞片和鳍条，按 Esc 回到鱼护。九种鱼均有各自的原创模型。[0.4.0 黑鲷实机画面](docs/preview-0.4/black-seabream-release.png) · [九种鱼外形对照](docs/preview-0.5/specimens.png)
+抄鱼入护后按 **C**，点那条鱼旁边的「查看鱼体」。按住左键拖动可以把鱼从侧面转到正面，滚轮放大看鳞片和鳍条，按 Esc 回到鱼护。十一种鱼均有各自的原创模型。[十一种鱼外形对照](docs/preview-0.7/eleven-fish.png)
 
 三个钓场都有各自的天气。开局是早上 07:30，实际游玩一分钟，钓场约过去一小时。可以在天还亮时试一次静水湾浅滩，到晚上再钓同一个落点，看鲫鱼和鲤鱼的鱼口怎么变。切换钓场会沿用当前时刻；打开营地菜单时暂停，退出重开则从早上开始。
 
@@ -41,7 +43,7 @@
 
 1. 一竿结束后按 M 前往静水湾，进入营地的「渔具店」。在「单钩底钓套装」点「购买套装」，确认支付 **64.00 银币**。看到「已拥有」后点「使用底钓」，按 Esc 回岸边。第一次要留鱼，还要另外购买并装备 **24.00 银币**的抄网。
 2. 用蚯蚓作饵，将鼠标对准静水湾底钓区的水面，按住左键蓄力，松开抛竿。等铅坠落底、钓组稳住，观察明色竿尖。**轻点时继续等，出现「竿尖下压」时按一次右键提竿。** 中鱼后按住左键收线，鱼靠岸时按提示抄鱼。
-3. 留在静水湾时，可回渔具店点「使用浮漂」。前往江湾或海湾会自动切回浮漂，返回静水湾后可再次选择已购的底钓套装。
+3. 换钓场后会先拿浮漂竿。在静水湾或海湾都可以到渔具店点「使用底钓」，复用已购买的套装。
 
 ### 在静水湾架三支底竿
 
@@ -57,8 +59,8 @@
 | 钓场 | 可钓鱼种 |
 | --- | --- |
 | 静水湾 | 鲤鱼、鲫鱼 |
-| 江湾 | 草鱼、鳊鱼、鲤鱼 |
-| 海湾 | 黑鲷、花鲈、黄鳍鲷 |
+| 江湾 | 草鱼、鳊鱼、鲤鱼、黄颡鱼、翘嘴鲌 |
+| 海湾 | 黑鲷、花鲈、黄鳍鲷、许氏平鲉、大黄鱼 |
 
 ### 试玩版本与素材
 
@@ -74,7 +76,7 @@
 - **0.4.0-preview.2** 加入沿岸走位。静水湾岸土、江湾卵石和海湾礁石分别使用 Poly Haven 的 Forest Ground 04、Floor Pebbles 01 和 Rock 01 三款 CC0 材质。三张贴图随包提供，游玩时从本地读取。[第二版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.2) · [素材作者、原图与许可](desktop/game-scene/assets/SCENE-ASSET-CREDITS.txt)
 - **0.4.0-preview.1** 首次提供单竿浮漂、三处钓场、鱼护和营地商店的 Windows 试玩。[第一版下载](https://github.com/kaiwer1/fishing-desktop/releases/tag/v0.4.0-preview.1) · [第一版海湾](docs/preview-0.4/player-coast.png) · [鱼护画面](docs/preview-0.4/game-catch.png)
 
-玩法参考《俄罗斯钓鱼4》。九种鱼均有原创鱼护插画与可旋转的三维模型。现有三座岸钓钓场，计划中的 36 个鱼种包括已经可钓的九种。其他鱼种、船钓与后续钓法的进度见开发计划。[操作与存档](desktop/player/Readme-zh-CN.txt) · [资产清单](docs/ASSET_REFERENCE_CATALOG.md) · [开发日志](DEVLOG.md)
+玩法参考《俄罗斯钓鱼4》。计划中的 36 个中国内陆和近海鱼种已有 11 种可以钓获，三座钓场均可通过营地菜单购买补给和卖鱼。其他鱼种、船钓与后续钓法的进度见开发计划。[操作与存档](desktop/player/Readme-zh-CN.txt) · [资产清单](docs/ASSET_REFERENCE_CATALOG.md) · [开发日志](DEVLOG.md)
 
 ### 从源码构建 Windows 版
 
@@ -85,7 +87,7 @@ npm ci
 $sdk = Join-Path $env:USERPROFILE '.nuget/packages/microsoft.web.webview2/1.0.3405.78'
 $output = (New-Item -ItemType Directory -Force -Path '../fishing-windows-build').FullName
 $build = & ./diagnostics/dual-window/build.ps1 -Game -SdkDirectory $sdk -OutputDirectory $output
-& ./scripts/package-game-preview.ps1 -BuildDirectory $build.outputDirectory -ArchivePath (Join-Path $output 'FishingDesktop-0.6.0-win-x64.zip')
+& ./scripts/package-game-preview.ps1 -BuildDirectory $build.outputDirectory -ArchivePath (Join-Path $output 'FishingDesktop-0.7.0-win-x64.zip')
 ```
 
 运行 `diagnostics/dual-window/test-webviews.ps1` 并指定同一组 `-SdkDirectory` 和 `-OutputDirectory`，加上 `-GameSpecimen` 可验证从抛竿到看鱼、卖鱼的流程，加上 `-GameWallpaper` 可单独验证壁纸挂载。每次选择其中一项。

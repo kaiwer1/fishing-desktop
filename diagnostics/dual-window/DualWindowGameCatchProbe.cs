@@ -84,9 +84,9 @@ sealed partial class DualWindowContext
             if(gameMode=="bread-bait-self-test"){await RunBreadBaitProbe(pane,lake);return;}
             var station=FloatFishingAtlas.Find(catalogSpecies=="yellow-catfish"?"river-bend":"coastal-bay");
             await Wait(pane,s=>PlayerProbeDrawn(s,lake),30000);
-            Require(ini.Sequence==1 && ini.Rules.Species.Count==9 && ini.OwnedNet==null && ini.WalletMinor==12000 &&
+            Require(ini.Sequence==1 && ini.Rules.Species.Count==11 && ini.OwnedNet==null && ini.WalletMinor==12000 &&
                 ini.BaitCount==12 && ini.Stamina==100 && ini.Creel.Count==0,"Unexpected standalone catch profile.");
-            checks.Add("the private landscape player starts with nine eligible species, an empty creel and no net");
+            checks.Add("the private landscape player starts with eleven eligible species, an empty creel and no net");
 
             await SceneProbeButton(pane,"scene-menu");
             await Wait(pane,s=>Field(s,"snapshot")!=null && (bool)Field(s,"snapshot")["MenuOpen"]);

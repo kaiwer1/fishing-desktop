@@ -21,7 +21,12 @@ sealed partial class DualWindowContext
                 stations.Add(new {id=station.Id,name=station.Name,xMm=station.Xmm,targetXmm=sounding.Xmm,targetZmm=sounding.Zmm,
                     depthMm=sounding.DepthMm,habitat=pool.Name,fish=water.StationFish(rules,pool.Id=="deep")});
             }
-            rows.Add(new {id=water.Id,name=water.Name,region=water.Kind=="marine"?"中国近海":"中国内陆",description=water.Description,species=names.ToArray(),stations=stations.ToArray()});
+            string description=water.Description;
+            if(rules.Signature==FloatDomesticSpeciesCatalog.Eleven.Signature){
+                if(water.Id=="river-bend")description+=" 晨昏在草滩尾收亮片，翘嘴鲌常追上层拟饵。";
+                if(water.Id=="coastal-bay")description+=" 从礁台投向外侧沙底，入夜可底钓大黄鱼。";
+            }
+            rows.Add(new {id=water.Id,name=water.Name,region=water.Kind=="marine"?"中国近海":"中国内陆",description,species=names.ToArray(),stations=stations.ToArray()});
         }
         Send(pane,new {kind="game-spot-state",documentId=pane.Ticket.DocumentId,revision=checked(++binding.SpotRevision),state=new {activeId=gameFishingWater.Id,spots=rows.ToArray()}});
     }

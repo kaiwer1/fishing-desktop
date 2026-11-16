@@ -309,6 +309,20 @@ test('real surface holds, wheel and attack hand off to the fight only after a ne
   f.grant(null);const after=f.messages.length;right();left('pointerdown',1);assert.equal(f.messages.length,after);
 });
 
+test('a permitted river spoon uses the normal mouse controls after travel',async()=>{
+  const f=await pageFixture(),session=id(620),target=f.nodes.get('cast-target');
+  spotWater(f,1,5,'river-bend');lureShopState(f,1,{owned:true,selected:true,allowed:true});
+  f.snapshot.MenuOpen=false;f.snapshot.SessionId=session;f.broadcast();
+  f.emit({kind:'game-lure-state',revision:1,state:{sessionId:session,encounterId:null,phase:'in-water',
+    position:{xMm:0,yMm:-300,zMm:19000},layer:'upper',depthMm:300,bedClearanceMm:1400,
+    outLineMm:19200,remainingLineMm:30800,speedLevel:2,reeling:false,bailOpen:false}});
+  target.setPointerCapture=()=>{};
+  target.dispatch('pointerdown',{pointerType:'mouse',pointerId:1,button:0,buttons:1,timeStamp:42});
+  assert.equal(f.messages.at(-1)?.action,'reel-start');
+  target.dispatch('pointerup',{pointerType:'mouse',pointerId:1,button:0,buttons:0,timeStamp:45});
+  assert.equal(f.messages.at(-1)?.action,'reel-stop');
+});
+
 test('the tackle counter confirms individual stand and kit purchases against real ownership before enabling the bank mode',async()=>{
   const f=await pageFixture();
   bankKitState(f,1);

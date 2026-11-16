@@ -1,6 +1,19 @@
 // Original lateral studies. Paths are authored in a common 240 × 112 plate,
 // with a separate contour, fin arrangement and pigment pattern per species.
 const fish = {
+  'topmouth-culter': {name:'翘嘴鲌',colors:['#354c52','#b8c5c7','#e4e8df','#4f636b'],eye:[39,48],gill:[61,66],
+    body:'M12 42L20 46Q34 38 65 33Q92 27 119 32Q151 36 175 47Q187 51 197 50L199 60Q184 59 172 64Q139 75 103 77Q58 78 32 65Q19 59 12 49Z',
+    tail:'M188 51Q205 46 232 28Q226 46 211 55Q216 63 231 85Q206 74 187 61Z',
+    dorsal:'M106 32Q115 19 126 10Q127 22 136 35Z',lower:'M119 74Q140 72 168 65Q153 76 144 90Q131 86 119 74ZM86 75L97 89L105 86L103 75Z',
+    pectoral:'M62 59Q82 56 101 63Q83 72 66 66Z',marks:'M12 43Q18 52 29 56L37 55M17 51Q23 60 34 60',
+    lateral:'M60 48Q68 64 96 65Q142 65 190 56',rays:'M192 52L223 34M194 54L214 46M193 58L219 72M191 60L223 78',texture:'fine-scales' },
+  'large-yellow-croaker': {name:'大黄鱼',colors:['#58646b','#b9b192','#e5b750','#ad944e'],eye:[37,48],gill:[62,72],
+    body:'M14 59Q24 45 37 40Q59 25 86 26Q117 25 143 34Q168 42 181 47Q188 49 198 49L198 63Q181 60 166 65Q137 73 110 80Q70 83 42 74Q25 70 15 65Z',
+    tail:'M187 49Q204 46 219 40Q228 48 232 55Q228 64 222 70Q205 66 187 62Z',
+    dorsal:'M62 29L67 21L69 26L76 13L78 22L84 10L86 17L92 11L96 22L99 18L105 28Q112 20 122 23Q145 28 168 39Q174 42 178 47L154 39Z',
+    lower:'M137 74L148 84Q157 85 164 80L158 68ZM67 74L82 92L90 94L83 74Z',
+    pectoral:'M61 58Q80 55 97 54Q89 65 72 70L62 66Z',marks:'M14 62Q23 66 33 61M20 65Q30 70 39 65M49 41Q59 39 64 45',
+    lateral:'M61 46Q85 36 117 42Q151 48 193 55',rays:'M193 51L218 43M194 53L227 52M193 56L228 57M193 59L220 67',texture:'fine-scales' },
   'yellow-catfish': {name:'黄颡鱼',colors:['#48442b','#ab9848','#e0d28d','#71664a'],eye:[38,54],gill:[64,72],
     body:'M13 61Q18 53 31 48Q55 34 82 32Q107 29 139 37L178 48Q188 51 198 49L201 62Q185 62 168 65Q118 76 86 78Q55 81 28 70L15 67Z',
     tail:'M188 49Q210 43 233 24Q229 44 211 57L231 87Q207 76 188 63Z',
@@ -100,7 +113,7 @@ function pigmentation(doc, s, id) {
       group.append(svgNode(doc,'ellipse',{cx:x,cy:41+Math.sin(i*1.8)*4,rx:8,ry:3+i%4,fill:s.colors[0],opacity:'.43'}));
     }
   }
-  const lateral=pointPath(doc,'M58 53Q117 47 187 55','none',s.colors[2],1.5); lateral.setAttribute('opacity','.64'); group.append(lateral);
+  const lateral=pointPath(doc,s.lateral??'M58 53Q117 47 187 55','none',s.colors[2],1.5); lateral.setAttribute('opacity','.64'); group.append(lateral);
   return group;
 }
 
@@ -116,7 +129,7 @@ export function installFishIllustrations(doc, bank) {
     const clip=svgNode(doc,'clipPath',{id:id+'-clip'}); clip.append(svgNode(doc,'path',{d:s.body}));
     const symbol=svgNode(doc,'symbol',{id,viewBox:'0 0 240 112'}), outline=s.colors[0];
     symbol.append(pointPath(doc,s.tail,s.colors[3],outline),pointPath(doc,s.dorsal,s.colors[3],outline),pointPath(doc,s.lower,s.colors[3],outline));
-    const rays=pointPath(doc,'M191 54L220 36M193 55L219 42M192 58L219 69M189 59L224 75','none',s.colors[2],.8);
+    const rays=pointPath(doc,s.rays??'M191 54L220 36M193 55L219 42M192 58L219 69M189 59L224 75','none',s.colors[2],.8);
     rays.setAttribute('opacity','.55'); symbol.append(rays);
     symbol.append(pointPath(doc,s.body,`url(#${id}-skin)`,outline,1.3),pigmentation(doc,s,id));
     const [g,y]=s.gill;

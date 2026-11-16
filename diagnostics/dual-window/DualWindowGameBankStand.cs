@@ -57,7 +57,7 @@ sealed partial class DualWindowContext
     // for explicit release must still be reachable after restarting Windows.
     void RestoreBankResultHand()
     {
-        if(game==null||!GameBottomSpot)return;
+        if(game==null||!GameBankStandSpot)return;
         var s=game.Snapshot.State;
         if(s==null||!s.HasPendingBankResult||s.OwnedBankRodStand==null)return;
         if(GameHeldBankSession!=null&&GameHeldBankSession.CapacityBlocked)return;
@@ -85,7 +85,7 @@ sealed partial class DualWindowContext
         if(s.Sequence!=seq){GameReply(p,t,"bank-stale");Broadcast();return;}
         if(a=="select"||a=="leave"){
             if(a=="select"){
-                if(!GameBottomSpot||s.OwnedBankRodStand==null||s.OwnedBottomKits.Count==0){GameReply(p,t,"bank-kit-required");return;}
+                if(!GameBankStandSpot||s.OwnedBankRodStand==null||s.OwnedBottomKits.Count==0){GameReply(p,t,"bank-kit-required");return;}
                 if(!GameBankMode){
                     var ids=new Guid[3];for(int i=0;i<s.OwnedBottomKits.Count;i++)ids[i]=s.OwnedBottomKits[i].Equipment.RigId;
                     gameBottom=null;gameBottomAttempt=Guid.Empty;gameBottomSelected=false;gameBite=null;gameFight=null;
@@ -123,7 +123,7 @@ sealed partial class DualWindowContext
         GameBinding b;if(!GameAtlasMode||!p.Ready||!gameViews.TryGetValue(p,out b)||b.Document==null)return;
         var s=game.Snapshot.State;
         Send(p,new {kind="game-bank-kit-state",documentId=p.Ticket.DocumentId,revision=checked(++b.BankKitRevision),state=new {
-            available=s!=null&&BottomOwnedKit.Enabled(s),allowed=GameBottomSpot,selected=GameBankMode,standOwned=s!=null&&s.OwnedBankRodStand!=null,
+            available=s!=null&&BottomOwnedKit.Enabled(s),allowed=GameBankStandSpot,selected=GameBankMode,standOwned=s!=null&&s.OwnedBankRodStand!=null,
             kitCount=s==null?0:s.OwnedBottomKits.Count,extraPriceMinor=BottomOwnedKit.AdditionalPriceMinor,standPriceMinor=OwnedBankRodStand.PriceMinor}});
     }
     void SendBankStand(ProbeWindow p)

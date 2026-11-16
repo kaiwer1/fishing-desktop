@@ -37,10 +37,10 @@ static class LureRetrieveTests
         internal readonly FloatFlightSnapshot Contact;
         internal readonly LureRetrieveSimulation Sim;
         internal long Sequence,WorldMs;
-        internal Run(uint seed=1,int weight=1,int v=3000,LureActivitySampler activity=null){
-            Plan=LureRetrieveTests.Plan(v:v);Contact=Land(Plan);
+        internal Run(uint seed=1,int weight=1,int v=3000,LureActivitySampler activity=null,string water="coastal-bay"){
+            Plan=LureRetrieveTests.Plan(water:water,v:v);Contact=Land(Plan);
             LureRetrieveSimulation sim;
-            string err=LureRetrieveSimulation.AtWaterContact(Session,Rig(),Plan,Contact,Bass(weight),seed,true,out sim,activity);
+            string err=LureRetrieveSimulation.AtWaterContact(Session,Rig(),Plan,Contact,water=="river-bend"?new FloatBiteCandidate("topmouth-culter",weight,400000,1700000):Bass(weight),seed,true,out sim,activity);
             Need(err==null,err);Sim=sim;Sim.SetControl(1,true);
         }
         internal LureRetrieveSnapshot S{get{return Sim.Snapshot;}}
@@ -71,7 +71,7 @@ static class LureRetrieveTests
             var p=Plan();var c=Land(p);LureRetrieveSimulation run;
             Need(LureRetrieveSimulation.AtWaterContact(Id(7),Rig(),p,c,Bass(),1,true,out run)=="confirmed-contact-required","old session");
             Need(LureRetrieveSimulation.AtWaterContact(Session,Rig(),p,Launch(p).Snapshot,Bass(),1,true,out run)=="confirmed-contact-required","flying");
-            var other=Plan("river-bend");Need(LureRetrieveSimulation.AtWaterContact(Session,Rig(),other,Land(other),Bass(),1,true,out run)=="lure-spot-unavailable","wrong station");
+            var other=Plan("river-bend");Need(LureRetrieveSimulation.AtWaterContact(Session,Rig(),other,Land(other),Bass(),1,true,out run)=="lure-species-unconfigured","wrong station");
             Need(LureRetrieveSimulation.AtWaterContact(Session,Rig(),Plan(u:3000),c,Bass(),1,true,out run)=="lure-contact-invalid","wrong plan");
             Need(LureRetrieveSimulation.AtWaterContact(Session,Rig(3000),p,c,Bass(),1,true,out run)=="lure-contact-line-mismatch","short installed spool");
             Need(LureRetrieveSimulation.AtWaterContact(Session,Rig(),p,c,new FloatBiteCandidate("carp",1,480000,900000),1,true,out run)=="lure-species-unconfigured"&&run==null,"wrong fish");
@@ -93,6 +93,16 @@ static class LureRetrieveTests
             slow.Speed(0);fast.Speed(3);slow.Reel(true);fast.Reel(true);
             for(int i=0;i<32;i++){slow.Step(1);fast.Step(1);Invariant(slow);Invariant(fast);}
             Need(fast.S.OutLineM<slow.S.OutLineM-1&&fast.S.Position.Z<slow.S.Position.Z&&fast.S.DepthM<slow.S.DepthM,"gears had no actual effect");
+        });
+        Test("a feeding river culter follows an upper-layer spoon and enters the fight with its own identity",()=>{
+            var river=new Run(water:"river-bend");river.Reel(true);river.Step(16);
+            Need(river.S.Layer==LureWaterLayer.Upper&&river.S.HazardPerSecond>.6,"river spoon upper-layer activity");
+            river.WaitFor(LureRetrievePhase.Strikeable);
+            var target=river.S.Target;FloatFightSimulation fight;
+            Need(target.SpeciesId=="topmouth-culter"&&target.MassMg>=400000&&target.MassMg<=1700000,"river stock");
+            Need(river.Sim.StrikeAndStart(RigId,Session,1,++river.Sequence,river.S.EncounterId,out fight)==null&&fight.Snapshot.Target==target,"river handoff");
+            var coast=Plan();
+            Need(LureRetrieveSimulation.CheckCast(Rig(),coast,new FloatBiteCandidate("topmouth-culter",1,400000,1700000))=="lure-species-unconfigured","river species on coast");
         });
         Test("depth bands, current clearance and actual speed set each step's attack rate",()=>{
             var r=new Run(seed:18);r.Reel(true);r.Step(6);Need(r.S.Layer==LureWaterLayer.Surface&&r.S.HazardPerSecond==0,"surface");

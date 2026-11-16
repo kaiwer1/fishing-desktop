@@ -3,7 +3,7 @@ using System.IO;
 using System.Linq;
 using FishingDesktop.GameCore;
 
-#if RELEASED_SEVEN
+#if RELEASED_SEVEN || RELEASED_NINE
 sealed partial class DualWindowContext
 {
     internal static FloatGameOwner CreateReleasedPlayer(string path)
@@ -14,7 +14,7 @@ sealed partial class DualWindowContext
 }
 #endif
 
-static class ReleasedSpeciesBaitTests
+static partial class ReleasedSpeciesBaitTests
 {
     static readonly Guid FishId=new Guid("8fd1e5a9-a67a-4854-998d-70c523080a42");
     const long FishMassMg=1488601, FishValueMinor=260;
@@ -70,7 +70,7 @@ static class ReleasedSpeciesBaitTests
         using(var old=FloatGameStore.OpenExisting(args[1]))OldSave(old.State);
         Console.WriteLine("PASS released 0.4.0 "+args[0]+" seven-species journal, unsold black seabream 1488601 mg / 260 minor.");
     }
-#else
+#elif !RELEASED_NINE && !NINE_SKILL
     static void Unconfirmed(Action action)
     {
         try{action();}catch(FloatSaveUncertainException){return;}
@@ -81,6 +81,7 @@ static class ReleasedSpeciesBaitTests
 
     public static void Main(string[] args)
     {
+        if(args[0]=="nine"){VerifyNine(args[1]);return;}
         string path=args[0];
         byte[] sevenBytes=File.ReadAllBytes(path);
         var inspection=FloatJournalArchive.Inspect(path);OldSave(inspection.State);
@@ -88,16 +89,18 @@ static class ReleasedSpeciesBaitTests
         Need(tip==inspection.TipSha256,"Missing verified backup before upgrade.");
         var old=inspection.State;
         var expand=new ExpandDomesticSpecies(old.ProfileId,old.BranchId,Id(),Id(),old.Sequence,old.Rig.Revision,old.RulesVersion);
-        Need(FloatJournalCodec.EncodeCommand(expand)[7]==30&&FloatJournalCodec.EncodeCommand(Bait(old,FloatBaitAction.PrepareBread))[7]==31,"Conflicting or incompatible journal opcode.");
+        var eleven=new ExpandToElevenSpecies(old.ProfileId,old.BranchId,Id(),Id(),old.Sequence,old.Rig.Revision,old.RulesVersion);
+        Need(FloatJournalCodec.EncodeCommand(expand)[7]==30&&FloatJournalCodec.EncodeCommand(Bait(old,FloatBaitAction.PrepareBread))[7]==31&&
+            FloatJournalCodec.EncodeCommand(eleven)[7]==33,"Conflicting or incompatible journal opcode.");
 
         // The upgrade reaches disk, then the writer loses its acknowledgement.
         Action<FloatSaveFaultPoint> afterFlush=p=>{if(p==FloatSaveFaultPoint.AfterFlush)throw new IOException("Test: acknowledgement lost after flush.");};
         Unconfirmed(()=>{using(var unexpected=FloatGameOwner.OpenExisting(path,afterFlush,3,null,tip)){}});
         var upgraded=FloatJournalArchive.Inspect(path).State;
-        Need(upgraded.Sequence==4&&upgraded.Rules.Species.Count==9&&upgraded.WalletMinor==12000&&upgraded.BreadBaitCount==0&&!upgraded.BreadBaitSelected,"Missing or repeated species expansion.");
+        Need(upgraded.Sequence==4&&upgraded.Rules.Species.Count==11&&upgraded.WalletMinor==12000&&upgraded.BreadBaitCount==0&&!upgraded.BreadBaitSelected,"Missing or repeated species expansion.");
         OldFish(upgraded);
         Need(File.ReadAllBytes(path).Take(sevenBytes.Length).SequenceEqual(sevenBytes),"Upgrade rewrote old frames.");
-        Console.WriteLine("PASS species expansion 30 survived a lost acknowledgement, preserved the old fish and appended one frame.");
+        Console.WriteLine("PASS species expansion 33 survived a lost acknowledgement, preserved the old fish and appended one frame.");
 
         bool faultOnCraft=false;
         Action<FloatSaveFaultPoint> craftFault=p=>{if(faultOnCraft)afterFlush(p);};
@@ -134,9 +137,9 @@ static class ReleasedSpeciesBaitTests
         using(var owner=FloatGameOwner.OpenExisting(path)){
             var controls=new Controls(owner);owner.SetMenuOpen(true);Repeat(controls.Send(sale));
             var s=owner.Snapshot.State;
-            Need(s.Sequence==10&&s.ProfileId==old.ProfileId&&s.BranchId==old.BranchId&&s.Rules.Species.Count==9&&s.Creel.Count==0&&s.WalletMinor==12240&&s.Stamina==96&&s.BaitCount==11&&s.BreadBaitSelected&&s.BreadBaitCount==2&&s.FoodCount==0,"Final reopen mismatch.");
+            Need(s.Sequence==10&&s.ProfileId==old.ProfileId&&s.BranchId==old.BranchId&&s.Rules.Species.Count==11&&s.Creel.Count==0&&s.WalletMinor==12240&&s.Stamina==96&&s.BaitCount==11&&s.BreadBaitSelected&&s.BreadBaitCount==2&&s.FoodCount==0,"Final reopen mismatch.");
         }
-        var backup=Directory.GetFiles(Path.GetDirectoryName(path),"player.before-nine-species.*.fltj").Single();
+        var backup=Directory.GetFiles(Path.GetDirectoryName(path),"player.before-11-species.*.fltj").Single();
         Need(File.ReadAllBytes(backup).SequenceEqual(sevenBytes),"Rollback copy changed.");
         Console.WriteLine("PASS startup recovered sequence 9 without refund; old fish sold once at sequence 10 for 2.60 silver, wallet 122.40.");
     }

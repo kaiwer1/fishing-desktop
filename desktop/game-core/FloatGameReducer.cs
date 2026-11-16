@@ -29,6 +29,11 @@ namespace FishingDesktop.GameCore
         internal ExpandDomesticSpecies(Guid profile,Guid branch,Guid request,Guid businessEvent,long sequence,long rigRevision,long rulesVersion)
             :base("expand-domestic-seven-to-nine-v1",profile,branch,request,businessEvent,Guid.Empty,sequence,rigRevision,rulesVersion){}
     }
+    internal sealed class ExpandToElevenSpecies : FloatCommand
+    {
+        internal ExpandToElevenSpecies(Guid profile,Guid branch,Guid request,Guid businessEvent,long sequence,long rigRevision,long rulesVersion)
+            :base("expand-domestic-to-eleven-v1",profile,branch,request,businessEvent,Guid.Empty,sequence,rigRevision,rulesVersion){}
+    }
     internal enum FloatBaitAction : byte { PrepareBread=1, SelectBread=2, SelectWorm=3 }
     internal sealed class ManageFloatBait : FloatCommand
     {
@@ -478,11 +483,14 @@ namespace FishingDesktop.GameCore
             int breadBaits=state.BreadBaitCount;
             bool breadSelected=state.BreadBaitSelected;
             try{
-                if(command is ExpandDomesticSpecies){
-                    if(!FloatDomesticSpeciesCatalog.CanExpand(state))return Reject("species-catalog-ineligible");
+                if(command is ExpandDomesticSpecies || command is ExpandToElevenSpecies){
+                    bool historical=command is ExpandDomesticSpecies;
+                    if(!FloatDomesticSpeciesCatalog.CanExpand(state) || (historical && rules.Signature!=FloatDomesticSpeciesCatalog.Seven.Signature))
+                        return Reject("species-catalog-ineligible");
                     if(command.RequestId==command.EventId||KnownPurchaseIdentity(state,command.RequestId)||KnownPurchaseIdentity(state,command.EventId))
                         return Reject("species-catalog-identity-invalid");
-                    rules=FloatDomesticSpeciesCatalog.Nine;outcome=FloatOutcome.SpeciesCatalogExpanded;
+                    rules=historical?FloatDomesticSpeciesCatalog.Nine:FloatDomesticSpeciesCatalog.Eleven;
+                    outcome=FloatOutcome.SpeciesCatalogExpanded;
                 }else if(command is LearnSteadyStrike){
                     if(session!=null)return Reject("session-busy");
                     if(state.SteadyStrikeLearned)return Reject("steady-strike-known");

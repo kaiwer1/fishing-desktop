@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {createSpecimen,disposeSpecimen} from './specimen-model.mjs';
 
-const ids=['carp','crucian','grass-carp','blunt-snout-bream','black-seabream','spotted-seabass','yellowfin-seabream','yellow-catfish','black-rockfish'];
+const ids=['carp','crucian','grass-carp','blunt-snout-bream','black-seabream','spotted-seabass','yellowfin-seabream','yellow-catfish','black-rockfish','topmouth-culter','large-yellow-croaker'];
 const finite=a=>a.every(Number.isFinite);
 for(const id of ids)test(id+' has drawable two-sided anatomy, a detailed skin and a centred metre-scale silhouette',()=>{
   const g=createSpecimen(THREE,id),box=new THREE.Box3().setFromObject(g),size=box.getSize(new THREE.Vector3());

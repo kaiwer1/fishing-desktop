@@ -20,7 +20,7 @@ $testExit=$LASTEXITCODE
 $lines | Set-Content -LiteralPath (Join-Path $run 'test-output.txt') -Encoding utf8
 $passed=@($lines | Where-Object {$_ -like 'PASS *'})
 $failed=@($lines | Where-Object {$_ -like 'FAIL *'})
-$report=[pscustomobject]@{passed=($testExit -eq 0 -and $passed.Count -eq 21 -and $failed.Count -eq 0);passedCount=$passed.Count;
+$report=[pscustomobject]@{passed=($testExit -eq 0 -and $passed.Count -eq 22 -and $failed.Count -eq 0);passedCount=$passed.Count;
     checks=$passed;failures=$failed;actualFlight=$true;fixedSteps=$true;webViewExecuted=$false;personalSaveRead=$false;outputDirectory=$run}
 $report | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $run 'summary.json') -Encoding utf8
 if(-not $report.passed){$lines | Out-Host;throw 'Lure retrieval tests failed.'}

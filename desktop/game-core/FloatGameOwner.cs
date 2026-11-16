@@ -96,7 +96,7 @@ namespace FishingDesktop.GameCore
             // Leave the final cast and its possible settlements to the player.
             if(budget.RemainingTransactions<=budget.RequiredCastTransactions ||
                 budget.RemainingBytes<budget.RequiredCastBytes+FloatSaveBudget.ReleaseFrameBytes)return;
-            var command=new ExpandDomesticSpecies(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),
+            var command=new ExpandToElevenSpecies(state.ProfileId,state.BranchId,Guid.NewGuid(),Guid.NewGuid(),
                 state.Sequence,state.Rig.Revision,state.RulesVersion);
             var commit=Run(()=>_store.Execute(command));
             if(!commit.Committed)throw new InvalidOperationException("Fish catalogue expansion was not confirmed: "+commit.Code);

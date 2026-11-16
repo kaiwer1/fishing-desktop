@@ -92,8 +92,7 @@ namespace FishingDesktop.GameCore
         }
         internal FloatSpeciesRule Find(string key){foreach(var row in Species)if(row.SpeciesKey==key)return row;return null;}
     }
-    // These two immutable price sheets define the historical seven-to-nine
-    // species journal transition. Later catalogues must get a separate event.
+    // Each historical journal event resolves to its own immutable price sheet.
     internal static class FloatDomesticSpeciesCatalog
     {
         static FloatGameRules PlayerRules(IEnumerable<FloatSpeciesRule> species)
@@ -107,17 +106,21 @@ namespace FishingDesktop.GameCore
             new FloatSpeciesRule("black-seabream",100000,6000000,175),
             new FloatSpeciesRule("spotted-seabass",200000,10000000,165),
             new FloatSpeciesRule("yellowfin-seabream",80000,4300000,155)});
-        internal static readonly FloatGameRules Nine=Expanded();
-        static FloatGameRules Expanded()
+        internal static readonly FloatGameRules Nine=Extend(Seven,
+            new FloatSpeciesRule("yellow-catfish",60000,1400000,148),
+            new FloatSpeciesRule("black-rockfish",150000,3500000,188));
+        internal static readonly FloatGameRules Eleven=Extend(Nine,
+            new FloatSpeciesRule("topmouth-culter",150000,6000000,152),
+            new FloatSpeciesRule("large-yellow-croaker",120000,4000000,202));
+        static FloatGameRules Extend(FloatGameRules previous,params FloatSpeciesRule[] additions)
         {
-            var rows=new List<FloatSpeciesRule>(Seven.Species);
-            rows.Add(new FloatSpeciesRule("yellow-catfish",60000,1400000,148));
-            rows.Add(new FloatSpeciesRule("black-rockfish",150000,3500000,188));
+            var rows=new List<FloatSpeciesRule>(previous.Species);rows.AddRange(additions);
             return PlayerRules(rows);
         }
         internal static bool IsPreviousPlayerCatalog(FloatGameState state)
         {
-            return state.SchemaVersion==3 && state.EquipmentUpgradeOrigin==null && state.Rules.Signature==Seven.Signature;
+            return state.SchemaVersion==3 && state.EquipmentUpgradeOrigin==null &&
+                (state.Rules.Signature==Seven.Signature || state.Rules.Signature==Nine.Signature);
         }
         internal static bool CanExpand(FloatGameState state)
         {return state.Session==null && state.BankSessions.Count==0 && IsPreviousPlayerCatalog(state);}

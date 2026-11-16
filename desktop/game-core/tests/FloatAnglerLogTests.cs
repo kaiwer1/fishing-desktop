@@ -222,11 +222,11 @@ static class FloatAnglerLogTests
             byte[] prefix=File.ReadAllBytes(path);string oldTip=FloatJournalArchive.Inspect(path).TipSha256;
             using(var owner=OpenPlayer(path)){
                 var s=owner.Snapshot.State;var log=FloatAnglerLog.Build(s);
-                Need(s.Sequence==6&&s.Rules.Species.Count==9&&s.Receipts.Last().Outcome==FloatOutcome.SpeciesCatalogExpanded,"missing revision");
+                Need(s.Sequence==6&&s.Rules.Species.Count==11&&s.Receipts.Last().Outcome==FloatOutcome.SpeciesCatalogExpanded,"missing revision");
                 Need(s.WalletMinor==12060&&s.Creel.Single().Id==originalFish&&s.Creel.Single().SaleValueMinor==34&&log.TotalCaught==2&&
                     log.TotalSold==1&&log.SaleMinor==60&&log.TotalXp==26,"historical sale, catch prices or XP changed");
             }
-            var backup=Directory.GetFiles(folder,Path.GetFileNameWithoutExtension(path)+".before-nine-species.*.fltj").Single();
+            var backup=Directory.GetFiles(folder,Path.GetFileNameWithoutExtension(path)+".before-11-species.*.fltj").Single();
             Need(prefix.SequenceEqual(File.ReadAllBytes(backup))&&FloatJournalArchive.Inspect(backup).TipSha256==oldTip&&
                 prefix.SequenceEqual(File.ReadAllBytes(path).Take(prefix.Length)),"rollback copy or original prefix changed");
             using(var st=FloatGameStore.OpenExisting(path)){
@@ -255,7 +255,7 @@ static class FloatAnglerLogTests
             using(var st=FloatGameStore.OpenExisting(path)){
                 var s=st.State;Write(st,new ReleaseCurrentFloatFish(s.ProfileId,s.BranchId,G(),G(),s.Session.Id,s.Sequence,s.Rig.Revision,s.RulesVersion));
             }
-            using(var owner=OpenPlayer(path)){Need(owner.Snapshot.State.Rules.Species.Count==9,"released player could not upgrade");}
+            using(var owner=OpenPlayer(path)){Need(owner.Snapshot.State.Rules.Species.Count==11,"released player could not upgrade");}
             string custom=FileName();using(var st=FloatGameStore.CreateNew(custom,New())){}
             var bytes=File.ReadAllBytes(custom);
             using(var owner=OpenPlayer(custom)){Need(owner.Snapshot.State.Rules.Species.Count==2,"custom catalog replaced");}
@@ -265,7 +265,7 @@ static class FloatAnglerLogTests
             string path=FileName();using(var st=FloatGameStore.CreateNew(path,FormerPlayer())){}
             string wrong=FileName();using(var st=FloatGameStore.CreateNew(wrong,FormerPlayer())){}
             var inspection=FloatJournalArchive.Inspect(path);
-            string backupPath=Path.Combine(folder,Path.GetFileNameWithoutExtension(path)+".before-nine-species."+inspection.Sha256.Substring(0,24)+".fltj");
+            string backupPath=Path.Combine(folder,Path.GetFileNameWithoutExtension(path)+".before-11-species."+inspection.Sha256.Substring(0,24)+".fltj");
             File.Copy(wrong,backupPath);
             using(var owner=OpenPlayer(path)){Need(owner.Snapshot.State.Sequence==0,"unverified backup allowed expansion");}
             Need(File.ReadAllBytes(backupPath).SequenceEqual(File.ReadAllBytes(wrong)),"existing backup was overwritten");
@@ -278,7 +278,7 @@ static class FloatAnglerLogTests
                 string faultFile=FileName();using(var st=FloatGameStore.CreateNew(faultFile,FormerPlayer())){}
                 try{using(var owner=OpenPlayer(faultFile,p=>{if(p==point)throw new IOException("private fault");})){}throw new Exception("missing fault");}
                 catch(IOException){}
-                using(var owner=OpenPlayer(faultFile)){var s=owner.Snapshot.State;Need(s.Sequence==1&&s.Rules.Species.Count==9,"fault replay wrote twice or skipped expansion");}
+                using(var owner=OpenPlayer(faultFile)){var s=owner.Snapshot.State;Need(s.Sequence==1&&s.Rules.Species.Count==11,"fault replay wrote twice or skipped expansion");}
             }
             string partial=FileName();using(var st=FloatGameStore.CreateNew(partial,FormerPlayer())){}
             byte[] clean=File.ReadAllBytes(partial);
@@ -287,7 +287,7 @@ static class FloatAnglerLogTests
             var damaged=File.ReadAllBytes(partial);
             try{using(var owner=OpenPlayer(partial)){}throw new Exception("partial journal opened");}
             catch(InvalidDataException){}
-            string rollback=Directory.GetFiles(folder,Path.GetFileNameWithoutExtension(partial)+".before-nine-species.*.fltj").Single();
+            string rollback=Directory.GetFiles(folder,Path.GetFileNameWithoutExtension(partial)+".before-11-species.*.fltj").Single();
             Need(File.ReadAllBytes(partial).SequenceEqual(damaged)&&clean.SequenceEqual(File.ReadAllBytes(rollback))&&
                 FloatJournalArchive.Inspect(rollback).State.Rules.Species.Count==7,"partial write damaged the rollback copy or silently changed the journal");
         });

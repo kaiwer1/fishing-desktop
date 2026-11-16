@@ -238,13 +238,19 @@ body[data-camp=open] .scene-hud{visibility:hidden}body[data-camp=open] #notice:e
 <section id="spares" hidden><h2>渔具店 · 备件</h2><p id="spares-status" role="status">等待备件信息</p><p id="spares-wallet"></p><div id="spares-items"></div>
 <div id="spares-offer" hidden><p id="spares-offer-text"></p><button id="spares-buy" class="interactive" disabled>确认购买</button></div>
 <button id="spares-retry" class="interactive" hidden disabled>重试原购买</button><button id="spares-cancel" class="interactive" hidden disabled>取消未写入操作</button></section>
-<section id="equipment" hidden><h2>钓组与背包</h2><p id="equipment-status" role="status">等待装备信息</p><p id="equipment-readiness"></p>
+<section id="equipment" hidden>
+<header class="bag-heading"><h2>随身装备</h2><span id="bag-count" aria-live="polite"></span><button type="button" id="bag-assembly-jump" aria-controls="equipment-assembly">浮漂装配</button></header>
+<div class="bag-toolbar"><label for="bag-search">搜索装备</label><input id="bag-search" type="search" maxlength="128" placeholder="名称、钓法或装配位置" autocomplete="off"></div>
+<div id="bag-types" aria-label="按装备类型筛选" role="group"></div>
+<div class="bag-layout"><div class="bag-results"><div id="bag-items" role="group" aria-label="拥有的装备"></div><p id="bag-empty" role="status">等待装备信息</p></div>
+<aside id="bag-detail" aria-label="装备详情" hidden></aside></div>
+<details id="equipment-assembly" open><summary id="equipment-assembly-label">浮漂钓组装配</summary><p id="equipment-status" role="status">等待装备信息</p><p id="equipment-readiness"></p>
 <div id="equipment-slots"></div><p id="equipment-line-status"></p>
 <div class="interactive"><label>鱼线 <select id="equipment-line" disabled></select></label><label>放到 <select id="equipment-reel" disabled></select></label><button id="equipment-move-line" disabled>移动整段鱼线</button></div>
 <p id="equipment-inventory"></p><p id="equipment-lost" class="muted"></p>
 <p id="equipment-capacity"></p><button id="equipment-archive-lost" class="interactive" disabled>整理损失记录</button><p class="muted">腾出名额，损失历史仍保留，不返还装备或银币。</p>
 <p class="muted">卸下渔轮时，鱼线仍在线杯内。缺少必需部件时不能抛竿；目前可更换已拥有的部件。</p>
-<div id="equipment-retry-controls" hidden><button id="equipment-retry" class="interactive" disabled>重试原装备操作</button><button id="equipment-cancel" class="interactive" disabled>取消未写入操作</button></div></section>
+<div id="equipment-retry-controls" hidden><button id="equipment-retry" class="interactive" disabled>重试原装备操作</button><button id="equipment-cancel" class="interactive" disabled>取消未写入操作</button></div></details></section>
 <section id="creel-section">
 <div class="creel-head"><h2>鱼护</h2><span id="capacity" aria-label="鱼护容量"></span></div>
 <div id="creel-tools" hidden>

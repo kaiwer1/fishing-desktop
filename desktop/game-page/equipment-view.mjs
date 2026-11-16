@@ -1,3 +1,5 @@
+import {equipmentBag} from './tackle-bag.mjs';
+
 const slots = new Set(['rod', 'reel', 'hook', 'bobber', 'sinker']);
 const kinds = new Set([...slots, 'line']);
 const locations = new Set(['inventory', 'rig-slot', 'reel-spool', 'lost']);
@@ -61,12 +63,21 @@ export class EquipmentView {
   #documentId;
   #revision = 0;
   #state = null;
+  #bag = null;
+  #bagSignature = '';
   constructor(documentId) { this.#documentId = documentId; }
   get revision() { return this.#revision; }
+  get bag() { return this.#bag; }
   state() { return this.#state ? copy(this.#state) : null; }
   clearReferences() { if (this.#state) { this.#state.retry = null; this.#state.lease = null; } }
   apply(message) {
     if (!validPacket(message) || message.documentId !== this.#documentId || message.revision <= this.#revision) return false;
+    const signature=JSON.stringify(message.state.bag??message.state.items);
+    if(signature!==this.#bagSignature){
+      const bag=equipmentBag(message.state);
+      if(!bag)return false;
+      this.#bag=bag;this.#bagSignature=signature;
+    }
     this.#state = copy(message.state); this.#revision = message.revision; return true;
   }
 }

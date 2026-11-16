@@ -96,6 +96,78 @@ sealed partial class DualWindowContext
         if(pending!=null&&(GameEquipmentReason(snapshot,authorized)!=null||!GameEquipmentBindingCurrent(binding,pending)||
             snapshot.State.Sequence!=pending.Command.ExpectedSequence))binding.Equipment=null;
     }
+    // A bag row is for inspection only. Slot and spool edits still use the equipment ledger above.
+    FloatGameState gameBagSource;
+    object[] gameBagRows;
+    static object BagFact(string key,long quantity)
+    {return new {key,value=GameEquipmentNumber(quantity)};}
+    static object BagRow(Guid id,string key,string kind,string group,string place,Guid owner,params object[] facts)
+    {return new {id=id.ToString("D"),key,kind,group,place,owner=GameEquipmentId(owner),facts};}
+    static void AppendLedgerBag(List<object> rows,FloatEquipmentLedger ledger,string group)
+    {
+        foreach(var part in ledger.Instances){
+            if(part.Location.Place==FloatEquipmentPlace.Lost)continue;
+            var facts=new List<object>();
+            var def=ledger.Catalog.Find(part.DefinitionKey);
+            if(def!=null){
+                if(def.MassMg>0)facts.Add(BagFact("massMg",def.MassMg));
+                if(def.LineDiameterUm>0)facts.Add(BagFact("diameterUm",def.LineDiameterUm));
+                if(def.MaximumLoadMg>0){
+                    facts.Add(BagFact("minLoadMg",def.MinimumLoadMg));
+                    facts.Add(BagFact("maxLoadMg",def.MaximumLoadMg));
+                }
+            }
+            if(part.Kind==FloatEquipmentKind.Line){
+                facts.Add(BagFact("remainingMm",part.RemainingLineMm));
+                facts.Add(BagFact("initialMm",part.InitialLineMm));
+            }
+            if(part.Kind==FloatEquipmentKind.Reel){
+                var line=ledger.Spool(part.Id);
+                if(line!=null){
+                    var capacity=ledger.Catalog.Capacity(part.DefinitionKey,line.DefinitionKey);
+                    if(capacity!=null)facts.Add(BagFact("capacityMm",capacity.MaximumLengthMm));
+                }
+            }
+            Guid reel=part.Location.Place==FloatEquipmentPlace.ReelSpool?part.Location.OwnerId:Guid.Empty;
+            rows.Add(BagRow(part.Id,part.DefinitionKey,GameEquipmentKindName(part.Kind),group,GameEquipmentPlaceName(part.Location.Place),reel,facts.ToArray()));
+        }
+    }
+    object[] GameBagInventory(FloatGameState state)
+    {
+        if(state==null)return new object[0];
+        if(Object.ReferenceEquals(gameBagSource,state))return gameBagRows;
+        var rows=new List<object>();
+        if(state.Equipment!=null)AppendLedgerBag(rows,state.Equipment,"float");
+        else if(state.LegacyRig!=null){
+            var rig=state.LegacyRig;
+            rows.Add(BagRow(rig.RodId,"fixed-rod","rod","float","rig-slot",Guid.Empty));
+            rows.Add(BagRow(rig.ReelId,"fixed-reel","reel","float","rig-slot",Guid.Empty));
+            rows.Add(BagRow(rig.LineId,"fixed-line","line","float","reel-spool",rig.ReelId,BagFact("remainingMm",rig.LineLengthMm)));
+            rows.Add(BagRow(rig.HookId,"fixed-hook","hook","float","rig-slot",Guid.Empty));
+            rows.Add(BagRow(rig.BobberId,"fixed-bobber","bobber","float","rig-slot",Guid.Empty));
+            rows.Add(BagRow(rig.SinkerId,"fixed-sinker","sinker","float","rig-slot",Guid.Empty));
+        }
+        for(int i=0;i<state.OwnedBottomKits.Count;i++){
+            var kit=state.OwnedBottomKits[i];string group="bottom-"+(i+1).ToString(CultureInfo.InvariantCulture);
+            AppendLedgerBag(rows,kit.Equipment,group);
+            rows.Add(BagRow(kit.LeaderId,"bottom-016-leader","leader",group,"rig-slot",Guid.Empty,
+                BagFact("diameterUm",BottomSimpleAssembly.LeaderDiameterUm),BagFact("lengthMm",BottomSimpleAssembly.LeaderLengthMm)));
+        }
+        var lure=state.OwnedLureKit;
+        if(lure!=null){
+            rows.Add(BagRow(lure.RodId,"spinning-rod","rod","lure","rig-slot",Guid.Empty));
+            rows.Add(BagRow(lure.ReelId,"spinning-reel","reel","lure","rig-slot",Guid.Empty));
+            rows.Add(BagRow(lure.LineId,"spinning-line","line","lure","reel-spool",lure.ReelId,BagFact("remainingMm",lure.LineLengthMm)));
+            rows.Add(BagRow(lure.LureId,LureRetrieveRig.LureDefinition,"spoon","lure","rig-slot",Guid.Empty,BagFact("massMg",LureRetrieveRig.LureMassMg)));
+            rows.Add(BagRow(lure.HookId,"spoon-hook","hook","lure","integral",lure.LureId));
+        }
+        if(state.OwnedNet!=null)rows.Add(BagRow(state.OwnedNet.Id,state.OwnedNet.DefinitionKey,"net","tools",
+            state.EquippedNetId==state.OwnedNet.Id?"equipped":"inventory",Guid.Empty));
+        if(state.OwnedBankRodStand!=null)rows.Add(BagRow(state.OwnedBankRodStand.Id,"three-rod-stand","stand","tools","owned",Guid.Empty,
+            BagFact("slots",state.OwnedBankRodStand.SlotCount)));
+        gameBagSource=state;gameBagRows=rows.ToArray();
+        return gameBagRows;
+    }
     void SendGameEquipment(ProbeWindow pane)
     {
         GameBinding binding;if(game==null||!pane.Ready||!gameViews.TryGetValue(pane,out binding)||binding.Document==null)return;
@@ -120,7 +192,7 @@ sealed partial class DualWindowContext
             schemaVersion=state==null?0:state.SchemaVersion,available=reason==null,reason=reason,lease=authorized?binding.WireLease:null,
             stateSequence=equipment==null?null:GameEquipmentNumber(state.Sequence),rigRevision=equipment==null?null:GameEquipmentNumber(equipment.RigRevision),
             inventoryRevision=equipment==null?null:GameEquipmentNumber(equipment.InventoryRevision),equipmentVersion=equipment==null?null:GameEquipmentNumber(equipment.RulesVersion),
-            items=items,issues=issues,retry=retry,
+            items=items,issues=issues,retry=retry,bag=GameBagInventory(state),
             archivedItemsCount=equipment==null?0:state.ArchivedEquipmentIds.Count,
             archivedLineMm=equipment==null?"0":GameEquipmentNumber(state.ArchivedEquipmentLineMm)}});
     }
